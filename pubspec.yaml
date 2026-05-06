@@ -1,0 +1,96 @@
+name: antpod
+description: AntPod – Collect podcast episodes like ants 🐜
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Localizations (generated from ARB files)
+  intl: ^0.20.2
+
+  # Material You / Dynamic Color (Android 12+)
+  dynamic_color: ^1.7.0
+
+  # State management
+  provider: ^6.1.2
+
+  # Audio + Background Playback
+  just_audio: ^0.10.5
+  audio_service: ^0.18.15
+  # Podcast RSS-Parsing (only for loadFeed)
+  podcast_search: ^0.7.15
+
+  # HTTP for direct PodcastIndex API calls
+  http: ^1.2.1
+  crypto: ^3.0.3
+
+  # Downloads
+  flutter_downloader: ^1.12.0
+
+  # Drift – reactive, typesafe database
+  drift: ^2.20.0
+  drift_flutter: ^0.3.0
+  sqlite3_flutter_libs: ^0.6.0+eol
+
+  # Share sheet (episodes + podcasts)
+  share_plus: ^13.1.0
+
+  # Utilities
+  cached_network_image: ^3.4.1
+  flutter_svg: ^2.0.10+1
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  flutter_html: ^3.0.0-beta.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.20.0
+  build_runner: ^2.4.12
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.5
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - antpodlogo.svg
+    - assets/icon/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icon/icon.png
+  remove_alpha_ios: true
+  adaptive_icon_background: "#8B5E3C"
+  adaptive_icon_foreground: assets/icon/icon.png
+  min_sdk_android: 21
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  color_dark: "#1A1210"
+  image: assets/icon/splash.png
+  image_dark: assets/icon/splash.png
+  android_12:
+    image: assets/icon/splash.png
+    image_dark: assets/icon/splash.png
+    color: "#FFFFFF"
+    color_dark: "#1A1210"
+    icon_background_color: "#8B5E3C"
+    icon_background_color_dark: "#8B5E3C"
+  ios: true
+  android: true

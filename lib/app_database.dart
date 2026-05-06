@@ -1,0 +1,226 @@
+// lib/app_database.dart
+//
+// Schema version: 3
+//   v1 → v2: Episodes.isSubscribed added
+//   v2 → v3: Episodes.isFinished added (true = fully listened)
+//            Episodes.lastPositionMs added (millisecond precision resume point)
+//
+// Regenerate after schema changes:
+//   dart run build_runner build --delete-conflicting-outputs
+
+import 'dart:io';
+import 'package:drift/drift.dart';
+import 'package:drift_flutter/drift_flutter.dart';
+
+part 'app_database.g.dart';
+
+// ─── Tables ───────────────────────────────────────────────────────────────────
+
+class Podcasts extends Table {
+  TextColumn get id => text()();
+  TextColumn get title => text()();
+  TextColumn get description => text()();
+  TextColumn get imageUrl => text()();
+  TextColumn get feedUrl => text()();
+  TextColumn get author => text()();
+  TextColumn get website => text().nullable()();
+  DateTimeColumn get subscribedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class Episodes extends Table {
+  TextColumn get id => text()();
+  TextColumn get podcastId => text()();
+  TextColumn get podcastTitle => text()();
+  TextColumn get podcastImageUrl => text()();
+  TextColumn get title => text()();
+  TextColumn get description => text()();
+  TextColumn get audioUrl => text()();
+  IntColumn get durationSeconds => integer().withDefault(const Constant(0))();
+  DateTimeColumn get publishDate => dateTime()();
+  BoolColumn get isDownloaded => boolean().withDefault(const Constant(false))();
+  TextColumn get localPath => text().nullable()();
+  TextColumn get downloadTaskId => text().nullable()();
+
+  /// Resume position in milliseconds (high precision).
+  /// 0 = never started.
+  IntColumn get lastPositionMs => integer().withDefault(const Constant(0))();
+
+  /// Derived convenience: position in full seconds (for display).
+  /// Kept for backward compat with older code paths.
+  IntColumn get playbackPositionSeconds =>
+      integer().withDefault(const Constant(0))();
+
+  /// true once the episode has been played to completion
+  /// (position >= 95 % of duration, or explicitly marked).
+  BoolColumn get isFinished => boolean().withDefault(const Constant(false))();
+
+  /// true  = from a subscribed podcast
+  /// false = temporary Discover episode (deleted after playback)
+  BoolColumn get isSubscribed => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// ─── Database ─────────────────────────────────────────────────────────────────
+
+@DriftDatabase(tables: [Podcasts, Episodes])
+class AppDatabase extends _$AppDatabase {
+  AppDatabase() : super(driftDatabase(name: 'antpod'));
+
+  @override
+  int get schemaVersion => 3;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(episodes, episodes.isSubscribed);
+      }
+      if (from < 3) {
+        await m.addColumn(episodes, episodes.isFinished);
+        await m.addColumn(episodes, episodes.lastPositionMs);
+      }
+    },
+  );
+
+  // ── Podcasts ──────────────────────────────────────────────────────────────
+
+  Stream<List<Podcast>> watchAllPodcasts() =>
+      (select(podcasts)..orderBy([(p) => OrderingTerm.asc(p.title)])).watch();
+
+  Future<List<Podcast>> getAllPodcasts() => select(podcasts).get();
+
+  Future<void> insertPodcast(PodcastsCompanion pod) =>
+      into(podcasts).insertOnConflictUpdate(pod);
+
+  Future<void> deletePodcast(String id) async {
+    final eps = await (select(episodes)
+          ..where((e) => e.podcastId.equals(id))
+          ..where((e) => e.isDownloaded.equals(true)))
+        .get();
+    for (final ep in eps) {
+      if (ep.localPath != null) {
+        final f = File(ep.localPath!);
+        if (f.existsSync()) f.deleteSync();
+      }
+    }
+    await (delete(episodes)..where((e) => e.podcastId.equals(id))).go();
+    await (delete(podcasts)..where((p) => p.id.equals(id))).go();
+  }
+
+  // ── Episodes ──────────────────────────────────────────────────────────────
+
+  /// Default feed: subscribed, not yet finished.
+  Stream<List<Episode>> watchUnfinishedEpisodes() =>
+      (select(episodes)
+            ..where((e) => e.isSubscribed.equals(true))
+            ..where((e) => e.isFinished.equals(false))
+            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+          .watch();
+
+  /// All subscribed episodes (for "show played" filter).
+  Stream<List<Episode>> watchAllSubscribedEpisodes() =>
+      (select(episodes)
+            ..where((e) => e.isSubscribed.equals(true))
+            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+          .watch();
+
+  Stream<List<Episode>> watchEpisodesForPodcast(String podcastId) =>
+      (select(episodes)
+            ..where((e) => e.podcastId.equals(podcastId))
+            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+          .watch();
+
+  Future<void> insertEpisode(EpisodesCompanion ep) =>
+      into(episodes).insertOnConflictUpdate(ep);
+
+  Future<void> insertEpisodes(List<EpisodesCompanion> eps) =>
+      batch((b) => b.insertAllOnConflictUpdate(episodes, eps));
+
+  Future<void> insertTempEpisode(EpisodesCompanion ep) =>
+      into(episodes).insertOnConflictUpdate(
+        ep.copyWith(isSubscribed: const Value(false)),
+      );
+
+  /// Save resume position (ms + seconds) and optionally mark finished.
+  Future<void> updatePlaybackPosition(
+    String id, {
+    required int positionMs,
+    required int durationMs,
+  }) async {
+    final posSeconds = positionMs ~/ 1000;
+    // Consider finished if within last 5 % of total duration
+    final finished = durationMs > 0 && positionMs >= durationMs * 0.95;
+
+    await (update(episodes)..where((e) => e.id.equals(id))).write(
+      EpisodesCompanion(
+        lastPositionMs: Value(positionMs),
+        playbackPositionSeconds: Value(posSeconds),
+        isFinished: Value(finished),
+      ),
+    );
+  }
+
+  /// Explicitly mark episode as finished (e.g. after natural completion).
+  Future<void> markFinished(String id) =>
+      (update(episodes)..where((e) => e.id.equals(id))).write(
+        const EpisodesCompanion(isFinished: Value(true)),
+      );
+
+  /// Explicitly mark episode as unfinished (reset).
+  Future<void> markUnfinished(String id) =>
+      (update(episodes)..where((e) => e.id.equals(id))).write(
+        const EpisodesCompanion(
+          isFinished: Value(false),
+          lastPositionMs: Value(0),
+          playbackPositionSeconds: Value(0),
+        ),
+      );
+
+  Future<void> updateEpisodeDownload(
+      String id, bool downloaded, String? path, String? taskId) =>
+      (update(episodes)..where((e) => e.id.equals(id))).write(
+        EpisodesCompanion(
+          isDownloaded: Value(downloaded),
+          localPath: Value(path),
+          downloadTaskId: Value(taskId),
+        ),
+      );
+
+  Future<void> deleteLocalFile(String id) async {
+    final ep = await (select(episodes)..where((e) => e.id.equals(id)))
+        .getSingleOrNull();
+    if (ep?.localPath != null) {
+      final f = File(ep!.localPath!);
+      if (f.existsSync()) f.deleteSync();
+    }
+    await (update(episodes)..where((e) => e.id.equals(id))).write(
+      const EpisodesCompanion(
+        isDownloaded: Value(false),
+        localPath: Value(null),
+        downloadTaskId: Value(null),
+      ),
+    );
+  }
+
+  Future<void> cleanupTempEpisode(String id) async {
+    final ep = await (select(episodes)..where((e) => e.id.equals(id)))
+        .getSingleOrNull();
+    if (ep == null) return;
+    if (!ep.isSubscribed) {
+      if (ep.localPath != null) {
+        final f = File(ep.localPath!);
+        if (f.existsSync()) f.deleteSync();
+      }
+      await (delete(episodes)..where((e) => e.id.equals(id))).go();
+    }
+  }
+
+  Future<Episode?> getEpisode(String id) =>
+      (select(episodes)..where((e) => e.id.equals(id))).getSingleOrNull();
+}
