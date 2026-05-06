@@ -121,24 +121,18 @@ class PodcastService {
     int max = 10,
     String lang = 'de,en',
   }) async {
-    try {
-      final uri = Uri.parse('$_baseUrl/podcasts/trending').replace(
-        queryParameters: {
-          'max': '$max',
-          'lang': lang,
-          'since': '-604800', // letzte 7 Tage
-        },
-      );
-      final res = await http.get(uri, headers: _authHeaders());
-      if (res.statusCode != 200) return [];
-      final json = jsonDecode(res.body) as Map<String, dynamic>;
-      final feeds = json['feeds'] as List? ?? [];
-      return feeds
-          .map((f) => PodcastResult.fromJson(f as Map<String, dynamic>))
-          .toList();
-    } catch (_) {
-      return [];
+    final uri = Uri.parse('$_baseUrl/podcasts/trending').replace(
+      queryParameters: {'max': '$max', 'lang': lang},
+    );
+    final res = await http.get(uri, headers: _authHeaders());
+    if (res.statusCode != 200) {
+      throw Exception('API ${res.statusCode}: ${res.reasonPhrase}');
     }
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
+    final feeds = json['feeds'] as List? ?? [];
+    return feeds
+        .map((f) => PodcastResult.fromJson(f as Map<String, dynamic>))
+        .toList();
   }
 
   // ── Empfehlungen ──────────────────────────────────────────────────────────
@@ -196,15 +190,14 @@ class PodcastService {
   ) async {
     try {
       final podcast = await ps.Feed.loadFeed(url: feedUrl);
-      final episodes = (podcast.episodes ?? []).map((ep) {
+      final episodes = podcast.episodes.map((ep) {
         return EpisodesCompanion(
-          id: Value(ep.guid ?? ep.link ?? '${feedUrl}_${ep.title}'),
+          id: Value(ep.guid.isNotEmpty ? ep.guid : '${feedUrl}_${ep.title}'),
           podcastId: Value(feedUrl),
           podcastTitle: Value(podcast.title ?? ''),
-          podcastImageUrl:
-              Value(podcast.image ?? ''),
-          title: Value(ep.title ?? 'Ohne Titel'),
-          description: Value(ep.description ?? ''),
+          podcastImageUrl: Value(podcast.image ?? ''),
+          title: Value(ep.title),
+          description: Value(ep.description),
           audioUrl: Value(ep.contentUrl ?? ''),
           durationSeconds:
               Value((ep.duration ?? Duration.zero).inSeconds),

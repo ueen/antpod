@@ -87,9 +87,6 @@ class DownloadService {
     required AppDatabase db,
   }) async {
     final fullPath = p.join(savedDir, fileName);
-    // Find episode by task id
-    final allEps = await db.getAllPodcasts(); // just to trigger a query pattern
-    // We need to find by task id – query directly
     final result = await (db.select(db.episodes)
           ..where((e) => e.downloadTaskId.equals(taskId)))
         .getSingleOrNull();

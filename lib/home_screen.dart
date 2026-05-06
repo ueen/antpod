@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_database.dart';
 import 'download_service.dart';
@@ -56,7 +57,7 @@ class _FilterState {
 // Feed mode
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _FeedMode { feed, podcastFilter, searchEpisodes, discover }
+enum _FeedMode { feed, podcastFilter, searchEpisodes, discover, previewPodcast }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeScreen
@@ -84,14 +85,29 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingTrending = false;
   bool _loadingRec = false;
   bool _searchingPI = false;
+  String? _trendingError;
+
+  // Preview (unsubscribed podcast header + episodes)
+  PodcastResult? _previewResult;
+  List<_DiscoverEpisode> _previewEpisodes = [];
+  bool _loadingPreview = false;
+  _FeedMode _previewFrom = _FeedMode.discover;
+
+  // Filter chips visibility (persisted)
+  bool _filterChipsVisible = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() => _filterChipsVisible = prefs.getBool('filterChipsVisible') ?? true);
       final db = context.read<AppDatabase>();
       final pods = await db.getAllPodcasts();
-      if (pods.isEmpty && mounted) _enterDiscover();
+      if (mounted) {
+        if (pods.isEmpty) _enterDiscover();
+      }
     });
   }
 
@@ -124,6 +140,58 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // ── Preview unsubscribed podcast ──────────────────────────────────────────
+
+  Future<void> _openPreview(PodcastResult result) async {
+    setState(() {
+      _previewResult = result;
+      _previewEpisodes = [];
+      _loadingPreview = true;
+      _previewFrom = _mode;
+      _mode = _FeedMode.previewPodcast;
+    });
+    final data = await PodcastService.loadFeed(result.feedUrl);
+    if (!mounted) return;
+    setState(() {
+      _loadingPreview = false;
+      if (data != null) {
+        _previewEpisodes = data.episodes.map((e) => _DiscoverEpisode(
+          id: e.id.value,
+          title: e.title.value,
+          description: e.description.value,
+          audioUrl: e.audioUrl.value,
+          durationSeconds: e.durationSeconds.value,
+          publishDate: e.publishDate.value,
+        )).toList();
+      }
+    });
+  }
+
+  void _exitPreview() {
+    setState(() {
+      _mode = _previewFrom;
+      _previewResult = null;
+      _previewEpisodes = [];
+    });
+  }
+
+  // ── Unsubscribe ───────────────────────────────────────────────────────────
+
+  Future<void> _unsubscribe(Podcast podcast) async {
+    final db = context.read<AppDatabase>();
+    await db.deletePodcast(podcast.id);
+    if (mounted) _exitToFeed();
+  }
+
+  // ── Filter chip visibility ────────────────────────────────────────────────
+
+  Future<void> _toggleFilterChips() async {
+    final next = !_filterChipsVisible;
+    setState(() => _filterChipsVisible = next);
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setBool('filterChipsVisible', next);
+  }
+
   void _onSearchChanged(String v) {
     setState(() => _searchQuery = v);
     if (_mode == _FeedMode.discover) _debouncedPISearch(v);
@@ -144,19 +212,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadDiscover() async {
     final db = context.read<AppDatabase>();
-    setState(() { _loadingTrending = true; _loadingRec = true; });
-    final t = await PodcastService.trending(max: 10);
-    if (mounted) setState(() { _trending = t; _loadingTrending = false; });
-    final subs = await db.getAllPodcasts();
-    final r = await PodcastService.recommendations(subscribed: subs, max: 10);
-    if (mounted) setState(() { _recommended = r; _loadingRec = false; });
+    setState(() { _loadingTrending = true; _loadingRec = true; _trendingError = null; });
+    try {
+      final t = await PodcastService.trending(max: 10);
+      if (mounted) setState(() { _trending = t; _loadingTrending = false; });
+    } catch (e) {
+      if (mounted) setState(() { _trendingError = e.toString(); _loadingTrending = false; });
+    }
+    try {
+      final subs = await db.getAllPodcasts();
+      final r = await PodcastService.recommendations(subscribed: subs, max: 10);
+      if (mounted) setState(() { _recommended = r; _loadingRec = false; });
+    } catch (_) {
+      if (mounted) setState(() { _loadingRec = false; });
+    }
   }
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
 
   Future<void> _subscribe(PodcastResult result) async {
     final db = context.read<AppDatabase>();
-    final l10n = AppLocalizations.of(context);
+    final l10n = AppLocalizations.of(context)!;
     await db.insertPodcast(result.toCompanion());
     final data = await PodcastService.loadFeed(result.feedUrl);
     if (data != null) await db.insertEpisodes(data.episodes);
@@ -289,39 +365,54 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final db = context.read<AppDatabase>();
     final cs = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final searchOpen =
         _mode == _FeedMode.discover || _mode == _FeedMode.searchEpisodes;
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _Toolbar(
-              mode: _mode, searchOpen: searchOpen,
-              searchCtrl: _searchCtrl, filter: _filter,
-              l10n: l10n, cs: cs,
-              onBack: _exitToFeed, onSearchChanged: _onSearchChanged,
-              onClearSearch: () => setState(() {
-                _searchQuery = ''; _searchCtrl.clear(); _piSearchResults = [];
-              }),
-              onSearchOpen: () => setState(() {
-                _mode = _FeedMode.searchEpisodes;
-                _searchQuery = ''; _searchCtrl.clear();
-              }),
-              onPlusPressed: _enterDiscover,
-            ),
-
-            if (_mode == _FeedMode.feed || _mode == _FeedMode.searchEpisodes)
-              _FilterChipsRow(
-                filter: _filter, l10n: l10n, cs: cs,
-                onToggle: _onFilterToggle,
+    return PopScope(
+      canPop: _mode == _FeedMode.feed,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_mode == _FeedMode.previewPodcast) {
+          _exitPreview();
+        } else {
+          _exitToFeed();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _Toolbar(
+                mode: _mode, searchOpen: searchOpen,
+                searchCtrl: _searchCtrl, filter: _filter,
+                filterChipsVisible: _filterChipsVisible,
+                l10n: l10n, cs: cs,
+                onBack: _mode == _FeedMode.previewPodcast ? _exitPreview : _exitToFeed,
+                onSearchChanged: _onSearchChanged,
+                onClearSearch: () => setState(() {
+                  _searchQuery = ''; _searchCtrl.clear(); _piSearchResults = [];
+                }),
+                onSearchOpen: () => setState(() {
+                  _mode = _FeedMode.searchEpisodes;
+                  _searchQuery = ''; _searchCtrl.clear();
+                }),
+                onPlusPressed: _enterDiscover,
+                onFilterToggle: _toggleFilterChips,
               ),
 
-            Expanded(child: _buildBody(db, cs, l10n)),
-            const MiniPlayer(),
-          ],
+              if (_filterChipsVisible &&
+                  (_mode == _FeedMode.feed || _mode == _FeedMode.searchEpisodes))
+                _FilterChipsRow(
+                  filter: _filter, l10n: l10n, cs: cs,
+                  onToggle: _onFilterToggle,
+                ),
+
+              Expanded(child: _buildBody(db, cs, l10n)),
+              const MiniPlayer(),
+            ],
+          ),
         ),
       ),
     );
@@ -329,11 +420,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBody(AppDatabase db, ColorScheme cs, AppLocalizations l10n) {
     switch (_mode) {
+      case _FeedMode.previewPodcast:
+        return _PreviewFeed(
+          result: _previewResult!,
+          episodes: _previewEpisodes,
+          loading: _loadingPreview,
+          cs: cs, l10n: l10n,
+          onSubscribe: () async {
+            await _subscribe(_previewResult!);
+            _exitPreview();
+          },
+          onClose: _exitPreview,
+          onPlay: (ep) => _playTempEpisode(_previewResult!, ep),
+          onDownload: (ep) => _downloadTempEpisode(_previewResult!, ep),
+        );
+
       case _FeedMode.podcastFilter:
         return _PodcastFilteredFeed(
           db: db, cs: cs,
           podcastId: _filterPodcastId!, podcast: _filterPodcast,
           onClose: _exitToFeed, onCoverTap: _onCoverTap,
+          onUnsubscribe: _filterPodcast != null ? () => _unsubscribe(_filterPodcast!) : null,
         );
 
       case _FeedMode.discover:
@@ -343,10 +450,9 @@ class _HomeScreenState extends State<HomeScreen> {
           piSearchResults: _piSearchResults,
           loadingTrending: _loadingTrending, loadingRec: _loadingRec,
           searchingPI: _searchingPI,
+          trendingError: _trendingError,
           cs: cs, l10n: l10n,
-          onSubscribe: _subscribe,
-          onPlayTemp: _playTempEpisode,
-          onDownloadTemp: _downloadTempEpisode,
+          onPreview: _openPreview,
           onRefresh: _loadDiscover,
         );
 
@@ -376,6 +482,7 @@ class _Toolbar extends StatelessWidget {
   final bool searchOpen;
   final TextEditingController searchCtrl;
   final _FilterState filter;
+  final bool filterChipsVisible;
   final AppLocalizations l10n;
   final ColorScheme cs;
   final VoidCallback onBack;
@@ -383,12 +490,15 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onClearSearch;
   final VoidCallback onSearchOpen;
   final VoidCallback onPlusPressed;
+  final VoidCallback onFilterToggle;
 
   const _Toolbar({
     required this.mode, required this.searchOpen, required this.searchCtrl,
-    required this.filter, required this.l10n, required this.cs,
+    required this.filter, required this.filterChipsVisible,
+    required this.l10n, required this.cs,
     required this.onBack, required this.onSearchChanged, required this.onClearSearch,
     required this.onSearchOpen, required this.onPlusPressed,
+    required this.onFilterToggle,
   });
 
   @override
@@ -425,12 +535,13 @@ class _Toolbar extends StatelessWidget {
   }
 
   Widget _defaultRow() {
+    final filtersActive = filter.hasAny && filterChipsVisible;
     return Row(
       children: [
         const SizedBox(width: 8),
-        SvgPicture.asset('antpodlogo.svg', width: 26, height: 26),
+        ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
         const SizedBox(width: 8),
-        Text(l10n.appName, style: TextStyle(
+        Text('AntPod', style: TextStyle(
           fontWeight: FontWeight.w800, fontSize: 20,
           color: cs.onSurface, letterSpacing: -0.5)),
         const Spacer(),
@@ -439,10 +550,10 @@ class _Toolbar extends StatelessWidget {
           children: [
             IconButton(
               icon: Icon(Icons.tune_rounded,
-                  color: filter.hasAny ? cs.primary : cs.onSurface),
-              onPressed: () {},
+                  color: filterChipsVisible ? cs.primary : cs.onSurface),
+              onPressed: onFilterToggle,
             ),
-            if (filter.hasAny)
+            if (filtersActive)
               Positioned(right: 8, top: 8, child: Container(
                 width: 8, height: 8,
                 decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
@@ -586,7 +697,7 @@ class _PodcastGrid extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('🐜', style: TextStyle(fontSize: 52)),
+                Icon(Icons.podcasts_outlined, size: 52, color: cs.onSurfaceVariant),
                 const SizedBox(height: 16),
                 Text(l10n.emptyPodcastsTitle,
                     style: TextStyle(
@@ -602,7 +713,7 @@ class _PodcastGrid extends StatelessWidget {
             crossAxisCount: 3,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
-            childAspectRatio: 0.78,
+            childAspectRatio: 0.68,
           ),
           itemCount: pods.length,
           itemBuilder: (_, i) => _PodcastGridTile(
@@ -722,7 +833,7 @@ class _EpisodeFeed extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('🐜', style: TextStyle(fontSize: 52)),
+                Icon(Icons.podcasts_outlined, size: 52, color: cs.onSurfaceVariant),
                 const SizedBox(height: 16),
                 Text(
                   searchQuery.isNotEmpty || filter.hasAny
@@ -769,11 +880,13 @@ class _PodcastFilteredFeed extends StatelessWidget {
   final Podcast? podcast;
   final VoidCallback onClose;
   final Future<void> Function(Episode, AppDatabase) onCoverTap;
+  final VoidCallback? onUnsubscribe;
 
   const _PodcastFilteredFeed({
     required this.db, required this.cs,
     required this.podcastId, required this.podcast,
     required this.onClose, required this.onCoverTap,
+    this.onUnsubscribe,
   });
 
   @override
@@ -785,7 +898,7 @@ class _PodcastFilteredFeed extends StatelessWidget {
         return Column(
           children: [
             if (podcast != null)
-              PodcastHeader(podcast: podcast!, onClose: onClose),
+              PodcastHeader(podcast: podcast!, onClose: onClose, onUnsubscribe: onUnsubscribe, onSubscribe: null),
             Expanded(
               child: ListView.separated(
                 itemCount: eps.length,
@@ -826,20 +939,19 @@ class _DiscoverList extends StatefulWidget {
   final List<PodcastResult> recommended;
   final List<PodcastResult> piSearchResults;
   final bool loadingTrending, loadingRec, searchingPI;
+  final String? trendingError;
   final ColorScheme cs;
   final AppLocalizations l10n;
-  final Future<void> Function(PodcastResult) onSubscribe;
-  final Future<void> Function(PodcastResult, _DiscoverEpisode) onPlayTemp;
-  final Future<void> Function(PodcastResult, _DiscoverEpisode) onDownloadTemp;
+  final void Function(PodcastResult) onPreview;
   final Future<void> Function() onRefresh;
 
   const _DiscoverList({
     required this.searchQuery, required this.trending, required this.recommended,
     required this.piSearchResults, required this.loadingTrending,
     required this.loadingRec, required this.searchingPI,
+    this.trendingError,
     required this.cs, required this.l10n,
-    required this.onSubscribe, required this.onPlayTemp,
-    required this.onDownloadTemp, required this.onRefresh,
+    required this.onPreview, required this.onRefresh,
   });
 
   @override
@@ -868,9 +980,7 @@ class _DiscoverListState extends State<_DiscoverList> {
             (_, i) => _DiscoverPodcastTile(
               result: widget.piSearchResults[i], rank: i + 1,
               cs: widget.cs, l10n: widget.l10n,
-              onSubscribe: widget.onSubscribe,
-              onPlayTemp: widget.onPlayTemp,
-              onDownloadTemp: widget.onDownloadTemp,
+              onPreview: widget.onPreview,
             ),
             childCount: widget.piSearchResults.length,
           )),
@@ -884,14 +994,34 @@ class _DiscoverListState extends State<_DiscoverList> {
         if (widget.loadingTrending)
           const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(32),
             child: Center(child: CircularProgressIndicator())))
+        else if (widget.trendingError != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(children: [
+                Icon(Icons.wifi_off_outlined, size: 40, color: widget.cs.onSurfaceVariant),
+                const SizedBox(height: 12),
+                Text('Could not load trending podcasts',
+                    style: TextStyle(color: widget.cs.onSurfaceVariant)),
+                const SizedBox(height: 4),
+                Text(widget.trendingError!,
+                    style: TextStyle(fontSize: 12, color: widget.cs.onSurfaceVariant),
+                    textAlign: TextAlign.center),
+              ]),
+            ))
+        else if (widget.trending.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('No trending podcasts available.',
+                  style: TextStyle(color: widget.cs.onSurfaceVariant)),
+            ))
         else
           SliverList(delegate: SliverChildBuilderDelegate(
             (_, i) => _DiscoverPodcastTile(
               result: widget.trending[i], rank: i + 1,
               cs: widget.cs, l10n: widget.l10n,
-              onSubscribe: widget.onSubscribe,
-              onPlayTemp: widget.onPlayTemp,
-              onDownloadTemp: widget.onDownloadTemp,
+              onPreview: widget.onPreview,
             ),
             childCount: widget.trending.length,
           )),
@@ -906,9 +1036,7 @@ class _DiscoverListState extends State<_DiscoverList> {
             (_, i) => _DiscoverPodcastTile(
               result: widget.recommended[i], rank: i + 1,
               cs: widget.cs, l10n: widget.l10n,
-              onSubscribe: widget.onSubscribe,
-              onPlayTemp: widget.onPlayTemp,
-              onDownloadTemp: widget.onDownloadTemp,
+              onPreview: widget.onPreview,
             ),
             childCount: widget.recommended.length,
           )),
@@ -927,15 +1055,11 @@ class _DiscoverPodcastTile extends StatefulWidget {
   final int rank;
   final ColorScheme cs;
   final AppLocalizations l10n;
-  final Future<void> Function(PodcastResult) onSubscribe;
-  final Future<void> Function(PodcastResult, _DiscoverEpisode) onPlayTemp;
-  final Future<void> Function(PodcastResult, _DiscoverEpisode) onDownloadTemp;
+  final void Function(PodcastResult) onPreview;
 
   const _DiscoverPodcastTile({
     required this.result, required this.rank, required this.cs,
-    required this.l10n,
-    required this.onSubscribe, required this.onPlayTemp,
-    required this.onDownloadTemp,
+    required this.l10n, required this.onPreview,
   });
 
   @override
@@ -949,7 +1073,7 @@ class _DiscoverPodcastTileState extends State<_DiscoverPodcastTile> {
     final cs = widget.cs;
 
     return InkWell(
-      onTap: () => widget.onSubscribe(r),
+      onTap: () => widget.onPreview(r),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -989,17 +1113,6 @@ class _DiscoverPodcastTileState extends State<_DiscoverPodcastTile> {
                         fontSize: 12, color: cs.onSurfaceVariant)),
                   ],
                 ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => widget.onSubscribe(r),
-              child: Container(
-                width: 36, height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: cs.primary, width: 1.5)),
-                child: Icon(Icons.add, color: cs.primary, size: 20),
               ),
             ),
           ],
@@ -1043,6 +1156,92 @@ class _SectionHeader extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preview feed (unsubscribed podcast)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PreviewFeed extends StatelessWidget {
+  final PodcastResult result;
+  final List<_DiscoverEpisode> episodes;
+  final bool loading;
+  final ColorScheme cs;
+  final AppLocalizations l10n;
+  final VoidCallback onSubscribe;
+  final VoidCallback onClose;
+  final Future<void> Function(_DiscoverEpisode) onPlay;
+  final Future<void> Function(_DiscoverEpisode) onDownload;
+
+  const _PreviewFeed({
+    required this.result, required this.episodes, required this.loading,
+    required this.cs, required this.l10n,
+    required this.onSubscribe, required this.onClose,
+    required this.onPlay, required this.onDownload,
+  });
+
+  String _fmtDuration(int secs) {
+    if (secs <= 0) return '';
+    final h = secs ~/ 3600;
+    final m = (secs % 3600) ~/ 60;
+    return h > 0 ? '${h}h ${m}min' : '${m}min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        PodcastHeader(
+          previewResult: result,
+          onClose: onClose,
+          onSubscribe: onSubscribe,
+        ),
+        Expanded(
+          child: loading
+              ? const Center(child: CircularProgressIndicator())
+              : episodes.isEmpty
+                  ? Center(child: Text(l10n.emptyFeedTitle,
+                      style: TextStyle(color: cs.onSurfaceVariant)))
+                  : ListView.separated(
+                      itemCount: episodes.length,
+                      separatorBuilder: (_, __) => Divider(
+                          height: 1, color: cs.outlineVariant.withValues(alpha: 0.5),
+                          indent: 16),
+                      itemBuilder: (_, i) {
+                        final ep = episodes[i];
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          title: Text(ep.title,
+                              maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface)),
+                          subtitle: Text(
+                            [
+                              '${ep.publishDate.day}.${ep.publishDate.month}.${ep.publishDate.year}',
+                              if (_fmtDuration(ep.durationSeconds).isNotEmpty)
+                                _fmtDuration(ep.durationSeconds),
+                            ].join(' · '),
+                            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.download_outlined, color: cs.onSurfaceVariant, size: 20),
+                                onPressed: () => onDownload(ep),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.play_circle_outline, color: cs.primary, size: 24),
+                                onPressed: () => onPlay(ep),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 }

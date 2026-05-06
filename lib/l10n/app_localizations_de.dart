@@ -9,9 +9,6 @@ class AppLocalizationsDe extends AppLocalizations {
   AppLocalizationsDe([String locale = 'de']) : super(locale);
 
   @override
-  String get appName => 'AntPod';
-
-  @override
   String get toolbarSearchHint => 'Episoden suchen…';
 
   @override
@@ -21,10 +18,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get searchNoResults => 'Keine Ergebnisse gefunden.';
 
   @override
-  String get sectionTrending => '🔥 Trending diese Woche';
+  String get sectionTrending => 'Trending diese Woche';
 
   @override
-  String get sectionRecommended => '🐜 Empfehlungen für dich';
+  String get sectionRecommended => 'Empfehlungen für dich';
 
   @override
   String get sectionRecommendedSub => 'basierend auf deinen Abos';
@@ -87,4 +84,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get sharePodcast => 'Podcast teilen';
+
+  @override
+  String get unsubscribe => 'Abonnement beenden';
 }

@@ -67,7 +67,7 @@ class EpisodeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final player = context.watch<PlayerProvider>();
     final db = context.read<AppDatabase>();
-    final l10n = AppLocalizations.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final isCurrent = player.currentEpisode?.id == episode.id;
     final isPlaying = isCurrent && player.isPlaying;
     final cs = Theme.of(context).colorScheme;

@@ -42,6 +42,9 @@ dependencies:
   # Share sheet (episodes + podcasts)
   share_plus: ^13.1.0
 
+  # Persistence
+  shared_preferences: ^2.3.3
+
   # Utilities
   cached_network_image: ^3.4.1
   flutter_svg: ^2.0.10+1

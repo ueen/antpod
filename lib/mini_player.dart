@@ -1,6 +1,7 @@
 // lib/mini_player.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
@@ -36,14 +37,15 @@ class MiniPlayer extends StatelessWidget {
           child: Stack(
             children: [
               // Progress bar background
-              Positioned.fill(
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: player.progress,
-                  child: Container(
-                      color: cs.inversePrimary.withValues(alpha:0.35)),
+              if (player.progress > 0.005)
+                Positioned.fill(
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: player.progress,
+                    child: Container(
+                        color: cs.inversePrimary.withValues(alpha:0.35)),
+                  ),
                 ),
-              ),
 
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -279,16 +281,23 @@ class _PlayerSheet extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            Text(AppLocalizations.of(context).shownotes,
+            Text(AppLocalizations.of(context)!.shownotes,
                 style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 15,
                     color: cs.onSurface)),
-            const SizedBox(height: 8),
-            Text(
-              ep.description.replaceAll(RegExp(r'<[^>]*>'), ''),
-              style: TextStyle(
-                  fontSize: 13, color: cs.onSurfaceVariant, height: 1.6),
+            Html(
+              data: ep.description,
+              style: {
+                'body': Style(
+                  fontSize: FontSize(13),
+                  color: cs.onSurfaceVariant,
+                  lineHeight: const LineHeight(1.6),
+                  margin: Margins.zero,
+                  padding: HtmlPaddings.zero,
+                ),
+                'a': Style(color: cs.primary),
+              },
             ),
             const SizedBox(height: 40),
           ],

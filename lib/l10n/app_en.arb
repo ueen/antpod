@@ -1,11 +1,10 @@
 {
   "@@locale": "en",
-  "appName": "AntPod",
   "toolbarSearchHint": "Search episodes…",
   "searchHint": "Search podcasts…",
   "searchNoResults": "No results found.",
-  "sectionTrending": "🔥 Trending this week",
-  "sectionRecommended": "🐜 Recommended for you",
+  "sectionTrending": "Trending this week",
+  "sectionRecommended": "Recommended for you",
   "sectionRecommendedSub": "based on your subscriptions",
   "sectionSearchResults": "Search results",
   "emptyFeedTitle": "No podcasts yet",
@@ -26,5 +25,6 @@
   "subscriptions": "Subscriptions",
   "markUnplayed": "Mark as unplayed",
   "shareEpisode": "Share episode",
-  "sharePodcast": "Share podcast"
+  "sharePodcast": "Share podcast",
+  "unsubscribe": "Unsubscribe"
 }
