@@ -119,17 +119,24 @@ class EpisodeTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                Opacity(
-                  opacity: opacity,
-                  child: GestureDetector(
-                    onTap: onCoverTap,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: episode.podcastImageUrl,
-                        width: 60, height: 60, fit: BoxFit.cover,
-                        placeholder: (_, __) => _CoverPlaceholder(cs: cs),
-                        errorWidget: (_, __, ___) => _CoverPlaceholder(cs: cs),
+                // SizedBox height 68 forces the Row (and thus the metadata
+                // column) to 68px — enough room for 2-line title + progress bar.
+                SizedBox(
+                  width: 60, height: 68,
+                  child: Center(
+                    child: Opacity(
+                      opacity: opacity,
+                      child: GestureDetector(
+                        onTap: onCoverTap,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: CachedNetworkImage(
+                            imageUrl: episode.podcastImageUrl,
+                            width: 60, height: 60, fit: BoxFit.cover,
+                            placeholder: (_, __) => _CoverPlaceholder(cs: cs),
+                            errorWidget: (_, __, ___) => _CoverPlaceholder(cs: cs),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -415,8 +422,6 @@ class _EpisodeMetadata extends StatelessWidget {
               ),
           ],
         ),
-        // AnimatedSize: grows from 0 to 7px, naturally pushing title+date up
-        // via MainAxisAlignment.center while keeping tile height fixed.
         AnimatedSize(
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOut,

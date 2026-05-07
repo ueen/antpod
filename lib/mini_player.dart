@@ -50,12 +50,25 @@ class _MiniPlayerState extends State<MiniPlayer> {
       isScrollControlled: true,
       isDismissible: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => Align(
-        alignment: Alignment.bottomCenter,
-        child: ChangeNotifierProvider.value(
-          value: context.read<PlayerProvider>(),
-          child: const _PlayerSheet(),
-        ),
+      builder: (ctx) => Stack(
+        children: [
+          // Tapping the dark area above the sheet dismisses it
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(ctx).pop(),
+            child: const SizedBox.expand(),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: GestureDetector(
+              onTap: () {}, // absorb taps on the sheet itself
+              child: ChangeNotifierProvider.value(
+                value: context.read<PlayerProvider>(),
+                child: const _PlayerSheet(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
 

@@ -251,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
               alignment: Alignment.topLeft,
               child: Padding(
                 padding: EdgeInsets.only(
-                  top: topPad + 56,
+                  top: topPad + 46,
                   left: 12,
                   right: 12,
                 ),
@@ -1814,7 +1814,12 @@ class _AntWalkerState extends State<_AntWalker> with TickerProviderStateMixin {
               child: Transform.rotate(
                 angle: angle,
                 child: CustomPaint(
-                  painter: _AntPainter(legPhase: _legCtrl.value),
+                  painter: _AntPainter(
+                    legPhase: _legCtrl.value,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFFD4956A)
+                        : const Color(0xFF7B3F00),
+                  ),
                 ),
               ),
             ),
@@ -1884,15 +1889,15 @@ class _AntPath {
 
 // Ant drawn top-down, centered at (0,0) in local coords, facing -y
 class _AntPainter extends CustomPainter {
-  final double legPhase; // 0–1, one gait cycle
+  final double legPhase;
+  final Color color;
 
-  const _AntPainter({required this.legPhase});
+  const _AntPainter({required this.legPhase, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.translate(size.width / 2, size.height / 2);
 
-    const color = Color(0xFF2C1A0E);
     final fill = Paint()..color = color..style = PaintingStyle.fill;
     final stroke = Paint()
       ..color = color
@@ -1938,5 +1943,5 @@ class _AntPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_AntPainter old) => old.legPhase != legPhase;
+  bool shouldRepaint(_AntPainter old) => old.legPhase != legPhase || old.color != color;
 }

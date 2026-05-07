@@ -120,7 +120,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                   ),
                   // Share button
                   Padding(
-                    padding: const EdgeInsets.only(left: 2, right: 2),
+                    padding: const EdgeInsets.only(left: 6, right: 4),
                     child: GestureDetector(
                       onTap: _share,
                       child: Icon(Icons.share_outlined,
@@ -130,7 +130,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                   // Subscribe / unsubscribe button
                   if (widget.onSubscribe != null)
                     Padding(
-                      padding: const EdgeInsets.only(left: 4, right: 4),
+                      padding: const EdgeInsets.only(left: 4, right: 8),
                       child: GestureDetector(
                         onTap: _subscribePressed ? null : () async {
                           setState(() => _subscribePressed = true);
@@ -151,7 +151,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                     ),
                   if (widget.onUnsubscribe != null)
                     Padding(
-                      padding: const EdgeInsets.only(left: 4, right: 4),
+                      padding: const EdgeInsets.only(left: 4, right: 8),
                       child: GestureDetector(
                         onTap: () => _confirmUnsubscribe(context, l10n),
                         child: Icon(Icons.remove_circle_outline,
