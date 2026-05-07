@@ -1,4 +1,4 @@
-package com.example.antpod
+package de.ueen.antpod
 
 import com.ryanheise.audioservice.AudioServiceActivity
 

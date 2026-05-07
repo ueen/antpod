@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'app_database.dart';
 import 'audio_handler.dart';
+import 'download_provider.dart';
 import 'download_service.dart';
 import 'home_screen.dart';
 import 'l10n/app_localizations.dart';
@@ -20,7 +21,7 @@ Future<void> main() async {
   audioHandler = await AudioService.init(
     builder: () => AntPodAudioHandler(),
     config: const AudioServiceConfig(
-      androidNotificationChannelId: 'com.example.antpod.channel.audio',
+      androidNotificationChannelId: 'de.ueen.antpod.channel.audio',
       androidNotificationChannelName: 'AntPod Audio',
       androidNotificationOngoing: true,
     ),
@@ -32,6 +33,7 @@ Future<void> main() async {
       providers: [
         Provider<AppDatabase>.value(value: db),
         ChangeNotifierProvider(create: (_) => PlayerProvider(db)),
+        ChangeNotifierProvider(create: (_) => DownloadProvider(db)),
       ],
       child: const AntPodApp(),
     ),

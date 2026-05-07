@@ -1,8 +1,6 @@
 // lib/podcast_service.dart
 //
 // Ausschließlich PodcastIndex.org – kein iTunes.
-// API-Key: WVABNRFZXMR56UKS7488
-// Secret: wird über dart-define übergeben (PODCAST_INDEX_SECRET)
 //
 // Endpoints genutzt:
 //   /api/1.0/search/byterm        → Suche
@@ -19,11 +17,8 @@ import 'app_database.dart';
 
 // ── Zugangsdaten ──────────────────────────────────────────────────────────────
 
-const _apiKey = 'WVABNRFZXMR56UKS7488';
-// Secret über dart-define:  flutter run --dart-define=PODCAST_INDEX_SECRET=xxx
-// Oder direkt eintragen:
-const _apiSecret =
-    String.fromEnvironment('PODCAST_INDEX_SECRET', defaultValue: '');
+const _apiKey    = 'WVABNRFZXMR56UKS7488';
+const _apiSecret = 'Yrb2fXKRtwFRkzcj4XNZBKmBhVbg8Uz5ZvMj5Prd';
 
 const _baseUrl = 'https://api.podcastindex.org/api/1.0';
 const _userAgent = 'AntPod/1.0';
@@ -151,31 +146,30 @@ class PodcastService {
     // Wir wählen die erste Kategorie, die wir aus dem Trending-Feed
     // und den abonnierten Titeln matchen können.
     // Einfachere Heuristik: suche nach Termen aus Titeln der Abos
+    final subscribedFeedUrls = subscribed.map((p) => p.feedUrl).toSet();
+
+    // Use search terms derived from subscribed titles as primary strategy
     final terms = subscribed
-        .map((p) => p.title.split(' ').first) // erstes Wort als Begriff
+        .map((p) => p.title.split(' ').first)
         .toSet()
         .take(3)
         .join(' ');
 
     try {
-      // Trending + nach Kategorie-Keyword filtern
-      final trendResults = await trending(max: 50);
-      final subscribedFeedUrls =
-          subscribed.map((p) => p.feedUrl).toSet();
-
-      // Filtre Abos heraus
-      final filtered = trendResults
+      final searchResults = await search(terms);
+      final fromSearch = searchResults
           .where((r) => !subscribedFeedUrls.contains(r.feedUrl))
           .toList();
 
-      if (filtered.isNotEmpty) {
-        return filtered.take(max).toList();
+      if (fromSearch.isNotEmpty) {
+        return fromSearch.take(max).toList();
       }
 
-      // Fallback: Suche nach Termen
-      final searchResults = await search(terms);
-      return searchResults
+      // Fallback: trending minus subscriptions (last resort)
+      final trendResults = await trending(max: 50);
+      return trendResults
           .where((r) => !subscribedFeedUrls.contains(r.feedUrl))
+          .skip(10) // skip items already in trending tab
           .take(max)
           .toList();
     } catch (_) {

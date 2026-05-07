@@ -42,6 +42,9 @@ dependencies:
   # Share sheet (episodes + podcasts)
   share_plus: ^13.1.0
 
+  # Open URLs (shownotes links)
+  url_launcher: ^6.3.0
+
   # Persistence
   shared_preferences: ^2.3.3
 

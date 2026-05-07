@@ -123,7 +123,15 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
           .watch();
 
-  /// All subscribed episodes (for "show played" filter).
+  /// Finished/played episodes only (history view).
+  Stream<List<Episode>> watchFinishedEpisodes() =>
+      (select(episodes)
+            ..where((e) => e.isSubscribed.equals(true))
+            ..where((e) => e.isFinished.equals(true))
+            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+          .watch();
+
+  /// All subscribed episodes (for "show all" filter).
   Stream<List<Episode>> watchAllSubscribedEpisodes() =>
       (select(episodes)
             ..where((e) => e.isSubscribed.equals(true))

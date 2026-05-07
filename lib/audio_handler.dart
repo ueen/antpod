@@ -74,7 +74,7 @@ class AntPodAudioHandler extends BaseAudioHandler
   @override
   Future<void> fastForward() => _player.seek(
         Duration(
-          seconds: (_player.position.inSeconds + 30)
+          seconds: (_player.position.inSeconds + _forwardSeconds)
               .clamp(0, _player.duration?.inSeconds ?? 0),
         ),
       );
@@ -82,9 +82,23 @@ class AntPodAudioHandler extends BaseAudioHandler
   @override
   Future<void> rewind() => _player.seek(
         Duration(
-          seconds: (_player.position.inSeconds - 15).clamp(0, 9999),
+          seconds: (_player.position.inSeconds - _rewindSeconds).clamp(0, 9999),
         ),
       );
+
+  // ── Skip configuration ────────────────────────────────────────────────────
+
+  int _forwardSeconds = 30;
+  int _rewindSeconds = 10;
+
+  int get forwardSeconds => _forwardSeconds;
+  int get rewindSeconds => _rewindSeconds;
+
+  void setForwardSeconds(int s) => _forwardSeconds = s;
+  void setRewindSeconds(int s) => _rewindSeconds = s;
+
+  @override
+  Future<void> setSpeed(double speed) => _player.setSpeed(speed);
 
   // ── Getter ────────────────────────────────────────────────────────────────
 

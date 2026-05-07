@@ -121,6 +121,31 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> skipForward() => audioHandler.fastForward();
   Future<void> skipBackward() => audioHandler.rewind();
 
+  // ── Speed + skip config ───────────────────────────────────────────────────
+
+  double get speed => (audioHandler as AntPodAudioHandler).player.speed;
+  int get forwardSeconds => (audioHandler as AntPodAudioHandler).forwardSeconds;
+  int get rewindSeconds => (audioHandler as AntPodAudioHandler).rewindSeconds;
+
+  Future<void> cycleSpeed() async {
+    const speeds = [1.0, 1.5, 2.0, 0.8];
+    final current = speed;
+    final idx = speeds.indexWhere((s) => (s - current).abs() < 0.05);
+    final next = speeds[(idx < 0 ? 0 : idx + 1) % speeds.length];
+    await (audioHandler as AntPodAudioHandler).setSpeed(next);
+    notifyListeners();
+  }
+
+  void setForwardSeconds(int s) {
+    (audioHandler as AntPodAudioHandler).setForwardSeconds(s);
+    notifyListeners();
+  }
+
+  void setRewindSeconds(int s) {
+    (audioHandler as AntPodAudioHandler).setRewindSeconds(s);
+    notifyListeners();
+  }
+
   // ── Download progress ─────────────────────────────────────────────────────
 
   void setDownloadProgress(double? progress) {

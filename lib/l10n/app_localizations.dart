@@ -201,6 +201,18 @@ abstract class AppLocalizations {
   /// **'Show notes'**
   String get shownotes;
 
+  /// No description provided for @filterNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get filterNew;
+
+  /// No description provided for @filterListened.
+  ///
+  /// In en, this message translates to:
+  /// **'Listened'**
+  String get filterListened;
+
   /// No description provided for @filterPodcasts.
   ///
   /// In en, this message translates to:
@@ -213,17 +225,35 @@ abstract class AppLocalizations {
   /// **'Downloaded'**
   String get filterDownloaded;
 
-  /// No description provided for @filterPlayed.
-  ///
-  /// In en, this message translates to:
-  /// **'Played'**
-  String get filterPlayed;
-
   /// No description provided for @filterAlphabetical.
   ///
   /// In en, this message translates to:
   /// **'A–Z'**
   String get filterAlphabetical;
+
+  /// No description provided for @filterOldest.
+  ///
+  /// In en, this message translates to:
+  /// **'Oldest first'**
+  String get filterOldest;
+
+  /// No description provided for @discoverTabTrending.
+  ///
+  /// In en, this message translates to:
+  /// **'Trending'**
+  String get discoverTabTrending;
+
+  /// No description provided for @discoverTabSuggestions.
+  ///
+  /// In en, this message translates to:
+  /// **'For You'**
+  String get discoverTabSuggestions;
+
+  /// No description provided for @aboutAntpod.
+  ///
+  /// In en, this message translates to:
+  /// **'About AntPod'**
+  String get aboutAntpod;
 
   /// No description provided for @subscriptions.
   ///
@@ -236,6 +266,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Mark as unplayed'**
   String get markUnplayed;
+
+  /// No description provided for @markPlayed.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as played'**
+  String get markPlayed;
+
+  /// No description provided for @cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
 
   /// No description provided for @shareEpisode.
   ///

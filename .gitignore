@@ -18,9 +18,6 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# launch.json contains secrets via dart-define — keep it local
-.vscode/launch.json
-
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
@@ -41,3 +38,4 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+android/build/

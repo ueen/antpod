@@ -62,22 +62,43 @@ class AppLocalizationsDe extends AppLocalizations {
   String get shownotes => 'Shownotes';
 
   @override
+  String get filterNew => 'Neu';
+
+  @override
+  String get filterListened => 'Gehört';
+
+  @override
   String get filterPodcasts => 'Podcasts';
 
   @override
   String get filterDownloaded => 'Heruntergeladen';
 
   @override
-  String get filterPlayed => 'Gehört';
+  String get filterAlphabetical => 'A–Z';
 
   @override
-  String get filterAlphabetical => 'A–Z';
+  String get filterOldest => 'Älteste zuerst';
+
+  @override
+  String get discoverTabTrending => 'Trends';
+
+  @override
+  String get discoverTabSuggestions => 'Für dich';
+
+  @override
+  String get aboutAntpod => 'Über AntPod';
 
   @override
   String get subscriptions => 'Abonnements';
 
   @override
   String get markUnplayed => 'Als ungehört markieren';
+
+  @override
+  String get markPlayed => 'Als gehört markieren';
+
+  @override
+  String get cancel => 'Abbrechen';
 
   @override
   String get shareEpisode => 'Episode teilen';

@@ -1,0 +1,18 @@
+AntPod is a clean, modern podcast catcher built with Flutter.
+
+Inspired by AntennaPod — the dinosaur of FOSS podcast apps — AntPod is the next generation: carries only what it needs and is really pleasant to use.
+
+FEATURES
+
+• Browse & subscribe — search the PodcastIndex catalogue and subscribe to any podcast
+• Episode feed — chronological feed across all subscriptions, filterable by podcast, downloaded, or played status
+• Background playback — audio keeps playing when the screen is off, with lock screen and notification controls
+• Downloads — save episodes for offline listening
+• Trending & recommendations — discover new podcasts based on what's popular or what matches your taste
+• Material You — adapts to your device's color palette on Android 12+, with full light/dark mode support
+• Multilingual — English, German, Spanish, and French
+
+No ads. No tracking. No accounts. Just podcasts.
+
+AntPod is free and open-source software licensed under the GNU General Public License v3.
+Source code: https://github.com/ueen/antpod

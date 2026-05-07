@@ -1,9 +1,14 @@
 // lib/home_screen.dart
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_database.dart';
@@ -20,37 +25,44 @@ import 'podcast_service.dart';
 // Filter state
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _SortMode { none, alphabetical }
+enum _SortMode { none, alphabetical, oldest }
 
 class _FilterState {
+  final bool newOnly;    // true = show only unplayed (DEFAULT)
+  final bool history;   // true = show only finished episodes
   final bool downloaded;
-  final bool played;
   final _SortMode sort;
   final bool podcasts;
 
   const _FilterState({
+    this.newOnly = true,
+    this.history = false,
     this.downloaded = false,
-    this.played = false,
     this.sort = _SortMode.none,
     this.podcasts = false,
   });
 
+  // Dot appears whenever any chip is visually active
   bool get hasAny =>
-      downloaded || played || sort != _SortMode.none || podcasts;
+      newOnly || history || downloaded || sort != _SortMode.none || podcasts;
+
+  bool get isOldestFirst => sort == _SortMode.oldest;
 
   _FilterState copyWith({
-    bool? downloaded, bool? played, _SortMode? sort, bool? podcasts,
+    bool? newOnly, bool? history, bool? downloaded,
+    _SortMode? sort, bool? podcasts,
   }) =>
       _FilterState(
+        newOnly: newOnly ?? this.newOnly,
+        history: history ?? this.history,
         downloaded: downloaded ?? this.downloaded,
-        played: played ?? this.played,
         sort: sort ?? this.sort,
         podcasts: podcasts ?? this.podcasts,
       );
 
   _FilterState togglePodcasts() => podcasts
       ? const _FilterState()
-      : const _FilterState(podcasts: true);
+      : const _FilterState(podcasts: true, newOnly: false);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,6 +84,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   _FeedMode _mode = _FeedMode.feed;
   _FilterState _filter = const _FilterState();
+  bool _filterChipsVisible = true;
+  final _antWalkerKey = GlobalKey<_AntWalkerState>();
 
   String? _filterPodcastId;
   Podcast? _filterPodcast;
@@ -93,22 +107,47 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingPreview = false;
   _FeedMode _previewFrom = _FeedMode.discover;
 
-  // Filter chips visibility (persisted)
-  bool _filterChipsVisible = true;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final prefs = await SharedPreferences.getInstance();
+      await _loadFilterPrefs();
       if (!mounted) return;
-      setState(() => _filterChipsVisible = prefs.getBool('filterChipsVisible') ?? true);
       final db = context.read<AppDatabase>();
       final pods = await db.getAllPodcasts();
-      if (mounted) {
-        if (pods.isEmpty) _enterDiscover();
+      if (!mounted) return;
+      if (pods.isEmpty) {
+        _enterDiscover();
+      } else {
+        _refresh(db); // async background sync on startup
       }
     });
+  }
+
+  Future<void> _loadFilterPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final sortIndex = prefs.getInt('filter_sort') ?? 0;
+    if (!mounted) return;
+    setState(() {
+      _filter = _FilterState(
+        newOnly: prefs.getBool('filter_newOnly') ?? true,
+        history: prefs.getBool('filter_history') ?? false,
+        downloaded: prefs.getBool('filter_downloaded') ?? false,
+        sort: _SortMode.values[sortIndex.clamp(0, _SortMode.values.length - 1)],
+        podcasts: prefs.getBool('filter_podcasts') ?? false,
+      );
+      _filterChipsVisible = prefs.getBool('filter_chipsVisible') ?? true;
+    });
+  }
+
+  Future<void> _saveFilterPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('filter_newOnly', _filter.newOnly);
+    await prefs.setBool('filter_history', _filter.history);
+    await prefs.setBool('filter_downloaded', _filter.downloaded);
+    await prefs.setInt('filter_sort', _filter.sort.index);
+    await prefs.setBool('filter_podcasts', _filter.podcasts);
+    await prefs.setBool('filter_chipsVisible', _filterChipsVisible);
   }
 
   @override
@@ -126,7 +165,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _searchCtrl.clear();
       _piSearchResults = [];
     });
-    _loadDiscover();
+    // Only reload if we have no data yet
+    if (_trending.isEmpty && _recommended.isEmpty) _loadDiscover();
   }
 
   void _exitToFeed() {
@@ -183,13 +223,133 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) _exitToFeed();
   }
 
-  // ── Filter chip visibility ────────────────────────────────────────────────
+  void _toggleFilterChips() {
+    setState(() => _filterChipsVisible = !_filterChipsVisible);
+    _saveFilterPrefs();
+  }
 
-  Future<void> _toggleFilterChips() async {
-    final next = !_filterChipsVisible;
-    setState(() => _filterChipsVisible = next);
-    final prefs = await SharedPreferences.getInstance();
-    prefs.setBool('filterChipsVisible', next);
+  void _showAbout(BuildContext context) {
+    _antWalkerKey.currentState?._startWalk();
+    final topPad = MediaQuery.of(context).padding.top;
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'About AntPod',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (ctx, anim, _, __) {
+        // cs comes from the dialog's own context so it respects the live theme
+        final cs = Theme.of(ctx).colorScheme;
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOut);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.pop(ctx),
+          child: FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.92, end: 1.0).animate(curved),
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  top: topPad + 60,
+                  left: 12,
+                  right: 12,
+                ),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: SizedBox(
+                      width: 300,
+                      child: CustomPaint(
+                        painter: _BubblePainter(cs: cs),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Title row
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  ClipOval(child: SvgPicture.asset(
+                                      'antpodlogo.svg', width: 24, height: 24)),
+                                  const SizedBox(width: 8),
+                                  Text('AntPod',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                      color: cs.onSurface,
+                                      letterSpacing: -0.4,
+                                    )),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              // Body text
+                              Text(
+                                'The anthill for your podcasts — '
+                                'every episode carried home to the hill tirelessly. '
+                                'A nimble scout hatched from the spirit of the grand old AntennaPod.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: cs.onSurface,
+                                  fontSize: 12.5,
+                                  height: 1.6,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              // GitHub button
+                              GestureDetector(
+                                onTap: () => launchUrl(
+                                  Uri.parse('https://github.com/ueen/antpod'),
+                                  mode: LaunchMode.externalApplication,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: cs.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                        color: cs.outlineVariant, width: 1),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SvgPicture.string(
+                                        _kGithubSvg,
+                                        width: 15, height: 15,
+                                        colorFilter: ColorFilter.mode(
+                                            cs.onSurface, BlendMode.srcIn),
+                                      ),
+                                      const SizedBox(width: 7),
+                                      Text(
+                                        'github.com/ueen/antpod',
+                                        style: TextStyle(
+                                          color: cs.onSurface,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _onSearchChanged(String v) {
@@ -338,26 +498,56 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ─── Filter chip handler ──────────────────────────────────────────────────
 
-  void _onFilterToggle(String key) => setState(() {
-    switch (key) {
-      case 'dl':
-        _filter = _filter.copyWith(
-            downloaded: !_filter.downloaded,
-            podcasts: false);
-      case 'played':
-        _filter = _filter.copyWith(
-            played: !_filter.played,
-            podcasts: false);
-      case 'az':
-        _filter = _filter.copyWith(
-          sort: _filter.sort == _SortMode.alphabetical
-              ? _SortMode.none : _SortMode.alphabetical,
-          podcasts: false,
-        );
-      case 'podcasts':
-        _filter = _filter.togglePodcasts();
+  void _onFilterToggle(String key) {
+    setState(() {
+      switch (key) {
+        case 'new':
+          _filter = _filter.copyWith(
+              newOnly: !_filter.newOnly,
+              history: false,
+              podcasts: false);
+        case 'history':
+          _filter = _filter.copyWith(
+              history: !_filter.history,
+              newOnly: false,
+              podcasts: false);
+        case 'dl':
+          _filter = _filter.copyWith(
+              downloaded: !_filter.downloaded,
+              podcasts: false);
+        case 'az':
+          _filter = _filter.copyWith(
+            sort: _filter.sort == _SortMode.alphabetical
+                ? _SortMode.none : _SortMode.alphabetical,
+            podcasts: false,
+          );
+        case 'oldest':
+          _filter = _filter.copyWith(
+            sort: _filter.sort == _SortMode.oldest
+                ? _SortMode.none : _SortMode.oldest,
+            podcasts: false,
+          );
+        case 'podcasts':
+          _filter = _filter.togglePodcasts();
+      }
+    });
+    _saveFilterPrefs();
+  }
+
+  // feed and searchEpisodes share a key so _EpisodeFeed is reused (no flash)
+  Key get _bodyKey {
+    switch (_mode) {
+      case _FeedMode.feed:
+      case _FeedMode.searchEpisodes:
+        return const ValueKey('episode_feed');
+      case _FeedMode.podcastFilter:
+        return ValueKey('podcast_${_filterPodcastId ?? ""}');
+      case _FeedMode.discover:
+        return const ValueKey('discover');
+      case _FeedMode.previewPodcast:
+        return const ValueKey('preview');
     }
-  });
+  }
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
@@ -384,33 +574,78 @@ class _HomeScreenState extends State<HomeScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              _Toolbar(
-                mode: _mode, searchOpen: searchOpen,
-                searchCtrl: _searchCtrl, filter: _filter,
-                filterChipsVisible: _filterChipsVisible,
-                l10n: l10n, cs: cs,
-                onBack: _mode == _FeedMode.previewPodcast ? _exitPreview : _exitToFeed,
-                onSearchChanged: _onSearchChanged,
-                onClearSearch: () => setState(() {
-                  _searchQuery = ''; _searchCtrl.clear(); _piSearchResults = [];
-                }),
-                onSearchOpen: () => setState(() {
-                  _mode = _FeedMode.searchEpisodes;
-                  _searchQuery = ''; _searchCtrl.clear();
-                }),
-                onPlusPressed: _enterDiscover,
-                onFilterToggle: _toggleFilterChips,
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  _Toolbar(
+                    mode: _mode, searchOpen: searchOpen,
+                    searchCtrl: _searchCtrl, filter: _filter,
+                    filterChipsVisible: _filterChipsVisible,
+                    l10n: l10n, cs: cs,
+                    onBack: _mode == _FeedMode.previewPodcast ? _exitPreview : _exitToFeed,
+                    onSearchChanged: _onSearchChanged,
+                    onClearSearch: () => setState(() {
+                      _searchQuery = ''; _searchCtrl.clear(); _piSearchResults = [];
+                    }),
+                    onSearchOpen: () => setState(() {
+                      _mode = _FeedMode.searchEpisodes;
+                      _searchQuery = ''; _searchCtrl.clear();
+                    }),
+                    onPlusPressed: _enterDiscover,
+                    onFilterToggle: _toggleFilterChips,
+                    onLogoTap: () => _showAbout(context),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(child: _AntWalker(key: _antWalkerKey)),
+                  ),
+                ],
               ),
 
-              if (_filterChipsVisible &&
-                  (_mode == _FeedMode.feed || _mode == _FeedMode.searchEpisodes))
-                _FilterChipsRow(
-                  filter: _filter, l10n: l10n, cs: cs,
-                  onToggle: _onFilterToggle,
+              // Filter chips — toggle via tune icon, only in feed/search modes
+              ClipRect(
+                child: AnimatedAlign(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.topCenter,
+                  heightFactor: (_filterChipsVisible &&
+                          (_mode == _FeedMode.feed ||
+                              _mode == _FeedMode.searchEpisodes))
+                      ? 1.0
+                      : 0.0,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: (_filterChipsVisible &&
+                            (_mode == _FeedMode.feed ||
+                                _mode == _FeedMode.searchEpisodes))
+                        ? 1.0
+                        : 0.0,
+                    child: _FilterChipsRow(
+                      filter: _filter, l10n: l10n, cs: cs,
+                      onToggle: _onFilterToggle,
+                    ),
+                  ),
                 ),
+              ),
 
-              Expanded(child: _buildBody(db, cs, l10n)),
-              const MiniPlayer(),
+              Expanded(
+                child: Stack(
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      transitionBuilder: (child, anim) =>
+                          FadeTransition(opacity: anim, child: child),
+                      child: KeyedSubtree(
+                        key: _bodyKey,
+                        child: _buildBody(db, cs, l10n),
+                      ),
+                    ),
+                    const Positioned(
+                      left: 0, right: 0, bottom: 0,
+                      child: MiniPlayer(),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -428,9 +663,8 @@ class _HomeScreenState extends State<HomeScreen> {
           cs: cs, l10n: l10n,
           onSubscribe: () async {
             await _subscribe(_previewResult!);
-            _exitPreview();
+            _exitToFeed();
           },
-          onClose: _exitPreview,
           onPlay: (ep) => _playTempEpisode(_previewResult!, ep),
           onDownload: (ep) => _downloadTempEpisode(_previewResult!, ep),
         );
@@ -439,7 +673,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return _PodcastFilteredFeed(
           db: db, cs: cs,
           podcastId: _filterPodcastId!, podcast: _filterPodcast,
-          onClose: _exitToFeed, onCoverTap: _onCoverTap,
+          onCoverTap: _onCoverTap,
           onUnsubscribe: _filterPodcast != null ? () => _unsubscribe(_filterPodcast!) : null,
         );
 
@@ -491,6 +725,7 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onSearchOpen;
   final VoidCallback onPlusPressed;
   final VoidCallback onFilterToggle;
+  final VoidCallback onLogoTap;
 
   const _Toolbar({
     required this.mode, required this.searchOpen, required this.searchCtrl,
@@ -498,7 +733,7 @@ class _Toolbar extends StatelessWidget {
     required this.l10n, required this.cs,
     required this.onBack, required this.onSearchChanged, required this.onClearSearch,
     required this.onSearchOpen, required this.onPlusPressed,
-    required this.onFilterToggle,
+    required this.onFilterToggle, required this.onLogoTap,
   });
 
   @override
@@ -535,15 +770,20 @@ class _Toolbar extends StatelessWidget {
   }
 
   Widget _defaultRow() {
-    final filtersActive = filter.hasAny && filterChipsVisible;
     return Row(
       children: [
         const SizedBox(width: 8),
-        ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
+        GestureDetector(
+          onTap: onLogoTap,
+          child: ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
+        ),
         const SizedBox(width: 8),
-        Text('AntPod', style: TextStyle(
-          fontWeight: FontWeight.w800, fontSize: 20,
-          color: cs.onSurface, letterSpacing: -0.5)),
+        GestureDetector(
+          onTap: onLogoTap,
+          child: Text('AntPod', style: TextStyle(
+            fontWeight: FontWeight.w800, fontSize: 20,
+            color: cs.onSurface, letterSpacing: -0.5)),
+        ),
         const Spacer(),
         Stack(
           clipBehavior: Clip.none,
@@ -553,7 +793,7 @@ class _Toolbar extends StatelessWidget {
                   color: filterChipsVisible ? cs.primary : cs.onSurface),
               onPressed: onFilterToggle,
             ),
-            if (filtersActive)
+            if (filter.hasAny)
               Positioned(right: 8, top: 8, child: Container(
                 width: 8, height: 8,
                 decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
@@ -581,10 +821,15 @@ class _FilterChipsRow extends StatelessWidget {
   final AppLocalizations l10n;
   final ColorScheme cs;
   final ValueChanged<String> onToggle;
+  final bool showPodcastsChip;
+
+  final bool showContentFilters;
 
   const _FilterChipsRow({
     required this.filter, required this.l10n,
     required this.cs, required this.onToggle,
+    this.showPodcastsChip = true,
+    this.showContentFilters = true,
   });
 
   @override
@@ -595,25 +840,39 @@ class _FilterChipsRow extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         children: [
-          _Chip(label: l10n.filterPodcasts,
-              active: filter.podcasts, cs: cs,
-              icon: Icons.library_music_outlined,
-              onTap: () => onToggle('podcasts')),
-          const SizedBox(width: 8),
-          _Chip(label: l10n.filterDownloaded,
-              active: filter.downloaded && !filter.podcasts,
-              cs: cs, icon: Icons.download_done,
-              onTap: () => onToggle('dl')),
-          const SizedBox(width: 8),
-          _Chip(label: l10n.filterPlayed,
-              active: filter.played && !filter.podcasts,
-              cs: cs, icon: Icons.check_circle_outline,
-              onTap: () => onToggle('played')),
+          if (showContentFilters) ...[
+            _Chip(label: l10n.filterNew,
+                active: filter.newOnly && !filter.podcasts,
+                cs: cs, icon: Icons.headphones,
+                onTap: () => onToggle('new')),
+            const SizedBox(width: 8),
+            _Chip(label: l10n.filterDownloaded,
+                active: filter.downloaded && !filter.podcasts,
+                cs: cs, icon: Icons.download_done,
+                onTap: () => onToggle('dl')),
+            const SizedBox(width: 8),
+            _Chip(label: l10n.filterListened,
+                active: filter.history && !filter.podcasts,
+                cs: cs, icon: Icons.check_circle_outline,
+                onTap: () => onToggle('history')),
+          ],
+          if (showPodcastsChip) ...[
+            const SizedBox(width: 8),
+            _Chip(label: l10n.filterPodcasts,
+                active: filter.podcasts, cs: cs,
+                icon: Icons.library_music_outlined,
+                onTap: () => onToggle('podcasts')),
+          ],
           const SizedBox(width: 8),
           _Chip(label: l10n.filterAlphabetical,
               active: filter.sort == _SortMode.alphabetical && !filter.podcasts,
               cs: cs, icon: Icons.sort_by_alpha_rounded,
               onTap: () => onToggle('az')),
+          const SizedBox(width: 8),
+          _Chip(label: l10n.filterOldest,
+              active: filter.sort == _SortMode.oldest && !filter.podcasts,
+              cs: cs, icon: Icons.arrow_upward_rounded,
+              onTap: () => onToggle('oldest')),
         ],
       ),
     );
@@ -784,10 +1043,10 @@ class _PodcastGridTile extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Episode feed
+// Episode feed — animated list with diff
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _EpisodeFeed extends StatelessWidget {
+class _EpisodeFeed extends StatefulWidget {
   final AppDatabase db;
   final ColorScheme cs;
   final AppLocalizations l10n;
@@ -804,112 +1063,284 @@ class _EpisodeFeed extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<Episode>>(
-      stream: filter.played
-          ? db.watchAllSubscribedEpisodes()
-          : db.watchUnfinishedEpisodes(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+  State<_EpisodeFeed> createState() => _EpisodeFeedState();
+}
 
-        var eps = snap.data ?? [];
+class _EpisodeFeedState extends State<_EpisodeFeed> {
+  final _listKey = GlobalKey<AnimatedListState>();
+  List<Episode> _displayed = [];
+  List<Episode> _raw = [];
+  StreamSubscription<List<Episode>>? _sub;
+  bool _initialLoad = true;
 
-        if (searchQuery.isNotEmpty) {
-          final q = searchQuery.toLowerCase();
-          eps = eps.where((e) =>
-              e.title.toLowerCase().contains(q) ||
-              e.podcastTitle.toLowerCase().contains(q)).toList();
-        }
-        if (filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
-        if (filter.sort == _SortMode.alphabetical) {
-          eps = List.of(eps)
-            ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-        }
+  @override
+  void initState() {
+    super.initState();
+    _subscribe();
+  }
 
-        if (eps.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.podcasts_outlined, size: 52, color: cs.onSurfaceVariant),
-                const SizedBox(height: 16),
-                Text(
-                  searchQuery.isNotEmpty || filter.hasAny
-                      ? l10n.emptySearchTitle : l10n.emptyFeedTitle,
-                  style: TextStyle(
-                      fontSize: 16, color: cs.onSurfaceVariant)),
-                if (searchQuery.isEmpty && !filter.hasAny) ...[
-                  const SizedBox(height: 6),
-                  Text(l10n.emptyFeedSub,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurfaceVariant)),
-                ],
-              ],
-            ),
-          );
-        }
+  @override
+  void didUpdateWidget(_EpisodeFeed old) {
+    super.didUpdateWidget(old);
+    final streamChanged = old.filter.history != widget.filter.history ||
+        old.filter.newOnly != widget.filter.newOnly;
+    if (streamChanged) {
+      _sub?.cancel();
+      _subscribe();
+    } else if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
+      _diffUpdate(_applyFilters(_raw));
+    }
+  }
 
-        return RefreshIndicator(
-          onRefresh: onRefresh,
-          child: ListView.separated(
-            itemCount: eps.length,
-            separatorBuilder: (_, __) => Divider(
-                height: 1, color: cs.outlineVariant.withValues(alpha:0.5), indent: 88),
-            itemBuilder: (_, i) => EpisodeTile(
-              episode: eps[i],
-              onCoverTap: () => onCoverTap(eps[i], db),
-            ),
-          ),
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Stream<List<Episode>> get _stream {
+    if (widget.filter.history) return widget.db.watchFinishedEpisodes();
+    if (widget.filter.newOnly) return widget.db.watchUnfinishedEpisodes();
+    return widget.db.watchAllSubscribedEpisodes();
+  }
+
+  void _subscribe() {
+    _sub = _stream.listen(_onData);
+  }
+
+  List<Episode> _applyFilters(List<Episode> raw) {
+    var eps = raw;
+    if (widget.searchQuery.isNotEmpty) {
+      final q = widget.searchQuery.toLowerCase();
+      eps = eps.where((e) =>
+          e.title.toLowerCase().contains(q) ||
+          e.podcastTitle.toLowerCase().contains(q)).toList();
+    }
+    if (widget.filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
+    if (widget.filter.sort == _SortMode.alphabetical) {
+      eps = List.of(eps)
+        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    } else if (widget.filter.sort == _SortMode.oldest) {
+      eps = List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
+    }
+    return eps;
+  }
+
+  void _onData(List<Episode> raw) {
+    _raw = raw;
+    final filtered = _applyFilters(raw);
+    if (_initialLoad) {
+      _initialLoad = false;
+      setState(() => _displayed = List.of(filtered));
+      return;
+    }
+    _diffUpdate(filtered);
+  }
+
+  void _diffUpdate(List<Episode> newList) {
+    final state = _listKey.currentState;
+    if (state == null) {
+      setState(() => _displayed = List.of(newList));
+      return;
+    }
+
+    // Remove items no longer in newList (backwards to keep indices stable)
+    for (int i = _displayed.length - 1; i >= 0; i--) {
+      final ep = _displayed[i];
+      if (!newList.any((e) => e.id == ep.id)) {
+        _displayed.removeAt(i);
+        state.removeItem(
+          i,
+          (ctx, anim) => _animatedTile(ep, anim),
+          duration: const Duration(milliseconds: 280),
         );
-      },
+      }
+    }
+
+    // Insert items now in newList that weren't before
+    for (int i = 0; i < newList.length; i++) {
+      final ep = newList[i];
+      if (!_displayed.any((e) => e.id == ep.id)) {
+        _displayed.insert(i, ep);
+        state.insertItem(i, duration: const Duration(milliseconds: 280));
+      }
+    }
+
+    // Update data for existing items in-place; do NOT replace the whole list,
+    // which would conflict with in-flight AnimatedList remove animations.
+    setState(() {
+      for (int i = 0; i < _displayed.length; i++) {
+        final updated = newList.firstWhere(
+          (e) => e.id == _displayed[i].id,
+          orElse: () => _displayed[i],
+        );
+        _displayed[i] = updated;
+      }
+    });
+  }
+
+  Widget _animatedTile(Episode ep, Animation<double> anim) {
+    final curved = CurvedAnimation(parent: anim, curve: Curves.easeOut);
+    return SizeTransition(
+      sizeFactor: curved,
+      child: FadeTransition(
+        opacity: CurvedAnimation(parent: anim, curve: Curves.easeIn),
+        child: Column(
+          children: [
+            EpisodeTile(
+              episode: ep,
+              onCoverTap: () => widget.onCoverTap(ep, widget.db),
+            ),
+            Divider(
+              height: 1,
+              color: widget.cs.outlineVariant.withValues(alpha: 0.5),
+              indent: 88,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_initialLoad) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_displayed.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.podcasts_outlined, size: 52, color: widget.cs.onSurfaceVariant),
+            const SizedBox(height: 16),
+            Text(
+              widget.searchQuery.isNotEmpty || widget.filter.hasAny
+                  ? widget.l10n.emptySearchTitle
+                  : widget.l10n.emptyFeedTitle,
+              style: TextStyle(fontSize: 16, color: widget.cs.onSurfaceVariant),
+            ),
+            if (widget.searchQuery.isEmpty && !widget.filter.hasAny) ...[
+              const SizedBox(height: 6),
+              Text(widget.l10n.emptyFeedSub,
+                  style: TextStyle(fontSize: 13, color: widget.cs.onSurfaceVariant)),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: widget.onRefresh,
+      child: AnimatedList(
+        key: _listKey,
+        initialItemCount: _displayed.length,
+        itemBuilder: (ctx, i, anim) => _animatedTile(_displayed[i], anim),
+      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Podcast-filtered feed
+// Podcast-filtered feed (with filter chips)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PodcastFilteredFeed extends StatelessWidget {
+class _PodcastFilteredFeed extends StatefulWidget {
   final AppDatabase db;
   final ColorScheme cs;
   final String podcastId;
   final Podcast? podcast;
-  final VoidCallback onClose;
   final Future<void> Function(Episode, AppDatabase) onCoverTap;
   final VoidCallback? onUnsubscribe;
 
   const _PodcastFilteredFeed({
     required this.db, required this.cs,
     required this.podcastId, required this.podcast,
-    required this.onClose, required this.onCoverTap,
+    required this.onCoverTap,
     this.onUnsubscribe,
   });
 
   @override
+  State<_PodcastFilteredFeed> createState() => _PodcastFilteredFeedState();
+}
+
+class _PodcastFilteredFeedState extends State<_PodcastFilteredFeed> {
+  _FilterState _filter = const _FilterState();
+
+  void _onToggle(String key) => setState(() {
+    switch (key) {
+      case 'new':
+        _filter = _filter.copyWith(newOnly: !_filter.newOnly, history: false);
+      case 'history':
+        _filter = _filter.copyWith(history: !_filter.history, newOnly: false);
+      case 'dl':
+        _filter = _filter.copyWith(downloaded: !_filter.downloaded);
+      case 'az':
+        _filter = _filter.copyWith(
+          sort: _filter.sort == _SortMode.alphabetical
+              ? _SortMode.none : _SortMode.alphabetical);
+      case 'oldest':
+        _filter = _filter.copyWith(
+          sort: _filter.sort == _SortMode.oldest
+              ? _SortMode.none : _SortMode.oldest);
+    }
+  });
+
+  List<Episode> _applyFilters(List<Episode> raw) {
+    var eps = raw;
+    if (_filter.history) {
+      eps = eps.where((e) => e.isFinished).toList();
+    } else if (_filter.newOnly) {
+      eps = eps.where((e) => !e.isFinished).toList();
+    }
+    if (_filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
+    if (_filter.sort == _SortMode.alphabetical) {
+      eps = List.of(eps)
+        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    } else if (_filter.sort == _SortMode.oldest) {
+      eps = List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
+    }
+    return eps;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = widget.cs;
+
     return StreamBuilder<List<Episode>>(
-      stream: db.watchEpisodesForPodcast(podcastId),
+      stream: widget.db.watchEpisodesForPodcast(widget.podcastId),
       builder: (context, snap) {
-        final eps = snap.data ?? [];
+        final eps = _applyFilters(snap.data ?? []);
         return Column(
           children: [
-            if (podcast != null)
-              PodcastHeader(podcast: podcast!, onClose: onClose, onUnsubscribe: onUnsubscribe, onSubscribe: null),
+            if (widget.podcast != null)
+              PodcastHeader(
+                  podcast: widget.podcast!,
+                  onUnsubscribe: widget.onUnsubscribe,
+                  onSubscribe: null),
+            // Filter chips (no Podcasts chip here)
+            _FilterChipsRow(
+              filter: _filter, l10n: l10n, cs: cs,
+              onToggle: _onToggle, showPodcastsChip: false,
+            ),
             Expanded(
-              child: ListView.separated(
-                itemCount: eps.length,
-                separatorBuilder: (_, __) => Divider(
-                    height: 1,
-                    color: cs.outlineVariant.withValues(alpha:0.5), indent: 88),
-                itemBuilder: (_, i) => EpisodeTile(
-                  episode: eps[i],
-                  onCoverTap: () => onCoverTap(eps[i], db),
-                ),
-              ),
+              child: eps.isEmpty
+                  ? Center(
+                      child: Text(l10n.emptySearchTitle,
+                          style: TextStyle(color: cs.onSurfaceVariant)))
+                  : ListView.separated(
+                      itemCount: eps.length,
+                      separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          color: cs.outlineVariant.withValues(alpha: 0.5),
+                          indent: 88),
+                      itemBuilder: (_, i) => EpisodeTile(
+                        episode: eps[i],
+                        onCoverTap: () => widget.onCoverTap(eps[i], widget.db),
+                      ),
+                    ),
             ),
           ],
         );
@@ -958,90 +1389,109 @@ class _DiscoverList extends StatefulWidget {
   State<_DiscoverList> createState() => _DiscoverListState();
 }
 
-class _DiscoverListState extends State<_DiscoverList> {
+class _DiscoverListState extends State<_DiscoverList>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  Widget _podcastList(List<PodcastResult> results) => ListView.builder(
+        itemCount: results.length,
+        itemBuilder: (_, i) => _DiscoverPodcastTile(
+          result: results[i], rank: i + 1,
+          cs: widget.cs, l10n: widget.l10n,
+          onPreview: widget.onPreview,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
+    final cs = widget.cs;
+    final l10n = widget.l10n;
+
+    // ── Search results overlay ──────────────────────────────────────────────
     if (widget.searchQuery.trim().length >= 2) {
-      return CustomScrollView(slivers: [
-        _SectionHeader(
-            title: widget.l10n.sectionSearchResults,
-            cs: widget.cs),
-        if (widget.searchingPI)
-          const SliverToBoxAdapter(
-            child: Padding(padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator())))
-        else if (widget.piSearchResults.isEmpty)
-          SliverToBoxAdapter(
-            child: Padding(padding: const EdgeInsets.all(24),
-              child: Text(widget.l10n.searchNoResults,
-                  style: TextStyle(color: widget.cs.onSurfaceVariant))))
-        else
-          SliverList(delegate: SliverChildBuilderDelegate(
-            (_, i) => _DiscoverPodcastTile(
-              result: widget.piSearchResults[i], rank: i + 1,
-              cs: widget.cs, l10n: widget.l10n,
-              onPreview: widget.onPreview,
-            ),
-            childCount: widget.piSearchResults.length,
-          )),
-      ]);
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        child: widget.searchingPI
+            ? const Center(child: CircularProgressIndicator())
+            : widget.piSearchResults.isEmpty
+                ? Center(child: Text(l10n.searchNoResults,
+                      style: TextStyle(color: cs.onSurfaceVariant)))
+                : _podcastList(widget.piSearchResults),
+      );
     }
 
-    return RefreshIndicator(
-      onRefresh: widget.onRefresh,
-      child: CustomScrollView(slivers: [
-        _SectionHeader(title: widget.l10n.sectionTrending, cs: widget.cs),
-        if (widget.loadingTrending)
-          const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(32),
-            child: Center(child: CircularProgressIndicator())))
-        else if (widget.trendingError != null)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(children: [
-                Icon(Icons.wifi_off_outlined, size: 40, color: widget.cs.onSurfaceVariant),
-                const SizedBox(height: 12),
-                Text('Could not load trending podcasts',
-                    style: TextStyle(color: widget.cs.onSurfaceVariant)),
-                const SizedBox(height: 4),
-                Text(widget.trendingError!,
-                    style: TextStyle(fontSize: 12, color: widget.cs.onSurfaceVariant),
-                    textAlign: TextAlign.center),
-              ]),
-            ))
-        else if (widget.trending.isEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('No trending podcasts available.',
-                  style: TextStyle(color: widget.cs.onSurfaceVariant)),
-            ))
-        else
-          SliverList(delegate: SliverChildBuilderDelegate(
-            (_, i) => _DiscoverPodcastTile(
-              result: widget.trending[i], rank: i + 1,
-              cs: widget.cs, l10n: widget.l10n,
-              onPreview: widget.onPreview,
-            ),
-            childCount: widget.trending.length,
-          )),
-        _SectionHeader(title: widget.l10n.sectionRecommended,
-            subtitle: widget.l10n.sectionRecommendedSub,
-            cs: widget.cs),
-        if (widget.loadingRec)
-          const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(32),
-            child: Center(child: CircularProgressIndicator())))
-        else
-          SliverList(delegate: SliverChildBuilderDelegate(
-            (_, i) => _DiscoverPodcastTile(
-              result: widget.recommended[i], rank: i + 1,
-              cs: widget.cs, l10n: widget.l10n,
-              onPreview: widget.onPreview,
-            ),
-            childCount: widget.recommended.length,
-          )),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-      ]),
+    // ── Two-tab view ────────────────────────────────────────────────────────
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabCtrl,
+          labelColor: cs.primary,
+          unselectedLabelColor: cs.onSurfaceVariant,
+          indicatorColor: cs.primary,
+          tabs: [
+            Tab(text: l10n.discoverTabTrending),
+            Tab(text: l10n.discoverTabSuggestions),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabCtrl,
+            children: [
+              // ── Trending ──────────────────────────────────────────────────
+              RefreshIndicator(
+                onRefresh: widget.onRefresh,
+                child: widget.loadingTrending
+                    ? const Center(child: CircularProgressIndicator())
+                    : widget.trendingError != null
+                        ? ListView(children: [
+                            Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(children: [
+                                Icon(Icons.wifi_off_outlined,
+                                    size: 40, color: cs.onSurfaceVariant),
+                                const SizedBox(height: 12),
+                                Text('Could not load trending podcasts',
+                                    style: TextStyle(color: cs.onSurfaceVariant)),
+                                const SizedBox(height: 4),
+                                Text(widget.trendingError!,
+                                    style: TextStyle(fontSize: 12,
+                                        color: cs.onSurfaceVariant),
+                                    textAlign: TextAlign.center),
+                              ]),
+                            ),
+                          ])
+                        : widget.trending.isEmpty
+                            ? Center(child: Text('No trending podcasts available.',
+                                style: TextStyle(color: cs.onSurfaceVariant)))
+                            : _podcastList(widget.trending),
+              ),
+
+              // ── Suggestions ───────────────────────────────────────────────
+              RefreshIndicator(
+                onRefresh: widget.onRefresh,
+                child: widget.loadingRec
+                    ? const Center(child: CircularProgressIndicator())
+                    : widget.recommended.isEmpty
+                        ? Center(child: Text(l10n.emptyFeedSub,
+                            style: TextStyle(color: cs.onSurfaceVariant)))
+                        : _podcastList(widget.recommended),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1123,119 +1573,176 @@ class _DiscoverPodcastTileState extends State<_DiscoverPodcastTile> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section header sliver
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-  final ColorScheme cs;
-
-  const _SectionHeader({
-    required this.title, required this.cs, this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SliverToBoxAdapter(
-      child: Container(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: TextStyle(
-              fontWeight: FontWeight.w800, fontSize: 16,
-              color: cs.onSurface)),
-            if (subtitle != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(subtitle!, style: TextStyle(
-                  fontSize: 12, color: cs.onSurfaceVariant)),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Preview feed (unsubscribed podcast)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PreviewFeed extends StatelessWidget {
+class _PreviewFeed extends StatefulWidget {
   final PodcastResult result;
   final List<_DiscoverEpisode> episodes;
   final bool loading;
   final ColorScheme cs;
   final AppLocalizations l10n;
   final VoidCallback onSubscribe;
-  final VoidCallback onClose;
   final Future<void> Function(_DiscoverEpisode) onPlay;
   final Future<void> Function(_DiscoverEpisode) onDownload;
 
   const _PreviewFeed({
     required this.result, required this.episodes, required this.loading,
     required this.cs, required this.l10n,
-    required this.onSubscribe, required this.onClose,
+    required this.onSubscribe,
     required this.onPlay, required this.onDownload,
   });
 
-  String _fmtDuration(int secs) {
-    if (secs <= 0) return '';
-    final h = secs ~/ 3600;
-    final m = (secs % 3600) ~/ 60;
+  @override
+  State<_PreviewFeed> createState() => _PreviewFeedState();
+}
+
+class _PreviewFeedState extends State<_PreviewFeed> {
+  _FilterState _filter = const _FilterState(newOnly: false);
+
+  void _onToggle(String key) => setState(() {
+    switch (key) {
+      case 'az':
+        _filter = _filter.copyWith(
+          sort: _filter.sort == _SortMode.alphabetical
+              ? _SortMode.none : _SortMode.alphabetical);
+      case 'oldest':
+        _filter = _filter.copyWith(
+          sort: _filter.sort == _SortMode.oldest
+              ? _SortMode.none : _SortMode.oldest);
+    }
+  });
+
+  String _fmt(int s) {
+    if (s <= 0) return '';
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
     return h > 0 ? '${h}h ${m}min' : '${m}min';
+  }
+
+  List<_DiscoverEpisode> get _sorted {
+    if (_filter.sort == _SortMode.alphabetical) {
+      return List.of(widget.episodes)
+        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    } else if (_filter.sort == _SortMode.oldest) {
+      return List.of(widget.episodes)
+        ..sort((a, b) => a.publishDate.compareTo(b.publishDate));
+    }
+    return widget.episodes;
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = widget.cs;
+    final l10n = widget.l10n;
+    final eps = _sorted;
+
     return Column(
       children: [
-        PodcastHeader(
-          previewResult: result,
-          onClose: onClose,
-          onSubscribe: onSubscribe,
+        PodcastHeader(previewResult: widget.result, onSubscribe: widget.onSubscribe),
+        _FilterChipsRow(
+          filter: _filter, l10n: l10n, cs: cs,
+          onToggle: _onToggle,
+          showPodcastsChip: false,
+          showContentFilters: false,
         ),
         Expanded(
-          child: loading
+          child: widget.loading
               ? const Center(child: CircularProgressIndicator())
-              : episodes.isEmpty
+              : eps.isEmpty
                   ? Center(child: Text(l10n.emptyFeedTitle,
                       style: TextStyle(color: cs.onSurfaceVariant)))
                   : ListView.separated(
-                      itemCount: episodes.length,
+                      itemCount: eps.length,
                       separatorBuilder: (_, __) => Divider(
-                          height: 1, color: cs.outlineVariant.withValues(alpha: 0.5),
-                          indent: 16),
+                          height: 1,
+                          color: cs.outlineVariant.withValues(alpha: 0.5),
+                          indent: 88),
                       itemBuilder: (_, i) {
-                        final ep = episodes[i];
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          title: Text(ep.title,
-                              maxLines: 2, overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: cs.onSurface)),
-                          subtitle: Text(
-                            [
-                              '${ep.publishDate.day}.${ep.publishDate.month}.${ep.publishDate.year}',
-                              if (_fmtDuration(ep.durationSeconds).isNotEmpty)
-                                _fmtDuration(ep.durationSeconds),
-                            ].join(' · '),
-                            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                        final ep = eps[i];
+                        return Dismissible(
+                          key: Key('prev_${ep.id}'),
+                          direction: DismissDirection.endToStart,
+                          confirmDismiss: (_) async {
+                            await widget.onDownload(ep);
+                            return false;
+                          },
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 24),
+                            color: cs.primary,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.download, color: cs.onPrimary, size: 28),
+                                const SizedBox(height: 4),
+                                Text(l10n.downloading,
+                                    style: TextStyle(color: cs.onPrimary,
+                                        fontSize: 11, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
                           ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(Icons.download_outlined, color: cs.onSurfaceVariant, size: 20),
-                                onPressed: () => onDownload(ep),
+                          child: InkWell(
+                            onTap: () => widget.onPlay(ep),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                              child: Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: CachedNetworkImage(
+                                      imageUrl: widget.result.imageUrl,
+                                      width: 60, height: 60, fit: BoxFit.cover,
+                                      errorWidget: (_, __, ___) => Container(
+                                        width: 60, height: 60,
+                                        color: cs.surfaceContainerHighest,
+                                        child: const Icon(Icons.podcasts, size: 28),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(ep.title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14,
+                                                color: cs.onSurface)),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          [
+                                            '${ep.publishDate.day}.${ep.publishDate.month}.${ep.publishDate.year}',
+                                            if (_fmt(ep.durationSeconds).isNotEmpty)
+                                              _fmt(ep.durationSeconds),
+                                          ].join('  ·  '),
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: cs.onSurfaceVariant),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Play button
+                                  Container(
+                                    width: 44, height: 44,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                          color: cs.outlineVariant, width: 1.5),
+                                    ),
+                                    child: Icon(Icons.play_arrow,
+                                        size: 22, color: cs.onSurface),
+                                  ),
+                                ],
                               ),
-                              IconButton(
-                                icon: Icon(Icons.play_circle_outline, color: cs.primary, size: 24),
-                                onPressed: () => onPlay(ep),
-                              ),
-                            ],
+                            ),
                           ),
                         );
                       },
@@ -1244,4 +1751,257 @@ class _PreviewFeed extends StatelessWidget {
       ],
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Speech-bubble painter for the About dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _kGithubSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <path fill="#000000" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+    0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01
+    1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95
+    0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0
+    1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15
+    0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38
+    A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+</svg>
+''';
+
+class _BubblePainter extends CustomPainter {
+  final ColorScheme cs;
+  const _BubblePainter({required this.cs});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const r = 14.0;
+    const triW = 18.0;
+    const triH = 11.0;
+    const triX = 36.0; // triangle tip x, aligned near top-left logo
+
+    final fill = Paint()
+      ..color = cs.surfaceContainerHigh
+      ..style = PaintingStyle.fill;
+
+    final path = Path()
+      ..moveTo(r, triH)
+      ..lineTo(triX - triW / 2, triH)
+      ..lineTo(triX, 0)
+      ..lineTo(triX + triW / 2, triH)
+      ..lineTo(size.width - r, triH)
+      ..arcToPoint(Offset(size.width, triH + r), radius: const Radius.circular(r))
+      ..lineTo(size.width, size.height - r)
+      ..arcToPoint(Offset(size.width - r, size.height), radius: const Radius.circular(r))
+      ..lineTo(r, size.height)
+      ..arcToPoint(Offset(0, size.height - r), radius: const Radius.circular(r))
+      ..lineTo(0, triH + r)
+      ..arcToPoint(Offset(r, triH), radius: const Radius.circular(r))
+      ..close();
+
+    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.18), 10, false);
+    canvas.drawPath(path, fill);
+  }
+
+  @override
+  bool shouldRepaint(_BubblePainter old) => old.cs != cs;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ant walker — decorative ant that occasionally strolls across the toolbar
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AntWalker extends StatefulWidget {
+  const _AntWalker({super.key});
+
+  @override
+  State<_AntWalker> createState() => _AntWalkerState();
+}
+
+class _AntWalkerState extends State<_AntWalker> with TickerProviderStateMixin {
+  late final AnimationController _legCtrl;
+  late final AnimationController _pathCtrl;
+  Timer? _timer;
+  _AntPath? _path;
+  bool _walking = false;
+  final _rng = math.Random();
+
+  @override
+  void initState() {
+    super.initState();
+    _legCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..repeat();
+
+    _pathCtrl = AnimationController(vsync: this);
+    _pathCtrl.addStatusListener((s) {
+      if (s == AnimationStatus.completed && mounted) {
+        setState(() => _walking = false);
+        _scheduleNext();
+      }
+    });
+
+    _scheduleNext();
+  }
+
+  @override
+  void dispose() {
+    _legCtrl.dispose();
+    _pathCtrl.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleNext() {
+    final ms = 6000 + _rng.nextInt(14000); // 6–20 s gap between walks
+    _timer = Timer(Duration(milliseconds: ms), () {
+      if (mounted) _startWalk();
+    });
+  }
+
+  void _startWalk() {
+    _timer?.cancel();
+    if (_walking) return;
+    final w = MediaQuery.sizeOf(context).width;
+    const toolbarH = 56.0;
+
+    final fromLeft = _rng.nextBool();
+    final startX = fromLeft ? -20.0 : w + 20;
+    final endX   = fromLeft ? w + 20.0 : -20.0;
+    final startY = 14 + _rng.nextDouble() * (toolbarH - 28);
+    final endY   = 14 + _rng.nextDouble() * (toolbarH - 28);
+
+    // Two bezier control points for a gently curved, organic path
+    final cp1 = Offset(
+      startX + (endX - startX) * (0.15 + _rng.nextDouble() * 0.2),
+      14 + _rng.nextDouble() * (toolbarH - 28),
+    );
+    final cp2 = Offset(
+      startX + (endX - startX) * (0.65 + _rng.nextDouble() * 0.2),
+      14 + _rng.nextDouble() * (toolbarH - 28),
+    );
+
+    _path = _AntPath(
+      p0: Offset(startX, startY),
+      cp1: cp1, cp2: cp2,
+      p1: Offset(endX, endY),
+    );
+    _pathCtrl.duration = Duration(milliseconds: 3500 + _rng.nextInt(3000));
+    _pathCtrl.reset();
+    setState(() => _walking = true);
+    _pathCtrl.forward();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_walking || _path == null) return const SizedBox.shrink();
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_legCtrl, _pathCtrl]),
+      builder: (_, __) {
+        final pos   = _path!.evaluate(_pathCtrl.value);
+        final angle = _path!.angle(_pathCtrl.value);
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const SizedBox.expand(), // gives the Stack its size from tight constraints
+            Positioned(
+              left: pos.dx - 14,
+              top:  pos.dy - 14,
+              width: 28, height: 28,
+              child: Transform.rotate(
+                angle: angle,
+                child: CustomPaint(
+                  painter: _AntPainter(legPhase: _legCtrl.value),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// Cubic-bezier path with tangent for rotation
+class _AntPath {
+  final Offset p0, cp1, cp2, p1;
+  const _AntPath({required this.p0, required this.cp1, required this.cp2, required this.p1});
+
+  Offset evaluate(double t) {
+    final s = 1 - t;
+    return p0 * (s * s * s) +
+           cp1 * (3 * s * s * t) +
+           cp2 * (3 * s * t * t) +
+           p1  * (t * t * t);
+  }
+
+  double angle(double t) {
+    final s = 1 - t;
+    final d = (cp1 - p0) * (3 * s * s) +
+              (cp2 - cp1) * (6 * s * t) +
+              (p1  - cp2) * (3 * t * t);
+    // +π/2 because the ant body is drawn facing -y (upward in local space)
+    return math.atan2(d.dy, d.dx) + math.pi / 2;
+  }
+}
+
+// Ant drawn top-down, centered at (0,0) in local coords, facing -y
+class _AntPainter extends CustomPainter {
+  final double legPhase; // 0–1, one gait cycle
+
+  const _AntPainter({required this.legPhase});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.translate(size.width / 2, size.height / 2);
+
+    const color = Color(0xFF2C1A0E);
+    final fill = Paint()..color = color..style = PaintingStyle.fill;
+    final stroke = Paint()
+      ..color = color
+      ..strokeWidth = 0.85
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final t = legPhase * math.pi * 2;
+
+    // Abdomen (largest, rear)
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(0, 5.5), width: 5.5, height: 7),
+      fill,
+    );
+    // Thorax (tiny waist in the middle)
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset.zero, width: 3.2, height: 3.5),
+      fill,
+    );
+    // Head (front)
+    canvas.drawCircle(const Offset(0, -5.5), 2.8, fill);
+
+    // Antennae — subtly wiggle
+    canvas.drawLine(const Offset(0, -8.3),
+        Offset(-3 + math.sin(t) * 0.25, -12.5), stroke);
+    canvas.drawLine(const Offset(0, -8.3),
+        Offset( 3 - math.sin(t) * 0.25, -12.5), stroke);
+
+    // Six legs (3 pairs) with alternating-tripod gait
+    for (var i = 0; i < 3; i++) {
+      final yA = (i - 1) * 2.2; // –2.2, 0, +2.2 along the thorax
+
+      // Right leg — tripod A swings on even indices
+      final rP = (i.isEven) ? t : t + math.pi;
+      final rSwing = math.sin(rP) * 2.2;
+      canvas.drawLine(Offset(1.6, yA), Offset(7, yA + rSwing), stroke);
+
+      // Left leg — opposite tripod
+      final lP = (i.isOdd) ? t : t + math.pi;
+      final lSwing = math.sin(lP) * 2.2;
+      canvas.drawLine(Offset(-1.6, yA), Offset(-7, yA + lSwing), stroke);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AntPainter old) => old.legPhase != legPhase;
 }

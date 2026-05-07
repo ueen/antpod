@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'app_database.dart';
+import 'download_provider.dart';
 import 'download_service.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
@@ -66,6 +67,7 @@ class EpisodeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = context.watch<PlayerProvider>();
+    final downloads = context.watch<DownloadProvider>();
     final db = context.read<AppDatabase>();
     final l10n = AppLocalizations.of(context)!;
     final isCurrent = player.currentEpisode?.id == episode.id;
@@ -74,28 +76,39 @@ class EpisodeTile extends StatelessWidget {
     final dimmed = episode.isFinished && !isCurrent;
     final opacity = dimmed ? _kFinishedOpacity : 1.0;
 
-    return Dismissible(
-      key: Key('tile_${episode.id}'),
-      direction: DismissDirection.endToStart,
-      confirmDismiss: (_) async {
+    final dlProgress = downloads.progressForTask(episode.downloadTaskId);
+    final ringProgress = episode.isDownloaded ? 1.0 : dlProgress;
+
+    return _StickySwipeable(
+      startBackground: _PlayedSwipeBackground(episode: episode, cs: cs, l10n: l10n),
+      endBackground: _DownloadSwipeBackground(episode: episode, cs: cs, l10n: l10n),
+      onSwipeStart: () async {
+        if (episode.isFinished) {
+          await db.markUnfinished(episode.id);
+        } else {
+          await db.markFinished(episode.id);
+        }
+      },
+      onSwipeEnd: () async {
         if (episode.isDownloaded) {
           await db.deleteLocalFile(episode.id);
         } else {
-          await DownloadService.downloadEpisode(
+          final taskId = await DownloadService.downloadEpisode(
             episodeId: episode.id, audioUrl: episode.audioUrl,
             episodeTitle: episode.title, db: db,
           );
+          if (taskId != null) downloads.trackDownload(taskId);
         }
-        return false;
       },
-      background: _SwipeBackground(episode: episode, cs: cs, l10n: l10n),
       child: GestureDetector(
         onLongPress: () => _showContextMenu(context, db, l10n),
         child: InkWell(
           onTap: () => player.play(episode),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            color: isCurrent ? cs.primary.withValues(alpha:0.07) : Colors.transparent,
+            color: isCurrent
+                ? Color.alphaBlend(cs.primary.withValues(alpha: 0.07), cs.surface)
+                : cs.surface,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
@@ -115,7 +128,6 @@ class EpisodeTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-
                 Expanded(
                   child: Opacity(
                     opacity: opacity,
@@ -124,17 +136,20 @@ class EpisodeTile extends StatelessWidget {
                       isCurrent: isCurrent,
                       cs: cs,
                       formatDuration: _fmt,
+                      // Use live position for the current episode
+                      effectivePositionMs: isCurrent
+                          ? player.position.inMilliseconds
+                          : episode.lastPositionMs,
                     ),
                   ),
                 ),
                 const SizedBox(width: 4),
-
                 _ActionArea(
                   episode: episode,
                   isCurrent: isCurrent,
                   isPlaying: isPlaying,
                   isLoading: player.isLoading && isCurrent,
-                  downloadProgress: isCurrent ? player.downloadProgress : null,
+                  ringProgress: ringProgress,
                   dimmed: dimmed,
                   cs: cs,
                   onPlayTap: () {
@@ -144,8 +159,6 @@ class EpisodeTile extends StatelessWidget {
                       player.play(episode);
                     }
                   },
-                  onDeleteTap: episode.isDownloaded
-                      ? () => db.deleteLocalFile(episode.id) : null,
                 ),
               ],
             ),
@@ -156,13 +169,141 @@ class EpisodeTile extends StatelessWidget {
   }
 }
 
-// ─── Swipe background ─────────────────────────────────────────────────────────
+// ─── Sticky swipe wrapper ─────────────────────────────────────────────────────
 
-class _SwipeBackground extends StatelessWidget {
+class _StickySwipeable extends StatefulWidget {
+  final Widget child;
+  final Widget startBackground;
+  final Widget endBackground;
+  final Future<void> Function() onSwipeStart;
+  final Future<void> Function() onSwipeEnd;
+
+  const _StickySwipeable({
+    required this.child,
+    required this.startBackground,
+    required this.endBackground,
+    required this.onSwipeStart,
+    required this.onSwipeEnd,
+  });
+
+  @override
+  State<_StickySwipeable> createState() => _StickySwipeableState();
+}
+
+class _StickySwipeableState extends State<_StickySwipeable>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _snapCtrl;
+  double _dx = 0;
+
+  static const _maxFraction = 0.45;
+  static const _triggerFraction = 0.22;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+  }
+
+  @override
+  void dispose() {
+    _snapCtrl.dispose();
+    super.dispose();
+  }
+
+  double get _screenWidth => MediaQuery.of(context).size.width;
+
+  void _onUpdate(DragUpdateDetails d) {
+    final max = _screenWidth * _maxFraction;
+    setState(() => _dx = (_dx + d.delta.dx).clamp(-max, max));
+  }
+
+  Future<void> _onEnd(DragEndDetails _) async {
+    final trigger = _screenWidth * _triggerFraction;
+    if (_dx > trigger) {
+      await widget.onSwipeStart();
+    } else if (_dx < -trigger) {
+      await widget.onSwipeEnd();
+    }
+    _snapBack();
+  }
+
+  void _snapBack() {
+    final start = _dx;
+    final anim = Tween<double>(begin: start, end: 0.0).animate(
+      CurvedAnimation(parent: _snapCtrl, curve: Curves.easeOutCubic),
+    );
+    _snapCtrl.reset();
+    anim.addListener(() {
+      if (mounted) setState(() => _dx = anim.value);
+    });
+    _snapCtrl.forward();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onHorizontalDragUpdate: _onUpdate,
+      onHorizontalDragEnd: _onEnd,
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          if (_dx > 4) Positioned.fill(child: widget.startBackground),
+          if (_dx < -4) Positioned.fill(child: widget.endBackground),
+          Transform.translate(
+            offset: Offset(_dx, 0),
+            child: widget.child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Swipe backgrounds ────────────────────────────────────────────────────────
+
+class _PlayedSwipeBackground extends StatelessWidget {
   final Episode episode;
   final ColorScheme cs;
   final AppLocalizations l10n;
-  const _SwipeBackground({required this.episode, required this.cs, required this.l10n});
+  const _PlayedSwipeBackground({required this.episode, required this.cs, required this.l10n});
+
+  @override
+  Widget build(BuildContext context) {
+    final finished = episode.isFinished;
+    return Container(
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.only(left: 24),
+      color: finished ? cs.secondaryContainer : cs.tertiaryContainer,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            finished ? Icons.mark_email_unread_outlined : Icons.check_circle_outline,
+            color: finished ? cs.onSecondaryContainer : cs.onTertiaryContainer,
+            size: 28,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            finished ? l10n.markUnplayed : l10n.markPlayed,
+            style: TextStyle(
+              color: finished ? cs.onSecondaryContainer : cs.onTertiaryContainer,
+              fontSize: 11, fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DownloadSwipeBackground extends StatelessWidget {
+  final Episode episode;
+  final ColorScheme cs;
+  final AppLocalizations l10n;
+  const _DownloadSwipeBackground({required this.episode, required this.cs, required this.l10n});
 
   @override
   Widget build(BuildContext context) {
@@ -210,14 +351,22 @@ class _EpisodeMetadata extends StatelessWidget {
   final bool isCurrent;
   final ColorScheme cs;
   final String Function(int) formatDuration;
+  final int effectivePositionMs;
 
   const _EpisodeMetadata({
     required this.episode, required this.isCurrent,
     required this.cs, required this.formatDuration,
+    required this.effectivePositionMs,
   });
 
   @override
   Widget build(BuildContext context) {
+    final showProgress = !episode.isFinished &&
+        episode.durationSeconds > 0 &&
+        effectivePositionMs > 0;
+    final progressValue =
+        showProgress ? (effectivePositionMs / 1000) / episode.durationSeconds : 0.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -242,7 +391,9 @@ class _EpisodeMetadata extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 4),
                 child: Icon(Icons.download_done, size: 12, color: cs.primary)),
             Text(
-              DateFormat('d. MMM yyyy').format(episode.publishDate),
+              DateFormat('d. MMM yyyy',
+                      Localizations.localeOf(context).toString())
+                  .format(episode.publishDate),
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
             if (episode.durationSeconds > 0)
@@ -252,15 +403,21 @@ class _EpisodeMetadata extends StatelessWidget {
               ),
           ],
         ),
-        if (!episode.isFinished && episode.lastPositionMs > 0 && episode.durationSeconds > 0) ...[
-          const SizedBox(height: 6),
-          LinearProgressIndicator(
-            value: (episode.lastPositionMs / 1000) / episode.durationSeconds,
-            minHeight: 2,
-            backgroundColor: cs.primary.withValues(alpha:0.15),
-            valueColor: AlwaysStoppedAnimation(cs.primary),
-          ),
-        ],
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          child: showProgress
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: LinearProgressIndicator(
+                    value: progressValue.clamp(0.0, 1.0),
+                    minHeight: 2,
+                    backgroundColor: cs.primary.withValues(alpha: 0.15),
+                    valueColor: AlwaysStoppedAnimation(cs.primary),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
       ],
     );
   }
@@ -271,38 +428,28 @@ class _EpisodeMetadata extends StatelessWidget {
 class _ActionArea extends StatelessWidget {
   final Episode episode;
   final bool isCurrent, isPlaying, isLoading, dimmed;
-  final double? downloadProgress;
+  final double? ringProgress;
   final ColorScheme cs;
   final VoidCallback onPlayTap;
-  final VoidCallback? onDeleteTap;
 
   const _ActionArea({
     required this.episode, required this.isCurrent, required this.isPlaying,
-    required this.isLoading, required this.downloadProgress, required this.dimmed,
-    required this.cs,
-    required this.onPlayTap, this.onDeleteTap,
+    required this.isLoading, required this.ringProgress, required this.dimmed,
+    required this.cs, required this.onPlayTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (episode.isDownloaded && onDeleteTap != null)
+    final ringColor = episode.isDownloaded
+        ? cs.primary
+        : (isCurrent ? cs.primary : cs.outlineVariant);
+
+    return Opacity(
+      opacity: dimmed ? _kFinishedOpacity : 1.0,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           GestureDetector(
-            onTap: onDeleteTap,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Opacity(
-                opacity: dimmed ? _kFinishedOpacity : 1.0,
-                child: Icon(Icons.delete_outline, size: 18,
-                    color: cs.onSurfaceVariant),
-              ),
-            ),
-          ),
-        Opacity(
-          opacity: dimmed ? _kFinishedOpacity : 1.0,
-          child: GestureDetector(
             onTap: onPlayTap,
             child: SizedBox(
               width: 44, height: 44,
@@ -312,9 +459,9 @@ class _ActionArea extends StatelessWidget {
                   CustomPaint(
                     size: const Size(44, 44),
                     painter: _RingPainter(
-                      progress: downloadProgress,
-                      color: isCurrent ? cs.primary : cs.outlineVariant,
-                      trackColor: cs.outlineVariant.withValues(alpha:0.25),
+                      progress: ringProgress,
+                      color: ringColor,
+                      trackColor: cs.outlineVariant.withValues(alpha: 0.25),
                     ),
                   ),
                   if (isLoading)
@@ -332,8 +479,17 @@ class _ActionArea extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      ],
+          if (episode.isDownloaded)
+            Container(
+              margin: const EdgeInsets.only(top: 3),
+              width: 20, height: 2,
+              decoration: BoxDecoration(
+                color: cs.primary,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -381,27 +537,11 @@ class _EpisodeContextMenu extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          _MenuItem(
-            icon: Icons.share_outlined,
-            label: l10n.shareEpisode,
-            cs: cs,
-            onTap: onShare,
-          ),
+          _MenuItem(icon: Icons.share_outlined, label: l10n.shareEpisode, cs: cs, onTap: onShare),
           if (onMarkUnplayed != null)
-            _MenuItem(
-              icon: Icons.mark_email_unread_outlined,
-              label: l10n.markUnplayed,
-              cs: cs,
-              onTap: onMarkUnplayed!,
-            ),
+            _MenuItem(icon: Icons.mark_email_unread_outlined, label: l10n.markUnplayed, cs: cs, onTap: onMarkUnplayed!),
           if (onDeleteDownload != null)
-            _MenuItem(
-              icon: Icons.delete_outline,
-              label: l10n.deleteDownload,
-              cs: cs,
-              color: cs.error,
-              onTap: onDeleteDownload!,
-            ),
+            _MenuItem(icon: Icons.delete_outline, label: l10n.deleteDownload, cs: cs, color: cs.error, onTap: onDeleteDownload!),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
         ],
       ),

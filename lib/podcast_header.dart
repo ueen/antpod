@@ -9,7 +9,6 @@ import 'podcast_service.dart';
 class PodcastHeader extends StatefulWidget {
   final Podcast? podcast;
   final PodcastResult? previewResult;
-  final VoidCallback onClose;
   final VoidCallback? onUnsubscribe;
   final VoidCallback? onSubscribe;
 
@@ -17,7 +16,6 @@ class PodcastHeader extends StatefulWidget {
     super.key,
     this.podcast,
     this.previewResult,
-    required this.onClose,
     this.onUnsubscribe,
     this.onSubscribe,
   }) : assert(podcast != null || previewResult != null);
@@ -40,6 +38,28 @@ class _PodcastHeaderState extends State<PodcastHeader> {
     SharePlus.instance.share(ShareParams(text: '$_title\n$url', subject: _title));
   }
 
+  Future<void> _confirmUnsubscribe(BuildContext context, AppLocalizations l10n) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.unsubscribe),
+        content: Text(_title),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.unsubscribe,
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) widget.onUnsubscribe?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -55,13 +75,15 @@ class _PodcastHeaderState extends State<PodcastHeader> {
           color: cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: cs.outlineVariant),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
+          boxShadow: [BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 8, offset: const Offset(0, 2))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 12, 4, 4),
               child: Row(
                 children: [
                   ClipRRect(
@@ -80,64 +102,73 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(_title,
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: cs.onSurface)),
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                color: cs.onSurface)),
                         if (_author.isNotEmpty) ...[
                           const SizedBox(height: 2),
                           Text(_author,
-                              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.onSurfaceVariant)),
                         ],
                       ],
                     ),
                   ),
-                  Tooltip(
-                    message: l10n.sharePodcast,
-                    child: IconButton(
-                      onPressed: _share,
-                      icon: Icon(Icons.share_outlined, color: cs.onSurfaceVariant, size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    ),
-                  ),
-                  if (widget.onSubscribe != null)
-                    Tooltip(
-                      message: l10n.subscribeDialogTitle,
-                      child: IconButton(
-                        onPressed: widget.onSubscribe,
-                        icon: Icon(Icons.add_circle_outline, color: cs.primary, size: 20),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: _share,
+                        icon: Icon(Icons.share_outlined,
+                            color: cs.onSurfaceVariant, size: 22),
+                        padding: const EdgeInsets.all(4),
+                        constraints:
+                            const BoxConstraints(minWidth: 36, minHeight: 36),
                       ),
-                    ),
-                  if (widget.onUnsubscribe != null)
-                    Tooltip(
-                      message: l10n.unsubscribe,
-                      child: IconButton(
-                        onPressed: widget.onUnsubscribe,
-                        icon: Icon(Icons.remove_circle_outline, color: cs.error, size: 20),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                      ),
-                    ),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 220),
-                    child: Icon(Icons.keyboard_arrow_down, color: cs.onSurfaceVariant),
-                  ),
-                  IconButton(
-                    onPressed: widget.onClose,
-                    icon: Icon(Icons.close, color: cs.onSurfaceVariant, size: 20),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      if (widget.onSubscribe != null)
+                        IconButton(
+                          onPressed: widget.onSubscribe,
+                          icon: Icon(Icons.add_circle_outline,
+                              color: cs.primary, size: 28),
+                          padding: const EdgeInsets.all(4),
+                          constraints:
+                              const BoxConstraints(minWidth: 36, minHeight: 36),
+                        ),
+                      if (widget.onUnsubscribe != null)
+                        IconButton(
+                          onPressed: () => _confirmUnsubscribe(context, l10n),
+                          icon: Icon(Icons.remove_circle_outline,
+                              color: cs.error, size: 28),
+                          padding: const EdgeInsets.all(4),
+                          constraints:
+                              const BoxConstraints(minWidth: 36, minHeight: 36),
+                        ),
+                    ],
                   ),
                 ],
               ),
             ),
             if (_expanded)
               Padding(
-                padding: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
                 child: Text(_description,
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, height: 1.5)),
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurfaceVariant,
+                        height: 1.5)),
               ),
+            // Expand arrow at bottom center
+            Center(
+              child: AnimatedRotation(
+                turns: _expanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 220),
+                child: Icon(Icons.keyboard_arrow_down,
+                    color: cs.onSurfaceVariant, size: 20),
+              ),
+            ),
+            const SizedBox(height: 4),
           ],
         ),
       ),
