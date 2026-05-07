@@ -10,6 +10,7 @@ import 'download_provider.dart';
 import 'download_service.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
+import 'share_utils.dart';
 
 const _kFinishedOpacity = 0.45;
 
@@ -54,7 +55,7 @@ class EpisodeTile extends StatelessWidget {
             : null,
         onShare: () {
           Navigator.pop(context);
-          final text = '${episode.title}\n${episode.audioUrl}';
+          final text = '${episode.title}\n${ShareUtils.episodeUrl(episode)}';
           SharePlus.instance.share(ShareParams(text: text, subject: episode.title));
         },
         onDeleteDownload: episode.isDownloaded

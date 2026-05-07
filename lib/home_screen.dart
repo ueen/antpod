@@ -11,6 +11,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:app_links/app_links.dart';
+
 import 'app_database.dart';
 import 'episode_tile.dart';
 import 'l10n/app_localizations.dart';
@@ -18,6 +20,7 @@ import 'mini_player.dart';
 import 'podcast_header.dart';
 import 'package:share_plus/share_plus.dart';
 import 'podcast_service.dart';
+import 'share_utils.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Filter state
@@ -104,6 +107,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingPreview = false;
   _FeedMode _previewFrom = _FeedMode.discover;
 
+  StreamSubscription<Uri>? _linkSub;
+
   @override
   void initState() {
     super.initState();
@@ -119,6 +124,23 @@ class _HomeScreenState extends State<HomeScreen> {
         _refresh(db); // async background sync on startup
       }
     });
+
+    final links = AppLinks();
+    links.getInitialLink().then((uri) { if (uri != null) _handleDeepLink(uri); });
+    _linkSub = links.uriLinkStream.listen(_handleDeepLink);
+  }
+
+  void _handleDeepLink(Uri uri) {
+    final feed = uri.queryParameters['feed'];
+    if (feed == null || feed.isEmpty) return;
+    _openPreview(PodcastResult(
+      id: uri.queryParameters['id'] ?? feed,
+      title: uri.queryParameters['title'] ?? '',
+      author: '',
+      description: '',
+      imageUrl: uri.queryParameters['cover'] ?? '',
+      feedUrl: feed,
+    ));
   }
 
   Future<void> _loadFilterPrefs() async {
@@ -149,6 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _linkSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -959,7 +982,7 @@ class _PodcastGridTile extends StatelessWidget {
   });
 
   void _share() {
-    final url = podcast.website ?? podcast.feedUrl;
+    final url = ShareUtils.podcastUrl(podcast);
     SharePlus.instance.share(ShareParams(text: '${podcast.title}\n$url', subject: podcast.title));
   }
 
@@ -1292,7 +1315,7 @@ class _PodcastFilteredFeedState extends State<_PodcastFilteredFeed> {
                 title: widget.podcast!.title,
                 author: widget.podcast!.author,
                 description: widget.podcast!.description,
-                shareUrl: widget.podcast!.website ?? widget.podcast!.feedUrl,
+                shareUrl: ShareUtils.podcastUrl(widget.podcast!),
                 onUnsubscribe: widget.onUnsubscribe,
               ),
             // Filter chips (no Podcasts chip here)
@@ -1603,7 +1626,7 @@ class _PreviewFeedState extends State<_PreviewFeed> {
           title: widget.result.title,
           author: widget.result.author,
           description: widget.result.description,
-          shareUrl: widget.result.feedUrl,
+          shareUrl: ShareUtils.podcastResultUrl(widget.result),
           onSubscribe: widget.onSubscribe,
         ),
         _FilterChipsRow(

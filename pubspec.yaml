@@ -42,6 +42,9 @@ dependencies:
   # Share sheet (episodes + podcasts)
   share_plus: ^13.1.0
 
+  # Deep links (antpod:// scheme + App Links)
+  app_links: ^6.0.0
+
   # Open URLs (shownotes links)
   url_launcher: ^6.3.0
 

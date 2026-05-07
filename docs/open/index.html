@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AntPod</title>
+  <meta name="description" content="Open this podcast or episode in AntPod." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { background: #FFFAF5; color: #1A0E07; font-family: system-ui, -apple-system, sans-serif; min-height: 100dvh; display: flex; flex-direction: column; }
+
+    nav {
+      border-bottom: 1px solid #F0E4D4;
+      background: #FFFAF5;
+      padding: 0.875rem 1.25rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    nav img { border-radius: 50%; }
+    .nav-brand { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.02em; color: #1A0E07; text-decoration: none; }
+
+    main { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1.25rem 3rem; }
+
+    .card {
+      width: 100%; max-width: 420px;
+      background: #fff;
+      border: 1px solid #F0E4D4;
+      border-radius: 1.25rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,.06);
+      overflow: hidden;
+    }
+
+    .cover-wrap { position: relative; background: #F0E4D4; }
+    .cover-wrap img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; }
+    .cover-placeholder {
+      width: 100%; aspect-ratio: 1;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #FFF3E6 0%, #F0E4D4 100%);
+    }
+    .cover-placeholder svg { opacity: 0.35; }
+
+    .body { padding: 1.25rem; }
+
+    .badge {
+      display: none;
+      align-items: center; gap: 0.3rem;
+      background: rgba(255,154,48,.12); color: #C06A00;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      margin-bottom: 0.6rem;
+      width: fit-content;
+    }
+    .podcast-name {
+      font-size: 0.85rem; color: #9E7056; font-weight: 500;
+      margin-bottom: 0.35rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ep-title {
+      font-size: 1.15rem; font-weight: 800; line-height: 1.3;
+      letter-spacing: -0.02em; margin-bottom: 1.25rem;
+    }
+
+    /* Audio player */
+    .player {
+      display: none;
+      background: #FFFAF5; border: 1px solid #F0E4D4;
+      border-radius: 0.75rem; padding: 0.875rem;
+      margin-bottom: 1.125rem;
+    }
+    audio {
+      width: 100%;
+      accent-color: #FF9A30;
+    }
+
+    /* Buttons */
+    .btn-open {
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+      width: 100%;
+      background: #FF9A30; color: #fff;
+      padding: 0.875rem; border-radius: 0.75rem;
+      font-weight: 700; font-size: 1rem;
+      box-shadow: 0 2px 10px rgba(255,154,48,.35);
+      border: none; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      margin-bottom: 0.625rem;
+    }
+    .btn-open:hover { background: #E07E18; transform: translateY(-1px); }
+    .btn-open:active { transform: translateY(0); }
+
+    .btn-other {
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+      width: 100%;
+      background: #fff; color: #5C3A1E;
+      padding: 0.75rem; border-radius: 0.75rem;
+      font-weight: 600; font-size: 0.9rem;
+      border: 1.5px solid #F0E4D4;
+      text-decoration: none;
+      transition: border-color 0.15s;
+    }
+    .btn-other:hover { border-color: #FF9A30; }
+
+    .not-installed {
+      display: none;
+      background: #FFF3E6; border: 1px solid #FFD4A0;
+      border-radius: 0.625rem; padding: 0.75rem 0.875rem;
+      font-size: 0.82rem; color: #7B3F00; line-height: 1.55;
+      margin-bottom: 0.75rem;
+    }
+    .not-installed a { color: #FF9A30; font-weight: 600; text-decoration: none; }
+
+    .divider { border: none; border-top: 1px solid #F0E4D4; margin: 0.75rem 0; }
+
+    .feed-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      margin-top: 0.875rem;
+      padding-top: 0.875rem;
+      border-top: 1px solid #F0E4D4;
+    }
+    .feed-label { font-size: 0.72rem; font-weight: 600; color: #9E7056; white-space: nowrap; }
+    .feed-url {
+      font-size: 0.72rem; color: #9E7056;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      flex: 1;
+    }
+    .feed-url a { color: #9E7056; text-decoration: none; }
+    .feed-url a:hover { color: #FF9A30; }
+
+    footer {
+      border-top: 1px solid #F0E4D4;
+      padding: 1.125rem; text-align: center;
+      font-size: 0.78rem; color: #9E7056;
+    }
+    footer a { color: #FF9A30; text-decoration: none; font-weight: 600; }
+    footer a.muted { color: #9E7056; font-weight: 400; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/"><img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg"
+        width="26" height="26" alt="" /></a>
+    <a href="/" class="nav-brand">AntPod</a>
+  </nav>
+
+  <main>
+    <div class="card">
+
+      <!-- Cover -->
+      <div class="cover-wrap">
+        <div class="cover-placeholder" id="cover-placeholder">
+          <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#FF9A30" stroke-width="1.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="10" r="3"/>
+            <path d="M6.17 18a6 6 0 0 1 11.66 0"/>
+          </svg>
+        </div>
+        <img id="cover-img" src="" alt="" style="display:none;" onload="this.style.display='block'; document.getElementById('cover-placeholder').style.display='none';" onerror="this.style.display='none';" />
+      </div>
+
+      <div class="body">
+        <div class="badge" id="badge">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Episode
+        </div>
+        <div class="podcast-name" id="podcast-name"></div>
+        <h1 class="ep-title" id="ep-title">Loading…</h1>
+
+        <!-- Audio player (episode only) -->
+        <div class="player" id="player">
+          <audio id="audio-el" controls preload="metadata"></audio>
+        </div>
+
+        <!-- Not installed hint -->
+        <div class="not-installed" id="not-installed">
+          AntPod doesn't seem to be installed.
+          <a href="https://github.com/ueen/antpod/releases/latest">Download it here</a> — it's free and open source.
+        </div>
+
+        <!-- Open in AntPod -->
+        <button class="btn-open" id="btn-open" onclick="openInApp()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+          </svg>
+          Open in AntPod
+        </button>
+
+        <hr class="divider" />
+
+        <!-- Other apps via pod.link -->
+        <a class="btn-other" id="btn-podlink" href="https://pod.link/" target="_blank" rel="noopener">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          Use a different app
+        </a>
+
+        <!-- Feed URL -->
+        <div class="feed-row" id="feed-row" style="display:none;">
+          <span class="feed-label">RSS</span>
+          <span class="feed-url" id="feed-url-text"></span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <a href="/">AntPod</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/ueen/antpod" class="muted">Open source</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/ueen/antpod/releases/latest" class="muted">Download</a>
+  </footer>
+
+  <script>
+    const p = new URLSearchParams(location.search);
+    const feed    = p.get('feed')    || '';
+    const guid    = p.get('guid')    || '';
+    const title   = p.get('title')   || '';
+    const podcast = p.get('podcast') || '';
+    const cover   = p.get('cover')   || '';
+    const audio   = p.get('audio')   || '';
+    const podId   = p.get('id')      || '';   // numeric PodcastIndex ID if available
+
+    const isEpisode = !!guid;
+
+    // Page title
+    document.title = (title || (isEpisode ? 'Episode' : 'Podcast')) +
+      (podcast ? ' · ' + podcast : '') + ' — AntPod';
+
+    // Cover
+    if (cover) {
+      const img = document.getElementById('cover-img');
+      img.src = cover;
+      img.alt = title;
+    }
+
+    // Badge + labels
+    if (isEpisode) document.getElementById('badge').style.display = 'inline-flex';
+    if (podcast)   document.getElementById('podcast-name').textContent = podcast;
+    document.getElementById('ep-title').textContent = title || (isEpisode ? 'Episode' : 'Podcast');
+
+    // Audio player
+    if (audio) {
+      const playerEl = document.getElementById('player');
+      document.getElementById('audio-el').src = audio;
+      playerEl.style.display = 'block';
+    }
+
+    // pod.link URL — numeric PodcastIndex ID maps directly to pod.link
+    if (podId && /^\d+$/.test(podId)) {
+      const podLinkUrl = isEpisode
+        ? 'https://pod.link/' + podId + '/episode/' + encodeURIComponent(guid)
+        : 'https://pod.link/' + podId;
+      document.getElementById('btn-podlink').href = podLinkUrl;
+    }
+
+    // Feed URL display
+    if (feed) {
+      const row = document.getElementById('feed-row');
+      const txt = document.getElementById('feed-url-text');
+      txt.innerHTML = '<a href="' + encodeURI(feed) + '" target="_blank" rel="noopener">' +
+        feed.replace(/^https?:\/\//, '') + '</a>';
+      row.style.display = 'flex';
+    }
+
+    // Open in AntPod
+    function openInApp() {
+      const appUrl = 'antpod://open' + location.search;
+      window.location.href = appUrl;
+      // Show hint after 2.5 s if the app didn't intercept the link
+      setTimeout(() => {
+        document.getElementById('not-installed').style.display = 'block';
+      }, 2500);
+    }
+  </script>
+
+</body>
+</html>

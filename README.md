@@ -19,6 +19,8 @@ Inspired by [AntennaPod](https://antennapod.org) — the dinosaur of FOSS podcas
 - **Material You** — adapts to your device's color palette on Android 12+, with light/dark mode
 - **Multilingual** — English, German, Spanish, and French
 
+**🌐 [antpod.eu](https://antpod.eu)**
+
 ## Get AntPod
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="80">](#)
