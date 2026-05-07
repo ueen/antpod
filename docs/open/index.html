@@ -66,7 +66,7 @@
     .player {
       display: none;
       background: #FFFAF5; border: 1px solid #F0E4D4;
-      border-radius: 0.75rem; padding: 0.875rem;
+      border-radius: 0.75rem; padding: 0.75rem 1rem;
       margin-bottom: 1.125rem;
     }
     .cp {
@@ -85,26 +85,38 @@
     .cp-btn:hover { background: #E07E18; transform: scale(1.05); }
     .cp-btn:active { transform: scale(0.97); }
     .cp-btn svg { display: block; }
-    .cp-right { flex: 1; min-width: 0; }
+    .cp-right {
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column; gap: 0.3rem;
+    }
+    /* Tall hit area; visual bar and thumb are centred inside via top:50% */
     .cp-track {
       position: relative;
+      height: 20px;
+      cursor: pointer;
+    }
+    /* Visual bar via pseudo-element — no extra div needed */
+    .cp-track::before {
+      content: '';
+      position: absolute; left: 0; right: 0;
       height: 4px; border-radius: 2px;
       background: #F0E4D4;
-      cursor: pointer;
-      margin-bottom: 0.4rem;
+      top: 50%; transform: translateY(-50%);
     }
     .cp-fill {
-      position: absolute; left: 0; top: 0; bottom: 0;
-      background: #FF9A30; border-radius: 2px;
+      position: absolute; left: 0;
+      height: 4px; border-radius: 2px;
+      background: #FF9A30;
       width: 0%; transition: width 0.25s linear;
+      top: 50%; transform: translateY(-50%);
       pointer-events: none;
     }
     .cp-thumb {
-      position: absolute; top: 50%;
-      width: 12px; height: 12px;
+      position: absolute;
+      width: 13px; height: 13px;
       background: #FF9A30; border-radius: 50%;
       transform: translate(-50%, -50%);
-      left: 0%;
+      left: 0%; top: 50%;
       box-shadow: 0 1px 4px rgba(255,154,48,.5);
       pointer-events: none;
     }
