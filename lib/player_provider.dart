@@ -1,8 +1,15 @@
 // lib/player_provider.dart
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:podcast_search/podcast_search.dart' as ps;
 import 'app_database.dart';
 import 'audio_handler.dart';
+
+class PodcastChapter {
+  final String title;
+  final double startTimeSeconds;
+  const PodcastChapter({required this.title, required this.startTimeSeconds});
+}
 
 class PlayerProvider extends ChangeNotifier {
   final AppDatabase _db;
@@ -13,6 +20,7 @@ class PlayerProvider extends ChangeNotifier {
   Duration _duration = Duration.zero;
   bool _isLoading = false;
   double? _downloadProgress;
+  List<PodcastChapter> _chapters = [];
 
   /// How often to persist the resume position to the DB (every N ms).
   static const _saveIntervalMs = 5000;
@@ -78,6 +86,50 @@ class PlayerProvider extends ChangeNotifier {
           ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
           : 0.0;
 
+  // ── Chapters ──────────────────────────────────────────────────────────────
+
+  List<PodcastChapter> get chapters => _chapters;
+
+  int get currentChapterIndex {
+    if (_chapters.isEmpty) return -1;
+    final posSeconds = _position.inMilliseconds / 1000.0;
+    for (int i = _chapters.length - 1; i >= 0; i--) {
+      if (posSeconds >= _chapters[i].startTimeSeconds) return i;
+    }
+    return 0;
+  }
+
+  PodcastChapter? get currentChapter {
+    final i = currentChapterIndex;
+    return i >= 0 ? _chapters[i] : null;
+  }
+
+  Future<void> seekToChapter(PodcastChapter chapter) =>
+      seekTo(Duration(milliseconds: (chapter.startTimeSeconds * 1000).round()));
+
+  void skipToNextChapter() {
+    final i = currentChapterIndex;
+    if (i >= 0 && i < _chapters.length - 1) seekToChapter(_chapters[i + 1]);
+  }
+
+  void skipToPreviousChapter() {
+    final i = currentChapterIndex;
+    if (i > 0) seekToChapter(_chapters[i - 1]);
+  }
+
+  Future<void> _loadChapters(String? url) async {
+    _chapters = [];
+    if (url == null || url.isEmpty) return;
+    try {
+      final result = await ps.Feed.loadChaptersByUrl(url: url);
+      _chapters = result.chapters
+          .where((c) => c.toc && c.title.isNotEmpty)
+          .map((c) => PodcastChapter(title: c.title, startTimeSeconds: c.startTime))
+          .toList();
+      notifyListeners();
+    } catch (_) {}
+  }
+
   // ── Playback ──────────────────────────────────────────────────────────────
 
   Future<void> play(Episode episode) async {
@@ -88,7 +140,10 @@ class PlayerProvider extends ChangeNotifier {
     _lastSavedMs = 0;
     _currentEpisode = episode;
     _isLoading = true;
+    _position = Duration.zero; // clear residual position so the bar doesn't flash
+    _chapters = [];
     notifyListeners();
+    _loadChapters(episode.chaptersUrl);
 
     // Resume from saved position (ms precision)
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;

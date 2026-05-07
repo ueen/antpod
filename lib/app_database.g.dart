@@ -553,6 +553,12 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("is_subscribed" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _chaptersUrlMeta =
+      const VerificationMeta('chaptersUrl');
+  @override
+  late final GeneratedColumn<String> chaptersUrl = GeneratedColumn<String>(
+      'chapters_url', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -570,7 +576,8 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
         lastPositionMs,
         playbackPositionSeconds,
         isFinished,
-        isSubscribed
+        isSubscribed,
+        chaptersUrl
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -684,6 +691,12 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
           isSubscribed.isAcceptableOrUnknown(
               data['is_subscribed']!, _isSubscribedMeta));
     }
+    if (data.containsKey('chapters_url')) {
+      context.handle(
+          _chaptersUrlMeta,
+          chaptersUrl.isAcceptableOrUnknown(
+              data['chapters_url']!, _chaptersUrlMeta));
+    }
     return context;
   }
 
@@ -726,6 +739,8 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
           .read(DriftSqlType.bool, data['${effectivePrefix}is_finished'])!,
       isSubscribed: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_subscribed'])!,
+      chaptersUrl: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}chapters_url']),
     );
   }
 
@@ -764,6 +779,9 @@ class Episode extends DataClass implements Insertable<Episode> {
   /// true  = from a subscribed podcast
   /// false = temporary Discover episode (deleted after playback)
   final bool isSubscribed;
+
+  /// URL of the PodcastIndex chapters JSON file, if the episode has chapters.
+  final String? chaptersUrl;
   const Episode(
       {required this.id,
       required this.podcastId,
@@ -780,7 +798,8 @@ class Episode extends DataClass implements Insertable<Episode> {
       required this.lastPositionMs,
       required this.playbackPositionSeconds,
       required this.isFinished,
-      required this.isSubscribed});
+      required this.isSubscribed,
+      this.chaptersUrl});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -804,6 +823,9 @@ class Episode extends DataClass implements Insertable<Episode> {
     map['playback_position_seconds'] = Variable<int>(playbackPositionSeconds);
     map['is_finished'] = Variable<bool>(isFinished);
     map['is_subscribed'] = Variable<bool>(isSubscribed);
+    if (!nullToAbsent || chaptersUrl != null) {
+      map['chapters_url'] = Variable<String>(chaptersUrl);
+    }
     return map;
   }
 
@@ -829,6 +851,9 @@ class Episode extends DataClass implements Insertable<Episode> {
       playbackPositionSeconds: Value(playbackPositionSeconds),
       isFinished: Value(isFinished),
       isSubscribed: Value(isSubscribed),
+      chaptersUrl: chaptersUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chaptersUrl),
     );
   }
 
@@ -853,6 +878,7 @@ class Episode extends DataClass implements Insertable<Episode> {
           serializer.fromJson<int>(json['playbackPositionSeconds']),
       isFinished: serializer.fromJson<bool>(json['isFinished']),
       isSubscribed: serializer.fromJson<bool>(json['isSubscribed']),
+      chaptersUrl: serializer.fromJson<String?>(json['chaptersUrl']),
     );
   }
   @override
@@ -876,6 +902,7 @@ class Episode extends DataClass implements Insertable<Episode> {
           serializer.toJson<int>(playbackPositionSeconds),
       'isFinished': serializer.toJson<bool>(isFinished),
       'isSubscribed': serializer.toJson<bool>(isSubscribed),
+      'chaptersUrl': serializer.toJson<String?>(chaptersUrl),
     };
   }
 
@@ -895,7 +922,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           int? lastPositionMs,
           int? playbackPositionSeconds,
           bool? isFinished,
-          bool? isSubscribed}) =>
+          bool? isSubscribed,
+          Value<String?> chaptersUrl = const Value.absent()}) =>
       Episode(
         id: id ?? this.id,
         podcastId: podcastId ?? this.podcastId,
@@ -915,6 +943,7 @@ class Episode extends DataClass implements Insertable<Episode> {
             playbackPositionSeconds ?? this.playbackPositionSeconds,
         isFinished: isFinished ?? this.isFinished,
         isSubscribed: isSubscribed ?? this.isSubscribed,
+        chaptersUrl: chaptersUrl.present ? chaptersUrl.value : this.chaptersUrl,
       );
   Episode copyWithCompanion(EpisodesCompanion data) {
     return Episode(
@@ -953,6 +982,8 @@ class Episode extends DataClass implements Insertable<Episode> {
       isSubscribed: data.isSubscribed.present
           ? data.isSubscribed.value
           : this.isSubscribed,
+      chaptersUrl:
+          data.chaptersUrl.present ? data.chaptersUrl.value : this.chaptersUrl,
     );
   }
 
@@ -974,7 +1005,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           ..write('lastPositionMs: $lastPositionMs, ')
           ..write('playbackPositionSeconds: $playbackPositionSeconds, ')
           ..write('isFinished: $isFinished, ')
-          ..write('isSubscribed: $isSubscribed')
+          ..write('isSubscribed: $isSubscribed, ')
+          ..write('chaptersUrl: $chaptersUrl')
           ..write(')'))
         .toString();
   }
@@ -996,7 +1028,8 @@ class Episode extends DataClass implements Insertable<Episode> {
       lastPositionMs,
       playbackPositionSeconds,
       isFinished,
-      isSubscribed);
+      isSubscribed,
+      chaptersUrl);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1016,7 +1049,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           other.lastPositionMs == this.lastPositionMs &&
           other.playbackPositionSeconds == this.playbackPositionSeconds &&
           other.isFinished == this.isFinished &&
-          other.isSubscribed == this.isSubscribed);
+          other.isSubscribed == this.isSubscribed &&
+          other.chaptersUrl == this.chaptersUrl);
 }
 
 class EpisodesCompanion extends UpdateCompanion<Episode> {
@@ -1036,6 +1070,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
   final Value<int> playbackPositionSeconds;
   final Value<bool> isFinished;
   final Value<bool> isSubscribed;
+  final Value<String?> chaptersUrl;
   final Value<int> rowid;
   const EpisodesCompanion({
     this.id = const Value.absent(),
@@ -1054,6 +1089,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.playbackPositionSeconds = const Value.absent(),
     this.isFinished = const Value.absent(),
     this.isSubscribed = const Value.absent(),
+    this.chaptersUrl = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   EpisodesCompanion.insert({
@@ -1073,6 +1109,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.playbackPositionSeconds = const Value.absent(),
     this.isFinished = const Value.absent(),
     this.isSubscribed = const Value.absent(),
+    this.chaptersUrl = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         podcastId = Value(podcastId),
@@ -1099,6 +1136,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     Expression<int>? playbackPositionSeconds,
     Expression<bool>? isFinished,
     Expression<bool>? isSubscribed,
+    Expression<String>? chaptersUrl,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1119,6 +1157,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
         'playback_position_seconds': playbackPositionSeconds,
       if (isFinished != null) 'is_finished': isFinished,
       if (isSubscribed != null) 'is_subscribed': isSubscribed,
+      if (chaptersUrl != null) 'chapters_url': chaptersUrl,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1140,6 +1179,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       Value<int>? playbackPositionSeconds,
       Value<bool>? isFinished,
       Value<bool>? isSubscribed,
+      Value<String?>? chaptersUrl,
       Value<int>? rowid}) {
     return EpisodesCompanion(
       id: id ?? this.id,
@@ -1159,6 +1199,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
           playbackPositionSeconds ?? this.playbackPositionSeconds,
       isFinished: isFinished ?? this.isFinished,
       isSubscribed: isSubscribed ?? this.isSubscribed,
+      chaptersUrl: chaptersUrl ?? this.chaptersUrl,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1215,6 +1256,9 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     if (isSubscribed.present) {
       map['is_subscribed'] = Variable<bool>(isSubscribed.value);
     }
+    if (chaptersUrl.present) {
+      map['chapters_url'] = Variable<String>(chaptersUrl.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1240,6 +1284,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
           ..write('playbackPositionSeconds: $playbackPositionSeconds, ')
           ..write('isFinished: $isFinished, ')
           ..write('isSubscribed: $isSubscribed, ')
+          ..write('chaptersUrl: $chaptersUrl, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1486,6 +1531,7 @@ typedef $$EpisodesTableCreateCompanionBuilder = EpisodesCompanion Function({
   Value<int> playbackPositionSeconds,
   Value<bool> isFinished,
   Value<bool> isSubscribed,
+  Value<String?> chaptersUrl,
   Value<int> rowid,
 });
 typedef $$EpisodesTableUpdateCompanionBuilder = EpisodesCompanion Function({
@@ -1505,6 +1551,7 @@ typedef $$EpisodesTableUpdateCompanionBuilder = EpisodesCompanion Function({
   Value<int> playbackPositionSeconds,
   Value<bool> isFinished,
   Value<bool> isSubscribed,
+  Value<String?> chaptersUrl,
   Value<int> rowid,
 });
 
@@ -1569,6 +1616,9 @@ class $$EpisodesTableFilterComposer
 
   ColumnFilters<bool> get isSubscribed => $composableBuilder(
       column: $table.isSubscribed, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get chaptersUrl => $composableBuilder(
+      column: $table.chaptersUrl, builder: (column) => ColumnFilters(column));
 }
 
 class $$EpisodesTableOrderingComposer
@@ -1635,6 +1685,9 @@ class $$EpisodesTableOrderingComposer
   ColumnOrderings<bool> get isSubscribed => $composableBuilder(
       column: $table.isSubscribed,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get chaptersUrl => $composableBuilder(
+      column: $table.chaptersUrl, builder: (column) => ColumnOrderings(column));
 }
 
 class $$EpisodesTableAnnotationComposer
@@ -1693,6 +1746,9 @@ class $$EpisodesTableAnnotationComposer
 
   GeneratedColumn<bool> get isSubscribed => $composableBuilder(
       column: $table.isSubscribed, builder: (column) => column);
+
+  GeneratedColumn<String> get chaptersUrl => $composableBuilder(
+      column: $table.chaptersUrl, builder: (column) => column);
 }
 
 class $$EpisodesTableTableManager extends RootTableManager<
@@ -1734,6 +1790,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             Value<int> playbackPositionSeconds = const Value.absent(),
             Value<bool> isFinished = const Value.absent(),
             Value<bool> isSubscribed = const Value.absent(),
+            Value<String?> chaptersUrl = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               EpisodesCompanion(
@@ -1753,6 +1810,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             playbackPositionSeconds: playbackPositionSeconds,
             isFinished: isFinished,
             isSubscribed: isSubscribed,
+            chaptersUrl: chaptersUrl,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1772,6 +1830,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             Value<int> playbackPositionSeconds = const Value.absent(),
             Value<bool> isFinished = const Value.absent(),
             Value<bool> isSubscribed = const Value.absent(),
+            Value<String?> chaptersUrl = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               EpisodesCompanion.insert(
@@ -1791,6 +1850,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             playbackPositionSeconds: playbackPositionSeconds,
             isFinished: isFinished,
             isSubscribed: isSubscribed,
+            chaptersUrl: chaptersUrl,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

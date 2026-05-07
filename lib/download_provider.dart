@@ -109,6 +109,30 @@ class DownloadProvider extends ChangeNotifier {
     }
   }
 
+  // ── Cancel in-progress download ───────────────────────────────────────────
+
+  Future<void> cancelDownload(String taskId, String episodeId) async {
+    try { await FlutterDownloader.cancel(taskId: taskId); } catch (_) {}
+
+    // Delete the partial file (same path the downloader was writing to)
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final fileName = '${episodeId.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
+      final file = File(p.join(dir.path, 'episodes', fileName));
+      if (file.existsSync()) await file.delete();
+    } catch (_) {}
+
+    // Clear DB state
+    await _db.updateEpisodeDownload(episodeId, false, null, null);
+
+    _progress.remove(taskId);
+    if (_progress.isEmpty) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+    }
+    notifyListeners();
+  }
+
   // ── Startup reconciliation ─────────────────────────────────────────────────
 
   Future<void> _reconcileCompletedDownloads() async {

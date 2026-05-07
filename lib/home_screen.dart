@@ -12,11 +12,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_database.dart';
-import 'download_service.dart';
 import 'episode_tile.dart';
 import 'l10n/app_localizations.dart';
 import 'mini_player.dart';
-import 'player_provider.dart';
 import 'podcast_header.dart';
 import 'package:share_plus/share_plus.dart';
 import 'podcast_service.dart';
@@ -103,7 +101,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Preview (unsubscribed podcast header + episodes)
   PodcastResult? _previewResult;
-  List<_DiscoverEpisode> _previewEpisodes = [];
   bool _loadingPreview = false;
   _FeedMode _previewFrom = _FeedMode.discover;
 
@@ -185,33 +182,23 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openPreview(PodcastResult result) async {
     setState(() {
       _previewResult = result;
-      _previewEpisodes = [];
       _loadingPreview = true;
       _previewFrom = _mode;
       _mode = _FeedMode.previewPodcast;
     });
+    final db = context.read<AppDatabase>();
     final data = await PodcastService.loadFeed(result.feedUrl);
     if (!mounted) return;
-    setState(() {
-      _loadingPreview = false;
-      if (data != null) {
-        _previewEpisodes = data.episodes.map((e) => _DiscoverEpisode(
-          id: e.id.value,
-          title: e.title.value,
-          description: e.description.value,
-          audioUrl: e.audioUrl.value,
-          durationSeconds: e.durationSeconds.value,
-          publishDate: e.publishDate.value,
-        )).toList();
-      }
-    });
+    if (data != null) {
+      await db.insertTempEpisodes(data.episodes);
+    }
+    if (mounted) setState(() => _loadingPreview = false);
   }
 
   void _exitPreview() {
     setState(() {
       _mode = _previewFrom;
       _previewResult = null;
-      _previewEpisodes = [];
     });
   }
 
@@ -281,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 16,
-                                      color: cs.onSurface,
+                                      color: cs.onPrimaryContainer,
                                       letterSpacing: -0.4,
                                     )),
                                 ],
@@ -294,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 'A nimble scout hatched from the spirit of the grand old AntennaPod.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: cs.onSurface,
+                                  color: cs.onPrimaryContainer,
                                   fontSize: 12.5,
                                   height: 1.6,
                                 ),
@@ -310,10 +297,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 14, vertical: 8),
                                   decoration: BoxDecoration(
-                                    color: cs.surfaceContainerHighest,
+                                    color: cs.onPrimaryContainer.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                        color: cs.outlineVariant, width: 1),
+                                        color: cs.onPrimaryContainer.withValues(alpha: 0.25),
+                                        width: 1),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -322,13 +310,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                         _kGithubSvg,
                                         width: 15, height: 15,
                                         colorFilter: ColorFilter.mode(
-                                            cs.onSurface, BlendMode.srcIn),
+                                            cs.onPrimaryContainer, BlendMode.srcIn),
                                       ),
                                       const SizedBox(width: 7),
                                       Text(
                                         'github.com/ueen/antpod',
                                         style: TextStyle(
-                                          color: cs.onSurface,
+                                          color: cs.onPrimaryContainer,
                                           fontSize: 12,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -372,16 +360,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadDiscover() async {
     final db = context.read<AppDatabase>();
+    final langCode = Localizations.localeOf(context).languageCode;
+    final lang = langCode == 'en' ? 'en' : '$langCode,en';
     setState(() { _loadingTrending = true; _loadingRec = true; _trendingError = null; });
     try {
-      final t = await PodcastService.trending(max: 10);
+      final t = await PodcastService.trending(max: 10, lang: lang);
       if (mounted) setState(() { _trending = t; _loadingTrending = false; });
     } catch (e) {
       if (mounted) setState(() { _trendingError = e.toString(); _loadingTrending = false; });
     }
     try {
       final subs = await db.getAllPodcasts();
-      final r = await PodcastService.recommendations(subscribed: subs, max: 10);
+      final r = await PodcastService.recommendations(subscribed: subs, max: 10, lang: lang);
       if (mounted) setState(() { _recommended = r; _loadingRec = false; });
     } catch (_) {
       if (mounted) setState(() { _loadingRec = false; });
@@ -392,66 +382,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _subscribe(PodcastResult result) async {
     final db = context.read<AppDatabase>();
-    final l10n = AppLocalizations.of(context)!;
+    // Insert podcast metadata and mark any temp episodes as subscribed (fast)
     await db.insertPodcast(result.toCompanion());
+    await db.markEpisodesSubscribed(result.feedUrl);
+    // Fetch latest feed to get any new episodes
     final data = await PodcastService.loadFeed(result.feedUrl);
     if (data != null) await db.insertEpisodes(data.episodes);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.subscribed(result.title))));
-    }
   }
 
-  // ── Play from Discover (temp episode) ────────────────────────────────────
-
-  Future<void> _playTempEpisode(PodcastResult podcast, _DiscoverEpisode ep) async {
-    final db = context.read<AppDatabase>();
-    final player = context.read<PlayerProvider>();
-
-    final companion = EpisodesCompanion(
-      id: Value(ep.id),
-      podcastId: Value(podcast.feedUrl),
-      podcastTitle: Value(podcast.title),
-      podcastImageUrl: Value(podcast.imageUrl),
-      title: Value(ep.title),
-      description: Value(ep.description),
-      audioUrl: Value(ep.audioUrl),
-      durationSeconds: Value(ep.durationSeconds),
-      publishDate: Value(ep.publishDate),
-      isSubscribed: const Value(false),
-    );
-    await db.insertTempEpisode(companion);
-    final dbEp = await db.getEpisode(ep.id);
-    if (dbEp != null && mounted) await player.play(dbEp);
-  }
-
-  // ── Download from Discover ────────────────────────────────────────────────
-
-  Future<void> _downloadTempEpisode(
-      PodcastResult podcast, _DiscoverEpisode ep) async {
-    final db = context.read<AppDatabase>();
-    final companion = EpisodesCompanion(
-      id: Value(ep.id),
-      podcastId: Value(podcast.feedUrl),
-      podcastTitle: Value(podcast.title),
-      podcastImageUrl: Value(podcast.imageUrl),
-      title: Value(ep.title),
-      description: Value(ep.description),
-      audioUrl: Value(ep.audioUrl),
-      durationSeconds: Value(ep.durationSeconds),
-      publishDate: Value(ep.publishDate),
-      isSubscribed: const Value(false),
-    );
-    await db.insertTempEpisode(companion);
-    await DownloadService.downloadEpisode(
-      episodeId: ep.id,
-      audioUrl: ep.audioUrl,
-      episodeTitle: ep.title,
-      db: db,
-    );
-  }
-
-  // ── Cover tap → podcast filter ────────────────────────────────────────────
+  // ── Cover tap → podcast filter (or preview for temp episodes) ───────────
 
   Future<void> _onCoverTap(Episode episode, AppDatabase db) async {
     if (_filterPodcastId == episode.podcastId) {
@@ -462,6 +401,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final all = await db.getAllPodcasts();
     final pod = all.where((p) => p.id == episode.podcastId).firstOrNull;
+    if (pod == null) {
+      // Temp episode — open preview so user can subscribe
+      _openPreview(PodcastResult(
+        id: episode.podcastId,
+        title: episode.podcastTitle,
+        author: '',
+        description: '',
+        imageUrl: episode.podcastImageUrl,
+        feedUrl: episode.podcastId,
+      ));
+      return;
+    }
     setState(() {
       _mode = _FeedMode.podcastFilter;
       _filterPodcastId = episode.podcastId;
@@ -658,15 +609,15 @@ class _HomeScreenState extends State<HomeScreen> {
       case _FeedMode.previewPodcast:
         return _PreviewFeed(
           result: _previewResult!,
-          episodes: _previewEpisodes,
           loading: _loadingPreview,
           cs: cs, l10n: l10n,
-          onSubscribe: () async {
-            await _subscribe(_previewResult!);
+          onSubscribe: () {
+            final result = _previewResult!;
             _exitToFeed();
+            _subscribe(result).then((_) {
+              if (mounted) _refresh(context.read<AppDatabase>());
+            });
           },
-          onPlay: (ep) => _playTempEpisode(_previewResult!, ep),
-          onDownload: (ep) => _downloadTempEpisode(_previewResult!, ep),
         );
 
       case _FeedMode.podcastFilter:
@@ -822,14 +773,15 @@ class _FilterChipsRow extends StatelessWidget {
   final ColorScheme cs;
   final ValueChanged<String> onToggle;
   final bool showPodcastsChip;
-
-  final bool showContentFilters;
+  final bool showNewChip;
+  final bool showDownloadedChip;
 
   const _FilterChipsRow({
     required this.filter, required this.l10n,
     required this.cs, required this.onToggle,
     this.showPodcastsChip = true,
-    this.showContentFilters = true,
+    this.showNewChip = true,
+    this.showDownloadedChip = true,
   });
 
   @override
@@ -840,22 +792,24 @@ class _FilterChipsRow extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         children: [
-          if (showContentFilters) ...[
+          if (showNewChip) ...[
             _Chip(label: l10n.filterNew,
                 active: filter.newOnly && !filter.podcasts,
                 cs: cs, icon: Icons.headphones,
                 onTap: () => onToggle('new')),
             const SizedBox(width: 8),
+          ],
+          if (showDownloadedChip) ...[
             _Chip(label: l10n.filterDownloaded,
                 active: filter.downloaded && !filter.podcasts,
                 cs: cs, icon: Icons.download_done,
                 onTap: () => onToggle('dl')),
             const SizedBox(width: 8),
-            _Chip(label: l10n.filterListened,
-                active: filter.history && !filter.podcasts,
-                cs: cs, icon: Icons.check_circle_outline,
-                onTap: () => onToggle('history')),
           ],
+          _Chip(label: l10n.filterListened,
+              active: filter.history && !filter.podcasts,
+              cs: cs, icon: Icons.check_circle_outline,
+              onTap: () => onToggle('history')),
           if (showPodcastsChip) ...[
             const SizedBox(width: 8),
             _Chip(label: l10n.filterPodcasts,
@@ -1067,7 +1021,7 @@ class _EpisodeFeed extends StatefulWidget {
 }
 
 class _EpisodeFeedState extends State<_EpisodeFeed> {
-  final _listKey = GlobalKey<AnimatedListState>();
+  GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
   List<Episode> _displayed = [];
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
@@ -1088,7 +1042,13 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       _sub?.cancel();
       _subscribe();
     } else if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
-      _diffUpdate(_applyFilters(_raw));
+      // Sort/filter changed — reset the list entirely so reordering is applied.
+      // diffUpdate only handles insertions/removals, not positional changes.
+      final filtered = _applyFilters(_raw);
+      setState(() {
+        _listKey = GlobalKey<AnimatedListState>();
+        _displayed = List.of(filtered);
+      });
     }
   }
 
@@ -1101,7 +1061,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   Stream<List<Episode>> get _stream {
     if (widget.filter.history) return widget.db.watchFinishedEpisodes();
     if (widget.filter.newOnly) return widget.db.watchUnfinishedEpisodes();
-    return widget.db.watchAllSubscribedEpisodes();
+    return widget.db.watchAllFeedEpisodes();
   }
 
   void _subscribe() {
@@ -1353,17 +1313,6 @@ class _PodcastFilteredFeedState extends State<_PodcastFilteredFeed> {
 // Discover list
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _DiscoverEpisode {
-  final String id, title, description, audioUrl;
-  final int durationSeconds;
-  final DateTime publishDate;
-  const _DiscoverEpisode({
-    required this.id, required this.title, required this.description,
-    required this.audioUrl, required this.durationSeconds,
-    required this.publishDate,
-  });
-}
-
 class _DiscoverList extends StatefulWidget {
   final String searchQuery;
   final List<PodcastResult> trending;
@@ -1573,24 +1522,20 @@ class _DiscoverPodcastTileState extends State<_DiscoverPodcastTile> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Preview feed (unsubscribed podcast)
+// Preview feed (unsubscribed podcast) — DB-backed, uses EpisodeTile
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PreviewFeed extends StatefulWidget {
   final PodcastResult result;
-  final List<_DiscoverEpisode> episodes;
   final bool loading;
   final ColorScheme cs;
   final AppLocalizations l10n;
   final VoidCallback onSubscribe;
-  final Future<void> Function(_DiscoverEpisode) onPlay;
-  final Future<void> Function(_DiscoverEpisode) onDownload;
 
   const _PreviewFeed({
-    required this.result, required this.episodes, required this.loading,
+    required this.result, required this.loading,
     required this.cs, required this.l10n,
     required this.onSubscribe,
-    required this.onPlay, required this.onDownload,
   });
 
   @override
@@ -1602,6 +1547,10 @@ class _PreviewFeedState extends State<_PreviewFeed> {
 
   void _onToggle(String key) => setState(() {
     switch (key) {
+      case 'history':
+        _filter = _filter.copyWith(history: !_filter.history, newOnly: false);
+      case 'dl':
+        _filter = _filter.copyWith(downloaded: !_filter.downloaded);
       case 'az':
         _filter = _filter.copyWith(
           sort: _filter.sort == _SortMode.alphabetical
@@ -1613,29 +1562,24 @@ class _PreviewFeedState extends State<_PreviewFeed> {
     }
   });
 
-  String _fmt(int s) {
-    if (s <= 0) return '';
-    final h = s ~/ 3600;
-    final m = (s % 3600) ~/ 60;
-    return h > 0 ? '${h}h ${m}min' : '${m}min';
-  }
-
-  List<_DiscoverEpisode> get _sorted {
+  List<Episode> _applyFilters(List<Episode> raw) {
+    var eps = raw;
+    if (_filter.history) eps = eps.where((e) => e.isFinished).toList();
+    if (_filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
     if (_filter.sort == _SortMode.alphabetical) {
-      return List.of(widget.episodes)
+      eps = List.of(eps)
         ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     } else if (_filter.sort == _SortMode.oldest) {
-      return List.of(widget.episodes)
-        ..sort((a, b) => a.publishDate.compareTo(b.publishDate));
+      eps = List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
     }
-    return widget.episodes;
+    return eps;
   }
 
   @override
   Widget build(BuildContext context) {
+    final db = context.read<AppDatabase>();
     final cs = widget.cs;
     final l10n = widget.l10n;
-    final eps = _sorted;
 
     return Column(
       children: [
@@ -1644,109 +1588,34 @@ class _PreviewFeedState extends State<_PreviewFeed> {
           filter: _filter, l10n: l10n, cs: cs,
           onToggle: _onToggle,
           showPodcastsChip: false,
-          showContentFilters: false,
+          showNewChip: false,
+          showDownloadedChip: false,
         ),
         Expanded(
           child: widget.loading
               ? const Center(child: CircularProgressIndicator())
-              : eps.isEmpty
-                  ? Center(child: Text(l10n.emptyFeedTitle,
-                      style: TextStyle(color: cs.onSurfaceVariant)))
-                  : ListView.separated(
+              : StreamBuilder<List<Episode>>(
+                  stream: db.watchEpisodesForPodcast(widget.result.feedUrl),
+                  builder: (ctx, snap) {
+                    final eps = _applyFilters(snap.data ?? []);
+                    if (eps.isEmpty) {
+                      return Center(child: Text(l10n.emptyFeedTitle,
+                          style: TextStyle(color: cs.onSurfaceVariant)));
+                    }
+                    return ListView.separated(
                       itemCount: eps.length,
                       separatorBuilder: (_, __) => Divider(
                           height: 1,
                           color: cs.outlineVariant.withValues(alpha: 0.5),
                           indent: 88),
-                      itemBuilder: (_, i) {
-                        final ep = eps[i];
-                        return Dismissible(
-                          key: Key('prev_${ep.id}'),
-                          direction: DismissDirection.endToStart,
-                          confirmDismiss: (_) async {
-                            await widget.onDownload(ep);
-                            return false;
-                          },
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: 24),
-                            color: cs.primary,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.download, color: cs.onPrimary, size: 28),
-                                const SizedBox(height: 4),
-                                Text(l10n.downloading,
-                                    style: TextStyle(color: cs.onPrimary,
-                                        fontSize: 11, fontWeight: FontWeight.w600)),
-                              ],
-                            ),
-                          ),
-                          child: InkWell(
-                            onTap: () => widget.onPlay(ep),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
-                              child: Row(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: CachedNetworkImage(
-                                      imageUrl: widget.result.imageUrl,
-                                      width: 60, height: 60, fit: BoxFit.cover,
-                                      errorWidget: (_, __, ___) => Container(
-                                        width: 60, height: 60,
-                                        color: cs.surfaceContainerHighest,
-                                        child: const Icon(Icons.podcasts, size: 28),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(ep.title,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 14,
-                                                color: cs.onSurface)),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          [
-                                            '${ep.publishDate.day}.${ep.publishDate.month}.${ep.publishDate.year}',
-                                            if (_fmt(ep.durationSeconds).isNotEmpty)
-                                              _fmt(ep.durationSeconds),
-                                          ].join('  ·  '),
-                                          style: TextStyle(
-                                              fontSize: 12,
-                                              color: cs.onSurfaceVariant),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // Play button
-                                  Container(
-                                    width: 44, height: 44,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: cs.outlineVariant, width: 1.5),
-                                    ),
-                                    child: Icon(Icons.play_arrow,
-                                        size: 22, color: cs.onSurface),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                      itemBuilder: (_, i) => EpisodeTile(
+                        episode: eps[i],
+                        onCoverTap: () {},
+                        isSubscribedContext: false,
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -1780,10 +1649,6 @@ class _BubblePainter extends CustomPainter {
     const triH = 11.0;
     const triX = 36.0; // triangle tip x, aligned near top-left logo
 
-    final fill = Paint()
-      ..color = cs.surfaceContainerHigh
-      ..style = PaintingStyle.fill;
-
     final path = Path()
       ..moveTo(r, triH)
       ..lineTo(triX - triW / 2, triH)
@@ -1799,7 +1664,16 @@ class _BubblePainter extends CustomPainter {
       ..arcToPoint(Offset(r, triH), radius: const Radius.circular(r))
       ..close();
 
-    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.18), 10, false);
+    final bounds = Rect.fromLTWH(0, 0, size.width, size.height);
+    final fill = Paint()
+      ..shader = LinearGradient(
+        colors: [cs.primaryContainer, cs.secondaryContainer, cs.tertiaryContainer],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(bounds)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawShadow(path, cs.primary.withValues(alpha: 0.3), 12, false);
     canvas.drawPath(path, fill);
   }
 
@@ -1832,11 +1706,14 @@ class _AntWalkerState extends State<_AntWalker> with TickerProviderStateMixin {
     _legCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 420),
-    )..repeat();
+    );
+    // _legCtrl only runs during a walk — stopped the rest of the time
+    // so it doesn't hold a continuous animation frame callback.
 
     _pathCtrl = AnimationController(vsync: this);
     _pathCtrl.addStatusListener((s) {
       if (s == AnimationStatus.completed && mounted) {
+        _legCtrl.stop();
         setState(() => _walking = false);
         _scheduleNext();
       }
@@ -1854,7 +1731,8 @@ class _AntWalkerState extends State<_AntWalker> with TickerProviderStateMixin {
   }
 
   void _scheduleNext() {
-    final ms = 6000 + _rng.nextInt(14000); // 6–20 s gap between walks
+    // Random gap between 5 and 10 minutes
+    final ms = 300000 + _rng.nextInt(300001);
     _timer = Timer(Duration(milliseconds: ms), () {
       if (mounted) _startWalk();
     });
@@ -1865,30 +1743,31 @@ class _AntWalkerState extends State<_AntWalker> with TickerProviderStateMixin {
     if (_walking) return;
     final w = MediaQuery.sizeOf(context).width;
     const toolbarH = 56.0;
+    const margin = 10.0;
 
     final fromLeft = _rng.nextBool();
-    final startX = fromLeft ? -20.0 : w + 20;
+    final startX = fromLeft ? -20.0 : w + 20.0;
     final endX   = fromLeft ? w + 20.0 : -20.0;
-    final startY = 14 + _rng.nextDouble() * (toolbarH - 28);
-    final endY   = 14 + _rng.nextDouble() * (toolbarH - 28);
 
-    // Two bezier control points for a gently curved, organic path
-    final cp1 = Offset(
-      startX + (endX - startX) * (0.15 + _rng.nextDouble() * 0.2),
-      14 + _rng.nextDouble() * (toolbarH - 28),
-    );
-    final cp2 = Offset(
-      startX + (endX - startX) * (0.65 + _rng.nextDouble() * 0.2),
-      14 + _rng.nextDouble() * (toolbarH - 28),
-    );
+    double randY() => margin + _rng.nextDouble() * (toolbarH - 2 * margin);
 
-    _path = _AntPath(
-      p0: Offset(startX, startY),
-      cp1: cp1, cp2: cp2,
-      p1: Offset(endX, endY),
-    );
-    _pathCtrl.duration = Duration(milliseconds: 3500 + _rng.nextInt(3000));
+    // 2–4 interior waypoints for an organic, meandering path
+    final numInterior = 2 + _rng.nextInt(3);
+    final pts = <Offset>[Offset(startX, randY())];
+    for (int i = 0; i < numInterior; i++) {
+      final baseFrac = (i + 1) / (numInterior + 1);
+      // Slight X jitter so progress isn't perfectly linear
+      final xJitter = (endX - startX) * (_rng.nextDouble() - 0.5) * 0.16;
+      final x = (startX + (endX - startX) * baseFrac + xJitter)
+          .clamp(math.min(startX, endX), math.max(startX, endX)) as double;
+      pts.add(Offset(x, randY()));
+    }
+    pts.add(Offset(endX, randY()));
+
+    _path = _AntPath(pts);
+    _pathCtrl.duration = Duration(milliseconds: 4000 + _rng.nextInt(3000));
     _pathCtrl.reset();
+    _legCtrl.repeat();
     setState(() => _walking = true);
     _pathCtrl.forward();
   }
@@ -1924,25 +1803,59 @@ class _AntWalkerState extends State<_AntWalker> with TickerProviderStateMixin {
   }
 }
 
-// Cubic-bezier path with tangent for rotation
+// Multi-waypoint Catmull-Rom spline — smooth curves through arbitrary waypoints.
 class _AntPath {
-  final Offset p0, cp1, cp2, p1;
-  const _AntPath({required this.p0, required this.cp1, required this.cp2, required this.p1});
+  final List<Offset> _pts;
+  final List<double> _cumT; // cumulative t per segment (straight-line length proxy)
+
+  _AntPath(List<Offset> pts)
+      : _pts = pts,
+        _cumT = _buildCumT(pts);
+
+  static List<double> _buildCumT(List<Offset> pts) {
+    double total = 0;
+    for (int i = 0; i < pts.length - 1; i++) {
+      total += (pts[i + 1] - pts[i]).distance;
+    }
+    final result = [0.0];
+    double acc = 0;
+    for (int i = 0; i < pts.length - 1; i++) {
+      acc += (pts[i + 1] - pts[i]).distance;
+      result.add(total > 0 ? acc / total : (i + 1) / (pts.length - 1).toDouble());
+    }
+    return result;
+  }
+
+  // Catmull-Rom bezier control points for segment i → i+1
+  (Offset, Offset) _cp(int i) {
+    final p0 = _pts[i];
+    final p1 = _pts[i + 1];
+    final prev = i > 0 ? _pts[i - 1] : p0 * 2 - p1;
+    final next = i + 2 < _pts.length ? _pts[i + 2] : p1 * 2 - p0;
+    return (p0 + (p1 - prev) * (1 / 6), p1 - (next - p0) * (1 / 6));
+  }
 
   Offset evaluate(double t) {
-    final s = 1 - t;
-    return p0 * (s * s * s) +
-           cp1 * (3 * s * s * t) +
-           cp2 * (3 * s * t * t) +
-           p1  * (t * t * t);
+    t = t.clamp(0.0, 1.0);
+    for (int i = 0; i < _pts.length - 1; i++) {
+      if (t <= _cumT[i + 1] || i == _pts.length - 2) {
+        final span = _cumT[i + 1] - _cumT[i];
+        final u = span > 1e-6 ? ((t - _cumT[i]) / span).clamp(0.0, 1.0) : 0.0;
+        final (cp1, cp2) = _cp(i);
+        final p0 = _pts[i]; final p1 = _pts[i + 1];
+        final s = 1 - u;
+        return p0 * (s*s*s) + cp1 * (3*s*s*u) + cp2 * (3*s*u*u) + p1 * (u*u*u);
+      }
+    }
+    return _pts.last;
   }
 
   double angle(double t) {
-    final s = 1 - t;
-    final d = (cp1 - p0) * (3 * s * s) +
-              (cp2 - cp1) * (6 * s * t) +
-              (p1  - cp2) * (3 * t * t);
-    // +π/2 because the ant body is drawn facing -y (upward in local space)
+    const dt = 0.002;
+    final a = evaluate((t - dt).clamp(0.0, 1.0));
+    final b = evaluate((t + dt).clamp(0.0, 1.0));
+    final d = b - a;
+    if (d.distanceSquared < 1e-10) return 0;
     return math.atan2(d.dy, d.dx) + math.pi / 2;
   }
 }

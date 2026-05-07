@@ -1,13 +1,11 @@
 // lib/mini_player.dart
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
-// gestures and url_launcher are used by _ShowNotes below
 
 class MiniPlayer extends StatefulWidget {
   const MiniPlayer({super.key});
@@ -78,7 +76,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle — Hero so it morphs up into the sheet handle
+          // Drag handle
           Hero(
             tag: 'player_handle',
             child: Material(
@@ -206,7 +204,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 }
 
-// ── Shared skip-icon helpers (used by mini player and bottom sheet) ───────────
+// Shared skip-icon helpers (used by mini player and bottom sheet)
 
 IconData _skipRewindIcon(int s) {
   if (s <= 5) return Icons.replay_5;
@@ -231,7 +229,7 @@ class _PlayerSheet extends StatelessWidget {
   }
 
   String _fmtSpeed(double speed) =>
-      speed % 1 == 0 ? '${speed.toInt()}×' : '$speed×';
+      speed % 1 == 0 ? '${speed.toInt()}x' : '${speed}x';
 
   void _share(BuildContext context, dynamic ep) {
     final text = '${ep.title}\n${ep.audioUrl}';
@@ -322,6 +320,13 @@ class _PlayerSheet extends StatelessWidget {
                 style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
             const SizedBox(height: 24),
 
+            // Chapter navigation — only shown when the episode has chapters
+            if (player.chapters.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              _ChapterNavRow(player: player),
+              const SizedBox(height: 4),
+            ],
+
             SliderTheme(
               data: SliderThemeData(
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
@@ -366,31 +371,21 @@ class _PlayerSheet extends StatelessWidget {
                         _fmtSpeed(player.speed),
                         style: TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 15,
-                          color: cs.onSurface,
+                          color: cs.secondary,
                         ),
                       ),
                     ),
                   ),
                 ),
 
-                // Skip back (long press → choose seconds)
+                // Skip back (long press to choose seconds)
                 GestureDetector(
                   onLongPress: () =>
                       _showSkipDialog(context, player, isForward: false),
                   onTap: player.skipBackward,
                   child: SizedBox(
-                    width: 44, height: 48,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(_skipRewindIcon(player.rewindSeconds), size: 28, color: cs.onSurface),
-                        Text('${player.rewindSeconds}s',
-                            style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                                color: cs.onSurface)),
-                      ],
-                    ),
+                    width: 44, height: 44,
+                    child: Icon(_skipRewindIcon(player.rewindSeconds), size: 28, color: cs.secondary),
                   ),
                 ),
 
@@ -414,24 +409,14 @@ class _PlayerSheet extends StatelessWidget {
                         ),
                 ),
 
-                // Skip forward (long press → choose seconds)
+                // Skip forward (long press to choose seconds)
                 GestureDetector(
                   onLongPress: () =>
                       _showSkipDialog(context, player, isForward: true),
                   onTap: player.skipForward,
                   child: SizedBox(
-                    width: 44, height: 48,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(_skipForwardIcon(player.forwardSeconds), size: 28, color: cs.onSurface),
-                        Text('${player.forwardSeconds}s',
-                            style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                                color: cs.onSurface)),
-                      ],
-                    ),
+                    width: 44, height: 44,
+                    child: Icon(_skipForwardIcon(player.forwardSeconds), size: 28, color: cs.secondary),
                   ),
                 ),
 
@@ -439,7 +424,7 @@ class _PlayerSheet extends StatelessWidget {
                 IconButton(
                   onPressed: () => _share(context, ep),
                   icon: Icon(Icons.share_outlined,
-                      size: 22, color: cs.onSurfaceVariant),
+                      size: 22, color: cs.secondary),
                   tooltip: l10n.shareEpisode,
                   padding: EdgeInsets.zero,
                   constraints:
@@ -454,7 +439,7 @@ class _PlayerSheet extends StatelessWidget {
                     fontWeight: FontWeight.w700, fontSize: 15,
                     color: cs.onSurface)),
             const SizedBox(height: 8),
-            _ShowNotes(description: ep.description, cs: cs),
+            ShowNotes(description: ep.description, cs: cs),
             const SizedBox(height: 40),
           ],
         ),
@@ -463,157 +448,140 @@ class _PlayerSheet extends StatelessWidget {
   }
 }
 
-// ── Shownotes renderer ────────────────────────────────────────────────────────
-// Strips HTML to plain text, auto-links bare URLs, selectable via SelectionArea.
+// ── Chapter navigation row ────────────────────────────────────────────────────
 
-class _ShowNotes extends StatefulWidget {
-  final String description;
-  final ColorScheme cs;
-  const _ShowNotes({required this.description, required this.cs});
+class _ChapterNavRow extends StatelessWidget {
+  final PlayerProvider player;
+  const _ChapterNavRow({required this.player});
 
-  @override
-  State<_ShowNotes> createState() => _ShowNotesState();
-}
-
-class _ShowNotesState extends State<_ShowNotes> {
-  List<TapGestureRecognizer> _recognizers = [];
-  List<InlineSpan> _spans = [];
-
-  static final _urlRe = RegExp(r'https?://[^\s\)<>\]"]+', caseSensitive: false);
-
-  static String _htmlToText(String html) {
-    var t = html;
-
-    // 1. Preserve links: <a href="URL">label</a> → "label (URL)" or just "URL"
-    t = t.replaceAllMapped(
-      RegExp(r"""<a\b[^>]*\bhref=['"]([^'"]+)['"][^>]*>(.*?)</a>""",
-          caseSensitive: false, dotAll: true),
-      (m) {
-        final url = m.group(1) ?? '';
-        final label = m.group(2)!.replaceAll(RegExp(r'<[^>]+>'), '').trim();
-        if (label.isEmpty || label == url) return url;
-        return '$label ($url)';
-      },
+  void _showChapterList(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ChangeNotifierProvider.value(
+        value: player,
+        child: _ChapterListSheet(cs: cs),
+      ),
     );
-
-    // 2. Block-level elements → paragraph / line breaks
-    t = t
-      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'</?p[^>]*>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'</?div[^>]*>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'<h[1-6][^>]*>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'</h[1-6]>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'<li[^>]*>', caseSensitive: false), '\n• ')
-      .replaceAll(RegExp(r'</li>', caseSensitive: false), '')
-      .replaceAll(RegExp(r'</?[uod]l[^>]*>', caseSensitive: false), '\n');
-
-    // 3. Strip all remaining tags
-    t = t.replaceAll(RegExp(r'<[^>]+>'), '');
-
-    // 4. Named HTML entities
-    t = t
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&#39;', "'")
-      .replaceAll('&apos;', "'")
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&mdash;', '—')
-      .replaceAll('&ndash;', '–')
-      .replaceAll('&hellip;', '…')
-      .replaceAll('&laquo;', '«')
-      .replaceAll('&raquo;', '»')
-      .replaceAll('&bull;', '•')
-      .replaceAll('&middot;', '·')
-      .replaceAll('&copy;', '©')
-      .replaceAll('&reg;', '®')
-      .replaceAll('&trade;', '™');
-
-    // 5. Numeric entities  &#NNN;  and  &#xHHH;
-    t = t.replaceAllMapped(RegExp(r'&#x([0-9a-fA-F]+);'),
-        (m) => String.fromCharCode(int.parse(m.group(1)!, radix: 16)));
-    t = t.replaceAllMapped(RegExp(r'&#([0-9]+);'),
-        (m) => String.fromCharCode(int.parse(m.group(1)!)));
-
-    // 6. Collapse whitespace, trim blank lines
-    t = t
-      .replaceAll(RegExp(r'[^\S\n]+'), ' ')  // non-newline whitespace → single space
-      .replaceAll(RegExp(r'\n +'), '\n')       // leading spaces after newline
-      .replaceAll(RegExp(r' +\n'), '\n')       // trailing spaces before newline
-      .replaceAll(RegExp(r'\n{3,}'), '\n\n')  // max two consecutive newlines
-      .trim();
-
-    return t;
-  }
-
-  void _buildSpans() {
-    for (final r in _recognizers) { r.dispose(); }
-    _recognizers = [];
-
-    final raw = widget.description;
-    final text = raw.contains('<') ? _htmlToText(raw) : raw;
-
-    final newSpans = <InlineSpan>[];
-    var lastEnd = 0;
-    for (final m in _urlRe.allMatches(text)) {
-      if (m.start > lastEnd) {
-        newSpans.add(TextSpan(text: text.substring(lastEnd, m.start)));
-      }
-      final url = m.group(0)!;
-      final rec = TapGestureRecognizer()
-        ..onTap = () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      _recognizers.add(rec);
-      newSpans.add(TextSpan(
-        text: url,
-        style: TextStyle(
-          color: widget.cs.primary,
-          decoration: TextDecoration.underline,
-          decorationColor: widget.cs.primary,
-        ),
-        recognizer: rec,
-      ));
-      lastEnd = m.end;
-    }
-    if (lastEnd < text.length) {
-      newSpans.add(TextSpan(text: text.substring(lastEnd)));
-    }
-    _spans = newSpans;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _buildSpans();
-  }
-
-  @override
-  void didUpdateWidget(_ShowNotes old) {
-    super.didUpdateWidget(old);
-    if (old.description != widget.description || old.cs != widget.cs) {
-      _buildSpans();
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final r in _recognizers) { r.dispose(); }
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SelectionArea(
-      child: Text.rich(
-        TextSpan(
-          style: TextStyle(
-            fontSize: 13,
-            color: widget.cs.onSurfaceVariant,
-            height: 1.6,
-          ),
-          children: _spans,
+    final cs = Theme.of(context).colorScheme;
+    final idx = player.currentChapterIndex;
+    final chapter = player.currentChapter;
+    final hasPrev = idx > 0;
+    final hasNext = idx >= 0 && idx < player.chapters.length - 1;
+
+    return Row(
+      children: [
+        IconButton(
+          icon: Icon(Icons.skip_previous_rounded,
+              color: hasPrev ? cs.secondary : cs.secondary.withValues(alpha: 0.3)),
+          onPressed: hasPrev ? player.skipToPreviousChapter : null,
         ),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _showChapterList(context),
+            child: Text(
+              chapter?.title ?? '',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          icon: Icon(Icons.skip_next_rounded,
+              color: hasNext ? cs.secondary : cs.secondary.withValues(alpha: 0.3)),
+          onPressed: hasNext ? player.skipToNextChapter : null,
+        ),
+      ],
+    );
+  }
+}
+
+// ── Chapter list popup ────────────────────────────────────────────────────────
+
+class _ChapterListSheet extends StatelessWidget {
+  final ColorScheme cs;
+  const _ChapterListSheet({required this.cs});
+
+  String _fmt(double secs) {
+    final total = secs.toInt();
+    final h = total ~/ 3600;
+    final m = (total % 3600) ~/ 60;
+    final s = total % 60;
+    final mm = m.toString().padLeft(2, '0');
+    final ss = s.toString().padLeft(2, '0');
+    return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.watch<PlayerProvider>();
+    final chapters = player.chapters;
+    final currentIdx = player.currentChapterIndex;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 12, bottom: 4),
+            width: 40, height: 4,
+            decoration: BoxDecoration(
+                color: cs.outlineVariant,
+                borderRadius: BorderRadius.circular(2)),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: chapters.length,
+              itemBuilder: (ctx, i) {
+                final chapter = chapters[i];
+                final isActive = i == currentIdx;
+                return ListTile(
+                  leading: SizedBox(
+                    width: 20,
+                    child: isActive
+                        ? Icon(Icons.play_arrow_rounded, color: cs.primary, size: 18)
+                        : null,
+                  ),
+                  title: Text(
+                    chapter.title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                      color: isActive ? cs.primary : cs.onSurface,
+                    ),
+                  ),
+                  trailing: Text(
+                    _fmt(chapter.startTimeSeconds),
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                  onTap: () {
+                    player.seekToChapter(chapter);
+                    Navigator.pop(ctx);
+                  },
+                );
+              },
+            ),
+          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
+        ],
       ),
     );
   }
 }
+

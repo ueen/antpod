@@ -62,6 +62,9 @@ class Episodes extends Table {
   /// false = temporary Discover episode (deleted after playback)
   BoolColumn get isSubscribed => boolean().withDefault(const Constant(true))();
 
+  /// URL of the PodcastIndex chapters JSON file, if the episode has chapters.
+  TextColumn get chaptersUrl => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -73,7 +76,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'antpod'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -84,6 +87,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 3) {
         await m.addColumn(episodes, episodes.isFinished);
         await m.addColumn(episodes, episodes.lastPositionMs);
+      }
+      if (from < 4) {
+        await m.database.customStatement(
+            'ALTER TABLE episodes ADD COLUMN chapters_url TEXT');
       }
     },
   );
@@ -115,11 +122,24 @@ class AppDatabase extends _$AppDatabase {
 
   // ── Episodes ──────────────────────────────────────────────────────────────
 
-  /// Default feed: subscribed, not yet finished.
+  /// Default feed: subscribed or actively-used temp episodes, not yet finished.
   Stream<List<Episode>> watchUnfinishedEpisodes() =>
       (select(episodes)
-            ..where((e) => e.isSubscribed.equals(true))
-            ..where((e) => e.isFinished.equals(false))
+            ..where((e) =>
+                e.isFinished.equals(false) &
+                (e.isSubscribed.equals(true) |
+                 e.isDownloaded.equals(true) |
+                 e.lastPositionMs.isBiggerThanValue(0)))
+            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+          .watch();
+
+  /// All subscribed + actively-used temp episodes (no finished filter).
+  Stream<List<Episode>> watchAllFeedEpisodes() =>
+      (select(episodes)
+            ..where((e) =>
+                e.isSubscribed.equals(true) |
+                e.isDownloaded.equals(true) |
+                e.lastPositionMs.isBiggerThanValue(0))
             ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
           .watch();
 
@@ -131,7 +151,7 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
           .watch();
 
-  /// All subscribed episodes (for "show all" filter).
+  /// All subscribed episodes (for "show all" filter — kept for podcast filter screen).
   Stream<List<Episode>> watchAllSubscribedEpisodes() =>
       (select(episodes)
             ..where((e) => e.isSubscribed.equals(true))
@@ -153,6 +173,17 @@ class AppDatabase extends _$AppDatabase {
   Future<void> insertTempEpisode(EpisodesCompanion ep) =>
       into(episodes).insertOnConflictUpdate(
         ep.copyWith(isSubscribed: const Value(false)),
+      );
+
+  Future<void> insertTempEpisodes(List<EpisodesCompanion> eps) =>
+      batch((b) => b.insertAllOnConflictUpdate(
+        episodes,
+        eps.map((e) => e.copyWith(isSubscribed: const Value(false))).toList(),
+      ));
+
+  Future<void> markEpisodesSubscribed(String podcastId) =>
+      (update(episodes)..where((e) => e.podcastId.equals(podcastId))).write(
+        const EpisodesCompanion(isSubscribed: Value(true)),
       );
 
   /// Save resume position (ms + seconds) and optionally mark finished.

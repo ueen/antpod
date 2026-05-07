@@ -114,7 +114,7 @@ class PodcastService {
 
   static Future<List<PodcastResult>> trending({
     int max = 10,
-    String lang = 'de,en',
+    String lang = 'en',
   }) async {
     final uri = Uri.parse('$_baseUrl/podcasts/trending').replace(
       queryParameters: {'max': '$max', 'lang': lang},
@@ -138,8 +138,9 @@ class PodcastService {
   static Future<List<PodcastResult>> recommendations({
     required List<Podcast> subscribed,
     int max = 10,
+    String lang = 'en',
   }) async {
-    if (subscribed.isEmpty) return trending(max: max);
+    if (subscribed.isEmpty) return trending(max: max, lang: lang);
 
     // Häufigste Kategorie aus Podcast-Titeln/Beschreibungen ableiten
     // (PodcastIndex gibt uns in /podcasts/trending auch cat-Filter)
@@ -166,7 +167,7 @@ class PodcastService {
       }
 
       // Fallback: trending minus subscriptions (last resort)
-      final trendResults = await trending(max: 50);
+      final trendResults = await trending(max: 50, lang: lang);
       return trendResults
           .where((r) => !subscribedFeedUrls.contains(r.feedUrl))
           .skip(10) // skip items already in trending tab
@@ -185,6 +186,7 @@ class PodcastService {
     try {
       final podcast = await ps.Feed.loadFeed(url: feedUrl);
       final episodes = podcast.episodes.map((ep) {
+        final chapUrl = ep.chapters?.url;
         return EpisodesCompanion(
           id: Value(ep.guid.isNotEmpty ? ep.guid : '${feedUrl}_${ep.title}'),
           podcastId: Value(feedUrl),
@@ -196,6 +198,7 @@ class PodcastService {
           durationSeconds:
               Value((ep.duration ?? Duration.zero).inSeconds),
           publishDate: Value(ep.publicationDate ?? DateTime.now()),
+          chaptersUrl: Value(chapUrl != null && chapUrl.isNotEmpty ? chapUrl : null),
         );
       }).toList();
       return (podcast: podcast, episodes: episodes);

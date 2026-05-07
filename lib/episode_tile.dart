@@ -79,9 +79,14 @@ class EpisodeTile extends StatelessWidget {
     final dlProgress = downloads.progressForTask(episode.downloadTaskId);
     final ringProgress = episode.isDownloaded ? 1.0 : dlProgress;
 
+    final activeTaskId = episode.downloadTaskId;
+    final isDownloading = activeTaskId != null &&
+        downloads.progressForTask(activeTaskId) != null;
+
     return _StickySwipeable(
       startBackground: _PlayedSwipeBackground(episode: episode, cs: cs, l10n: l10n),
-      endBackground: _DownloadSwipeBackground(episode: episode, cs: cs, l10n: l10n),
+      endBackground: _DownloadSwipeBackground(
+          episode: episode, cs: cs, l10n: l10n, isDownloading: isDownloading),
       onSwipeStart: () async {
         if (episode.isFinished) {
           await db.markUnfinished(episode.id);
@@ -90,7 +95,9 @@ class EpisodeTile extends StatelessWidget {
         }
       },
       onSwipeEnd: () async {
-        if (episode.isDownloaded) {
+        if (isDownloading) {
+          await downloads.cancelDownload(activeTaskId, episode.id);
+        } else if (episode.isDownloaded) {
           await db.deleteLocalFile(episode.id);
         } else {
           final taskId = await DownloadService.downloadEpisode(
@@ -109,7 +116,7 @@ class EpisodeTile extends StatelessWidget {
             color: isCurrent
                 ? Color.alphaBlend(cs.primary.withValues(alpha: 0.07), cs.surface)
                 : cs.surface,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
                 Opacity(
@@ -303,30 +310,34 @@ class _DownloadSwipeBackground extends StatelessWidget {
   final Episode episode;
   final ColorScheme cs;
   final AppLocalizations l10n;
-  const _DownloadSwipeBackground({required this.episode, required this.cs, required this.l10n});
+  final bool isDownloading;
+  const _DownloadSwipeBackground({
+    required this.episode, required this.cs, required this.l10n,
+    required this.isDownloading,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final isDelete = episode.isDownloaded || isDownloading;
+    final bg = isDelete ? cs.error : cs.primary;
+    final fg = isDelete ? cs.onError : cs.onPrimary;
+    final icon = isDownloading
+        ? Icons.cancel_outlined
+        : (episode.isDownloaded ? Icons.delete_outline : Icons.download);
+    final label = isDownloading
+        ? l10n.cancel
+        : (episode.isDownloaded ? l10n.deleteDownload : l10n.downloading);
+
     return Container(
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.only(right: 24),
-      color: episode.isDownloaded ? cs.error : cs.primary,
+      color: bg,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            episode.isDownloaded ? Icons.delete_outline : Icons.download,
-            color: episode.isDownloaded ? cs.onError : cs.onPrimary,
-            size: 28,
-          ),
+          Icon(icon, color: fg, size: 28),
           const SizedBox(height: 4),
-          Text(
-            episode.isDownloaded ? l10n.deleteDownload : l10n.downloading,
-            style: TextStyle(
-              color: episode.isDownloaded ? cs.onError : cs.onPrimary,
-              fontSize: 11, fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text(label, style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -363,7 +374,7 @@ class _EpisodeMetadata extends StatelessWidget {
   Widget build(BuildContext context) {
     final showProgress = !episode.isFinished &&
         episode.durationSeconds > 0 &&
-        effectivePositionMs > 0;
+        (effectivePositionMs > 0 || isCurrent);
     final progressValue =
         showProgress ? (effectivePositionMs / 1000) / episode.durationSeconds : 0.0;
 
@@ -378,7 +389,7 @@ class _EpisodeMetadata extends StatelessWidget {
             color: isCurrent ? cs.primary : cs.onSurface,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         Row(
           children: [
             if (episode.isFinished)
@@ -403,20 +414,19 @@ class _EpisodeMetadata extends StatelessWidget {
               ),
           ],
         ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          child: showProgress
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: LinearProgressIndicator(
-                    value: progressValue.clamp(0.0, 1.0),
-                    minHeight: 2,
-                    backgroundColor: cs.primary.withValues(alpha: 0.15),
-                    valueColor: AlwaysStoppedAnimation(cs.primary),
-                  ),
-                )
-              : const SizedBox.shrink(),
+        // Always reserve the bar's space; fade opacity so height never changes.
+        Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 300),
+            opacity: showProgress ? 1.0 : 0.0,
+            child: LinearProgressIndicator(
+              value: showProgress ? progressValue.clamp(0.0, 1.0) : 0.0,
+              minHeight: 2,
+              backgroundColor: cs.primary.withValues(alpha: 0.15),
+              valueColor: AlwaysStoppedAnimation(cs.primary),
+            ),
+          ),
         ),
       ],
     );
@@ -440,7 +450,9 @@ class _ActionArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ringColor = episode.isDownloaded
+    final isDownloading = ringProgress != null && !episode.isDownloaded;
+    final effectiveProgress = ringProgress; // actual progress while downloading
+    final ringColor = (episode.isDownloaded || isDownloading)
         ? cs.primary
         : (isCurrent ? cs.primary : cs.outlineVariant);
 
@@ -459,9 +471,9 @@ class _ActionArea extends StatelessWidget {
                   CustomPaint(
                     size: const Size(44, 44),
                     painter: _RingPainter(
-                      progress: ringProgress,
+                      progress: effectiveProgress,
                       color: ringColor,
-                      trackColor: cs.outlineVariant.withValues(alpha: 0.25),
+                      trackColor: cs.outlineVariant.withValues(alpha: 0.5),
                     ),
                   ),
                   if (isLoading)

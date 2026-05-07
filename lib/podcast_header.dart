@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'app_database.dart';
+import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
 import 'podcast_service.dart';
 
@@ -26,6 +27,7 @@ class PodcastHeader extends StatefulWidget {
 
 class _PodcastHeaderState extends State<PodcastHeader> {
   bool _expanded = false;
+  bool _subscribePressed = false;
 
   String get _imageUrl => widget.podcast?.imageUrl ?? widget.previewResult?.imageUrl ?? '';
   String get _title    => widget.podcast?.title    ?? widget.previewResult?.title    ?? '';
@@ -83,7 +85,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 4, 4),
+              padding: const EdgeInsets.fromLTRB(12, 12, 8, 4),
               child: Row(
                 children: [
                   ClipRRect(
@@ -116,48 +118,53 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                       ],
                     ),
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        onPressed: _share,
-                        icon: Icon(Icons.share_outlined,
-                            color: cs.onSurfaceVariant, size: 22),
-                        padding: const EdgeInsets.all(4),
-                        constraints:
-                            const BoxConstraints(minWidth: 36, minHeight: 36),
-                      ),
-                      if (widget.onSubscribe != null)
-                        IconButton(
-                          onPressed: widget.onSubscribe,
-                          icon: Icon(Icons.add_circle_outline,
-                              color: cs.primary, size: 28),
-                          padding: const EdgeInsets.all(4),
-                          constraints:
-                              const BoxConstraints(minWidth: 36, minHeight: 36),
-                        ),
-                      if (widget.onUnsubscribe != null)
-                        IconButton(
-                          onPressed: () => _confirmUnsubscribe(context, l10n),
-                          icon: Icon(Icons.remove_circle_outline,
-                              color: cs.error, size: 28),
-                          padding: const EdgeInsets.all(4),
-                          constraints:
-                              const BoxConstraints(minWidth: 36, minHeight: 36),
-                        ),
-                    ],
+                  // Share button, then subscribe/unsubscribe button on the far right
+                  IconButton(
+                    onPressed: _share,
+                    icon: Icon(Icons.share_outlined,
+                        color: cs.onSurfaceVariant, size: 22),
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
                   ),
+                  if (widget.onSubscribe != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2, right: 4),
+                      child: GestureDetector(
+                        onTap: _subscribePressed ? null : () async {
+                          setState(() => _subscribePressed = true);
+                          await Future.delayed(const Duration(milliseconds: 380));
+                          widget.onSubscribe?.call();
+                        },
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          child: _subscribePressed
+                              ? Icon(Icons.check_circle,
+                                  key: const ValueKey('check'),
+                                  color: Colors.green, size: 28)
+                              : Icon(Icons.add_circle_outline,
+                                  key: const ValueKey('add'),
+                                  color: cs.primary, size: 28),
+                        ),
+                      ),
+                    ),
+                  if (widget.onUnsubscribe != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2, right: 4),
+                      child: IconButton(
+                        onPressed: () => _confirmUnsubscribe(context, l10n),
+                        icon: Icon(Icons.remove_circle_outline,
+                            color: cs.error, size: 28),
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      ),
+                    ),
                 ],
               ),
             ),
             if (_expanded)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: Text(_description,
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: cs.onSurfaceVariant,
-                        height: 1.5)),
+                child: ShowNotes(description: _description, cs: cs),
               ),
             // Expand arrow at bottom center
             Center(
