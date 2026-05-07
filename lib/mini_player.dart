@@ -50,9 +50,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
       isScrollControlled: true,
       isDismissible: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => ChangeNotifierProvider.value(
-        value: context.read<PlayerProvider>(),
-        child: const _PlayerSheet(),
+      builder: (_) => Align(
+        alignment: Alignment.bottomCenter,
+        child: ChangeNotifierProvider.value(
+          value: context.read<PlayerProvider>(),
+          child: const _PlayerSheet(),
+        ),
       ),
     );
 
@@ -275,10 +278,13 @@ class _PlayerSheet extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
 
+    // expand: false keeps the widget sized to its rendered height so the
+    // transparent area above it passes taps through to the modal barrier.
     return DraggableScrollableSheet(
       initialChildSize: 0.55,
       minChildSize: 0.3,
       maxChildSize: 0.95,
+      expand: false,
       builder: (_, ctrl) => Container(
         decoration: BoxDecoration(
           color: cs.surface,

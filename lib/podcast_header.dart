@@ -2,24 +2,30 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-import 'app_database.dart';
 import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
-import 'podcast_service.dart';
 
 class PodcastHeader extends StatefulWidget {
-  final Podcast? podcast;
-  final PodcastResult? previewResult;
-  final VoidCallback? onUnsubscribe;
+  final String imageUrl;
+  final String title;
+  final String author;
+  final String description;
+  final String shareUrl;
+
+  /// Provide exactly one of these; the other should be null.
   final VoidCallback? onSubscribe;
+  final VoidCallback? onUnsubscribe;
 
   const PodcastHeader({
     super.key,
-    this.podcast,
-    this.previewResult,
-    this.onUnsubscribe,
+    required this.imageUrl,
+    required this.title,
+    required this.author,
+    required this.description,
+    required this.shareUrl,
     this.onSubscribe,
-  }) : assert(podcast != null || previewResult != null);
+    this.onUnsubscribe,
+  });
 
   @override
   State<PodcastHeader> createState() => _PodcastHeaderState();
@@ -29,15 +35,9 @@ class _PodcastHeaderState extends State<PodcastHeader> {
   bool _expanded = false;
   bool _subscribePressed = false;
 
-  String get _imageUrl => widget.podcast?.imageUrl ?? widget.previewResult?.imageUrl ?? '';
-  String get _title    => widget.podcast?.title    ?? widget.previewResult?.title    ?? '';
-  String get _author   => widget.podcast?.author   ?? widget.previewResult?.author   ?? '';
-  String get _description => widget.podcast?.description ?? widget.previewResult?.description ?? '';
-
   void _share() {
-    final url = widget.podcast?.website ?? widget.podcast?.feedUrl
-        ?? widget.previewResult?.feedUrl ?? '';
-    SharePlus.instance.share(ShareParams(text: '$_title\n$url', subject: _title));
+    SharePlus.instance.share(
+        ShareParams(text: '${widget.title}\n${widget.shareUrl}', subject: widget.title));
   }
 
   Future<void> _confirmUnsubscribe(BuildContext context, AppLocalizations l10n) async {
@@ -45,7 +45,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(l10n.unsubscribe),
-        content: Text(_title),
+        content: Text(widget.title),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -91,7 +91,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
-                      imageUrl: _imageUrl,
+                      imageUrl: widget.imageUrl,
                       width: 60, height: 60, fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Container(
                           color: cs.surfaceContainerHighest,
@@ -103,14 +103,14 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_title,
+                        Text(widget.title,
                             style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
                                 color: cs.onSurface)),
-                        if (_author.isNotEmpty) ...[
+                        if (widget.author.isNotEmpty) ...[
                           const SizedBox(height: 2),
-                          Text(_author,
+                          Text(widget.author,
                               style: TextStyle(
                                   fontSize: 12,
                                   color: cs.onSurfaceVariant)),
@@ -118,17 +118,19 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                       ],
                     ),
                   ),
-                  // Share button, then subscribe/unsubscribe button on the far right
-                  IconButton(
-                    onPressed: _share,
-                    icon: Icon(Icons.share_outlined,
-                        color: cs.onSurfaceVariant, size: 22),
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                  // Share button
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, right: 2),
+                    child: GestureDetector(
+                      onTap: _share,
+                      child: Icon(Icons.share_outlined,
+                          color: cs.onSurfaceVariant, size: 24),
+                    ),
                   ),
+                  // Subscribe / unsubscribe button
                   if (widget.onSubscribe != null)
                     Padding(
-                      padding: const EdgeInsets.only(left: 2, right: 4),
+                      padding: const EdgeInsets.only(left: 4, right: 4),
                       child: GestureDetector(
                         onTap: _subscribePressed ? null : () async {
                           setState(() => _subscribePressed = true);
@@ -149,13 +151,11 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                     ),
                   if (widget.onUnsubscribe != null)
                     Padding(
-                      padding: const EdgeInsets.only(left: 2, right: 4),
-                      child: IconButton(
-                        onPressed: () => _confirmUnsubscribe(context, l10n),
-                        icon: Icon(Icons.remove_circle_outline,
+                      padding: const EdgeInsets.only(left: 4, right: 4),
+                      child: GestureDetector(
+                        onTap: () => _confirmUnsubscribe(context, l10n),
+                        child: Icon(Icons.remove_circle_outline,
                             color: cs.error, size: 28),
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                       ),
                     ),
                 ],
@@ -164,9 +164,9 @@ class _PodcastHeaderState extends State<PodcastHeader> {
             if (_expanded)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: ShowNotes(description: _description, cs: cs),
+                child: ShowNotes(description: widget.description, cs: cs),
               ),
-            // Expand arrow at bottom center
+            // Expand arrow
             Center(
               child: AnimatedRotation(
                 turns: _expanded ? 0.5 : 0,

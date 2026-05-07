@@ -1,4 +1,5 @@
 // lib/player_provider.dart
+import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:podcast_search/podcast_search.dart' as ps;
@@ -22,7 +23,8 @@ class PlayerProvider extends ChangeNotifier {
   double? _downloadProgress;
   List<PodcastChapter> _chapters = [];
 
-  /// How often to persist the resume position to the DB (every N ms).
+  StreamSubscription<Episode?>? _episodeWatchSub;
+
   static const _saveIntervalMs = 5000;
   int _lastSavedMs = 0;
 
@@ -32,13 +34,15 @@ class PlayerProvider extends ChangeNotifier {
     handler.playbackState.listen((state) {
       _isPlaying = state.playing;
       _position = state.updatePosition;
-      _isLoading = state.processingState == AudioProcessingState.loading ||
-          state.processingState == AudioProcessingState.buffering;
+      // Suppress loading indicator for local files — seek + load is near-instant
+      final isLocal = _currentEpisode?.localPath != null;
+      _isLoading = !isLocal &&
+          (state.processingState == AudioProcessingState.loading ||
+           state.processingState == AudioProcessingState.buffering);
 
       if (state.processingState == AudioProcessingState.completed) {
         _isPlaying = false;
         if (_currentEpisode != null) {
-          // Mark finished + save final position
           _db.updatePlaybackPosition(
             _currentEpisode!.id,
             positionMs: _duration.inMilliseconds,
@@ -57,7 +61,6 @@ class PlayerProvider extends ChangeNotifier {
 
     handler.player.positionStream.listen((p) {
       _position = p;
-      // Throttled DB save (every 5 s)
       final ms = p.inMilliseconds;
       if (ms - _lastSavedMs >= _saveIntervalMs && _currentEpisode != null) {
         _lastSavedMs = ms;
@@ -139,14 +142,20 @@ class PlayerProvider extends ChangeNotifier {
     }
     _lastSavedMs = 0;
     _currentEpisode = episode;
-    _isLoading = true;
-    _position = Duration.zero; // clear residual position so the bar doesn't flash
     _chapters = [];
+
+    final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
+    // Pre-fill position so progress bar doesn't flash from zero
+    _position = Duration(milliseconds: startMs);
+    // Local file loads instantly — no spinner needed
+    _isLoading = episode.localPath == null;
     notifyListeners();
+
     _loadChapters(episode.chaptersUrl);
 
-    // Resume from saved position (ms precision)
-    final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
+    // Watch for download completion or deletion to pivot source mid-playback
+    _episodeWatchSub?.cancel();
+    _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
 
     await (audioHandler as AntPodAudioHandler).playEpisode(
       id: episode.id,
@@ -157,6 +166,39 @@ class PlayerProvider extends ChangeNotifier {
       localPath: episode.localPath,
       startPosition: Duration(milliseconds: startMs),
     );
+  }
+
+  void _onEpisodeUpdated(Episode? updated) {
+    if (updated == null || _currentEpisode == null) return;
+    final prevLocal = _currentEpisode!.localPath;
+    final newLocal = updated.localPath;
+    _currentEpisode = updated;
+
+    if (prevLocal == null && newLocal != null) {
+      // Download finished while streaming — switch to local file seamlessly
+      _pivotSource(localPath: newLocal);
+    } else if (prevLocal != null && newLocal == null) {
+      // Local file deleted while playing — fall back to stream
+      _pivotSource(audioUrl: updated.audioUrl);
+    }
+  }
+
+  Future<void> _pivotSource({String? localPath, String? audioUrl}) async {
+    final handler = audioHandler as AntPodAudioHandler;
+    final wasPlaying = _isPlaying;
+    final savedPos = _position;
+    try {
+      await handler.player.stop();
+      if (localPath != null) {
+        await handler.player.setFilePath(localPath);
+      } else {
+        await handler.player.setUrl(audioUrl!);
+      }
+      await handler.player.seek(savedPos);
+      if (wasPlaying) await handler.player.play();
+    } catch (_) {}
+    _isLoading = localPath == null;
+    notifyListeners();
   }
 
   Future<void> togglePlayPause() async {
@@ -223,6 +265,7 @@ class PlayerProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _episodeWatchSub?.cancel();
     _flushPosition();
     super.dispose();
   }

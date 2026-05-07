@@ -262,4 +262,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<Episode?> getEpisode(String id) =>
       (select(episodes)..where((e) => e.id.equals(id))).getSingleOrNull();
+
+  Stream<Episode?> watchEpisode(String id) =>
+      (select(episodes)..where((e) => e.id.equals(id))).watchSingleOrNull();
 }

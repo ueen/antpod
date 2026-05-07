@@ -155,7 +155,7 @@ class EpisodeTile extends StatelessWidget {
                   episode: episode,
                   isCurrent: isCurrent,
                   isPlaying: isPlaying,
-                  isLoading: player.isLoading && isCurrent,
+                  isLoading: player.isLoading && isCurrent && episode.localPath == null,
                   ringProgress: ringProgress,
                   dimmed: dimmed,
                   cs: cs,
@@ -379,6 +379,7 @@ class _EpisodeMetadata extends StatelessWidget {
         showProgress ? (effectivePositionMs / 1000) / episode.durationSeconds : 0.0;
 
     return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -414,19 +415,23 @@ class _EpisodeMetadata extends StatelessWidget {
               ),
           ],
         ),
-        // Always reserve the bar's space; fade opacity so height never changes.
-        Padding(
-          padding: const EdgeInsets.only(top: 5),
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 300),
-            opacity: showProgress ? 1.0 : 0.0,
-            child: LinearProgressIndicator(
-              value: showProgress ? progressValue.clamp(0.0, 1.0) : 0.0,
-              minHeight: 2,
-              backgroundColor: cs.primary.withValues(alpha: 0.15),
-              valueColor: AlwaysStoppedAnimation(cs.primary),
-            ),
-          ),
+        // AnimatedSize: grows from 0 to 7px, naturally pushing title+date up
+        // via MainAxisAlignment.center while keeping tile height fixed.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: showProgress
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: LinearProgressIndicator(
+                    value: progressValue.clamp(0.0, 1.0),
+                    minHeight: 2,
+                    backgroundColor: cs.primary.withValues(alpha: 0.15),
+                    valueColor: AlwaysStoppedAnimation(cs.primary),
+                  ),
+                )
+              : const SizedBox.shrink(),
         ),
       ],
     );

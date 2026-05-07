@@ -191,6 +191,17 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     if (data != null) {
       await db.insertTempEpisodes(data.episodes);
+      // Backfill any metadata that was missing when opening from a temp episode cover tap
+      setState(() {
+        _previewResult = PodcastResult(
+          id: result.id,
+          title: data.podcast.title?.isNotEmpty == true ? data.podcast.title! : result.title,
+          author: result.author,
+          description: data.podcast.description ?? result.description,
+          imageUrl: data.podcast.image?.isNotEmpty == true ? data.podcast.image! : result.imageUrl,
+          feedUrl: result.feedUrl,
+        );
+      });
     }
     if (mounted) setState(() => _loadingPreview = false);
   }
@@ -240,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
               alignment: Alignment.topLeft,
               child: Padding(
                 padding: EdgeInsets.only(
-                  top: topPad + 60,
+                  top: topPad + 56,
                   left: 12,
                   right: 12,
                 ),
@@ -1277,9 +1288,13 @@ class _PodcastFilteredFeedState extends State<_PodcastFilteredFeed> {
           children: [
             if (widget.podcast != null)
               PodcastHeader(
-                  podcast: widget.podcast!,
-                  onUnsubscribe: widget.onUnsubscribe,
-                  onSubscribe: null),
+                imageUrl: widget.podcast!.imageUrl,
+                title: widget.podcast!.title,
+                author: widget.podcast!.author,
+                description: widget.podcast!.description,
+                shareUrl: widget.podcast!.website ?? widget.podcast!.feedUrl,
+                onUnsubscribe: widget.onUnsubscribe,
+              ),
             // Filter chips (no Podcasts chip here)
             _FilterChipsRow(
               filter: _filter, l10n: l10n, cs: cs,
@@ -1583,7 +1598,14 @@ class _PreviewFeedState extends State<_PreviewFeed> {
 
     return Column(
       children: [
-        PodcastHeader(previewResult: widget.result, onSubscribe: widget.onSubscribe),
+        PodcastHeader(
+          imageUrl: widget.result.imageUrl,
+          title: widget.result.title,
+          author: widget.result.author,
+          description: widget.result.description,
+          shareUrl: widget.result.feedUrl,
+          onSubscribe: widget.onSubscribe,
+        ),
         _FilterChipsRow(
           filter: _filter, l10n: l10n, cs: cs,
           onToggle: _onToggle,
