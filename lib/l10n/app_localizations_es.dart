@@ -83,7 +83,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get discoverTabTrending => 'Tendencias';
 
   @override
-  String get discoverTabSuggestions => 'Para ti';
+  String get discoverTabSuggestions => 'Sugerencias';
 
   @override
   String get aboutAntpod => 'Sobre AntPod';

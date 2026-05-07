@@ -135,6 +135,32 @@ class PlayerProvider extends ChangeNotifier {
 
   // ── Playback ──────────────────────────────────────────────────────────────
 
+  /// Load episode into player without starting playback.
+  Future<void> load(Episode episode) async {
+    if (_currentEpisode?.id == episode.id) return;
+    _lastSavedMs = 0;
+    _currentEpisode = episode;
+    _chapters = [];
+    final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
+    _position = Duration(milliseconds: startMs);
+    _isLoading = episode.localPath == null;
+    notifyListeners();
+    _loadChapters(episode.chaptersUrl);
+    _episodeWatchSub?.cancel();
+    _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
+    await (audioHandler as AntPodAudioHandler).loadEpisode(
+      id: episode.id,
+      title: episode.title,
+      podcast: episode.podcastTitle,
+      artUri: episode.podcastImageUrl,
+      audioUrl: episode.audioUrl,
+      localPath: episode.localPath,
+      startPosition: Duration(milliseconds: startMs),
+    );
+    _isLoading = false;
+    notifyListeners();
+  }
+
   Future<void> play(Episode episode) async {
     if (_currentEpisode?.id == episode.id) {
       await audioHandler.play();
@@ -180,6 +206,8 @@ class PlayerProvider extends ChangeNotifier {
     } else if (prevLocal != null && newLocal == null) {
       // Local file deleted while playing — fall back to stream
       _pivotSource(audioUrl: updated.audioUrl);
+    } else {
+      notifyListeners();
     }
   }
 

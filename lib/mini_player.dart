@@ -9,7 +9,8 @@ import 'player_provider.dart';
 import 'share_utils.dart';
 
 class MiniPlayer extends StatefulWidget {
-  const MiniPlayer({super.key});
+  final VoidCallback? onPodcastTap;
+  const MiniPlayer({super.key, this.onPodcastTap});
 
   @override
   State<MiniPlayer> createState() => _MiniPlayerState();
@@ -65,7 +66,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
               onTap: () {}, // absorb taps on the sheet itself
               child: ChangeNotifierProvider.value(
                 value: context.read<PlayerProvider>(),
-                child: const _PlayerSheet(),
+                child: _PlayerSheet(onPodcastTap: widget.onPodcastTap),
               ),
             ),
           ),
@@ -234,10 +235,40 @@ IconData _skipForwardIcon(int s) {
   return Icons.forward_30;
 }
 
+Future<void> showPlayerSheet(BuildContext context,
+    {VoidCallback? onPodcastTap}) async {
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Stack(
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.of(ctx).pop(),
+          child: const SizedBox.expand(),
+        ),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: GestureDetector(
+            onTap: () {},
+            child: ChangeNotifierProvider.value(
+              value: context.read<PlayerProvider>(),
+              child: _PlayerSheet(onPodcastTap: onPodcastTap),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 // ── Player bottom sheet ───────────────────────────────────────────────────────
 
 class _PlayerSheet extends StatelessWidget {
-  const _PlayerSheet();
+  final VoidCallback? onPodcastTap;
+  const _PlayerSheet({this.onPodcastTap});
 
   String _fmtDur(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -319,11 +350,19 @@ class _PlayerSheet extends StatelessWidget {
             ),
 
             Center(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: CachedNetworkImage(
-                  imageUrl: ep.podcastImageUrl,
-                  width: 220, height: 220, fit: BoxFit.cover,
+              child: GestureDetector(
+                onTap: onPodcastTap != null
+                    ? () {
+                        Navigator.of(context).pop();
+                        onPodcastTap!();
+                      }
+                    : null,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: CachedNetworkImage(
+                    imageUrl: ep.podcastImageUrl,
+                    width: 220, height: 220, fit: BoxFit.cover,
+                  ),
                 ),
               ),
             ),

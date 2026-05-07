@@ -25,6 +25,29 @@ class AntPodAudioHandler extends BaseAudioHandler
 
   // ── Öffentliche API ───────────────────────────────────────────────────────
 
+  /// Loads an episode and seeks to position but does NOT start playback.
+  Future<void> loadEpisode({
+    required String id,
+    required String title,
+    required String podcast,
+    required String artUri,
+    required String audioUrl,
+    String? localPath,
+    Duration startPosition = Duration.zero,
+  }) async {
+    mediaItem.add(MediaItem(
+      id: id, title: title, artist: podcast, artUri: Uri.tryParse(artUri),
+    ));
+    await _player.stop();
+    if (localPath != null) {
+      await _player.setFilePath(localPath);
+    } else {
+      await _player.setUrl(audioUrl);
+    }
+    if (startPosition > Duration.zero) await _player.seek(startPosition);
+    // Intentionally no _player.play()
+  }
+
   /// Lädt und startet eine Episode. Wird aus [PlayerProvider] aufgerufen.
   Future<void> playEpisode({
     required String id,

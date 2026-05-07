@@ -62,16 +62,55 @@
       letter-spacing: -0.02em; margin-bottom: 1.25rem;
     }
 
-    /* Audio player */
+    /* Custom audio player */
     .player {
       display: none;
       background: #FFFAF5; border: 1px solid #F0E4D4;
       border-radius: 0.75rem; padding: 0.875rem;
       margin-bottom: 1.125rem;
     }
-    audio {
-      width: 100%;
-      accent-color: #FF9A30;
+    .cp {
+      display: flex; align-items: center; gap: 0.875rem;
+    }
+    .cp-btn {
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: #FF9A30;
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 8px rgba(255,154,48,.35);
+      transition: background 0.15s, transform 0.1s;
+    }
+    .cp-btn:hover { background: #E07E18; transform: scale(1.05); }
+    .cp-btn:active { transform: scale(0.97); }
+    .cp-btn svg { display: block; }
+    .cp-right { flex: 1; min-width: 0; }
+    .cp-track {
+      position: relative;
+      height: 4px; border-radius: 2px;
+      background: #F0E4D4;
+      cursor: pointer;
+      margin-bottom: 0.4rem;
+    }
+    .cp-fill {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      background: #FF9A30; border-radius: 2px;
+      width: 0%; transition: width 0.25s linear;
+      pointer-events: none;
+    }
+    .cp-thumb {
+      position: absolute; top: 50%;
+      width: 12px; height: 12px;
+      background: #FF9A30; border-radius: 50%;
+      transform: translate(-50%, -50%);
+      left: 0%;
+      box-shadow: 0 1px 4px rgba(255,154,48,.5);
+      pointer-events: none;
+    }
+    .cp-times {
+      display: flex; justify-content: space-between;
+      font-size: 0.7rem; color: #9E7056; font-variant-numeric: tabular-nums;
     }
 
     /* Buttons */
@@ -167,9 +206,26 @@
         <div class="podcast-name" id="podcast-name"></div>
         <h1 class="ep-title" id="ep-title">Loading…</h1>
 
-        <!-- Audio player (episode only) -->
+        <!-- Custom audio player (episode only) -->
         <div class="player" id="player">
-          <audio id="audio-el" controls preload="metadata"></audio>
+          <audio id="audio-el" preload="metadata"></audio>
+          <div class="cp">
+            <button class="cp-btn" id="play-btn" onclick="togglePlay()" aria-label="Play">
+              <!-- play icon (swapped to pause by JS) -->
+              <svg id="icon-play" width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              <svg id="icon-pause" width="18" height="18" viewBox="0 0 24 24" fill="white" style="display:none;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+            </button>
+            <div class="cp-right">
+              <div class="cp-track" id="cp-track">
+                <div class="cp-fill" id="cp-fill"></div>
+                <div class="cp-thumb" id="cp-thumb"></div>
+              </div>
+              <div class="cp-times">
+                <span id="cp-cur">0:00</span>
+                <span id="cp-dur">0:00</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Not installed hint -->
@@ -243,11 +299,63 @@
     if (podcast)   document.getElementById('podcast-name').textContent = podcast;
     document.getElementById('ep-title').textContent = title || (isEpisode ? 'Episode' : 'Podcast');
 
-    // Audio player
+    // Custom audio player
+    const audioEl = document.getElementById('audio-el');
     if (audio) {
-      const playerEl = document.getElementById('player');
-      document.getElementById('audio-el').src = audio;
-      playerEl.style.display = 'block';
+      document.getElementById('player').style.display = 'block';
+      audioEl.src = audio;
+
+      const playBtn  = document.getElementById('play-btn');
+      const iconPlay  = document.getElementById('icon-play');
+      const iconPause = document.getElementById('icon-pause');
+      const fill  = document.getElementById('cp-fill');
+      const thumb = document.getElementById('cp-thumb');
+      const track = document.getElementById('cp-track');
+      const curEl = document.getElementById('cp-cur');
+      const durEl = document.getElementById('cp-dur');
+
+      function fmt(s) {
+        if (!isFinite(s)) return '0:00';
+        s = Math.floor(s);
+        const m = Math.floor(s / 60), sec = s % 60;
+        return m + ':' + String(sec).padStart(2, '0');
+      }
+      function setProgress(pct) {
+        fill.style.width  = pct + '%';
+        thumb.style.left  = pct + '%';
+      }
+
+      audioEl.addEventListener('loadedmetadata', () => {
+        durEl.textContent = fmt(audioEl.duration);
+      });
+      audioEl.addEventListener('timeupdate', () => {
+        const pct = audioEl.duration ? (audioEl.currentTime / audioEl.duration) * 100 : 0;
+        setProgress(pct);
+        curEl.textContent = fmt(audioEl.currentTime);
+      });
+      audioEl.addEventListener('play',  () => { iconPlay.style.display='none';  iconPause.style.display='block'; });
+      audioEl.addEventListener('pause', () => { iconPlay.style.display='block'; iconPause.style.display='none'; });
+      audioEl.addEventListener('ended', () => { iconPlay.style.display='block'; iconPause.style.display='none'; setProgress(0); });
+
+      // Seek on track click/drag
+      let seeking = false;
+      function seekFromEvent(e) {
+        const rect = track.getBoundingClientRect();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const pct = Math.max(0, Math.min(1, x / rect.width));
+        if (audioEl.duration) audioEl.currentTime = pct * audioEl.duration;
+        setProgress(pct * 100);
+      }
+      track.addEventListener('mousedown',  e => { seeking = true; seekFromEvent(e); });
+      track.addEventListener('touchstart', e => { seeking = true; seekFromEvent(e); }, {passive:true});
+      window.addEventListener('mousemove',  e => { if (seeking) seekFromEvent(e); });
+      window.addEventListener('touchmove',  e => { if (seeking) seekFromEvent(e); }, {passive:true});
+      window.addEventListener('mouseup',   () => seeking = false);
+      window.addEventListener('touchend',  () => seeking = false);
+    }
+
+    function togglePlay() {
+      if (audioEl.paused) audioEl.play(); else audioEl.pause();
     }
 
     // pod.link supports https://pod.link/{base64url(feedURL)} for any RSS feed
@@ -256,10 +364,9 @@
         return btoa(unescape(encodeURIComponent(str)))
           .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
       }
-      const podLinkBase = 'https://pod.link/' + toBase64Url(feed);
-      const podLinkUrl = isEpisode
-        ? podLinkBase + '/episode/' + encodeURIComponent(guid)
-        : podLinkBase;
+      // pod.link episode deep links require an Apple Podcast ID which we don't
+      // have — link to the podcast page in all cases so the user can find it.
+      const podLinkUrl = 'https://pod.link/' + toBase64Url(feed);
       document.getElementById('btn-podlink').href = podLinkUrl;
     }
 

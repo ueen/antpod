@@ -120,7 +120,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                   ),
                   // Share button
                   Padding(
-                    padding: const EdgeInsets.only(left: 6, right: 4),
+                    padding: const EdgeInsets.only(left: 6, right: 12),
                     child: GestureDetector(
                       onTap: _share,
                       child: Icon(Icons.share_outlined,
@@ -130,7 +130,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                   // Subscribe / unsubscribe button
                   if (widget.onSubscribe != null)
                     Padding(
-                      padding: const EdgeInsets.only(left: 4, right: 8),
+                      padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
                         onTap: _subscribePressed ? null : () async {
                           setState(() => _subscribePressed = true);
@@ -142,20 +142,20 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                           child: _subscribePressed
                               ? Icon(Icons.check_circle,
                                   key: const ValueKey('check'),
-                                  color: Colors.green, size: 28)
+                                  color: Colors.green, size: 32)
                               : Icon(Icons.add_circle_outline,
                                   key: const ValueKey('add'),
-                                  color: cs.primary, size: 28),
+                                  color: cs.primary, size: 32),
                         ),
                       ),
                     ),
                   if (widget.onUnsubscribe != null)
                     Padding(
-                      padding: const EdgeInsets.only(left: 4, right: 8),
+                      padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
                         onTap: () => _confirmUnsubscribe(context, l10n),
                         child: Icon(Icons.remove_circle_outline,
-                            color: cs.error, size: 28),
+                            color: cs.error, size: 32),
                       ),
                     ),
                 ],
@@ -164,7 +164,12 @@ class _PodcastHeaderState extends State<PodcastHeader> {
             if (_expanded)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: ShowNotes(description: widget.description, cs: cs),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  child: SingleChildScrollView(
+                    child: ShowNotes(description: widget.description, cs: cs),
+                  ),
+                ),
               ),
             // Expand arrow
             Center(

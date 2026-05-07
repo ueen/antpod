@@ -17,6 +17,7 @@ import 'app_database.dart';
 import 'episode_tile.dart';
 import 'l10n/app_localizations.dart';
 import 'mini_player.dart';
+import 'player_provider.dart';
 import 'podcast_header.dart';
 import 'package:share_plus/share_plus.dart';
 import 'podcast_service.dart';
@@ -108,10 +109,17 @@ class _HomeScreenState extends State<HomeScreen> {
   _FeedMode _previewFrom = _FeedMode.discover;
 
   StreamSubscription<Uri>? _linkSub;
+  Uri? _pendingDeepLink;
 
   @override
   void initState() {
     super.initState();
+
+    final links = AppLinks();
+    // Store initial link; process it only after the widget is fully initialized
+    links.getInitialLink().then((uri) { if (uri != null) _pendingDeepLink = uri; });
+    _linkSub = links.uriLinkStream.listen((uri) => _handleDeepLink(uri));
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadFilterPrefs();
       if (!mounted) return;
@@ -123,18 +131,72 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         _refresh(db); // async background sync on startup
       }
+      // Process initial deep link after the app has finished initializing
+      final pending = _pendingDeepLink;
+      _pendingDeepLink = null;
+      if (pending != null) _handleDeepLink(pending);
     });
-
-    final links = AppLinks();
-    links.getInitialLink().then((uri) { if (uri != null) _handleDeepLink(uri); });
-    _linkSub = links.uriLinkStream.listen(_handleDeepLink);
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
     final feed = uri.queryParameters['feed'];
-    if (feed == null || feed.isEmpty) return;
-    if (!mounted) return;
+    if (feed == null || feed.isEmpty || !mounted) return;
+    // Capture context-dependent objects before any await gaps
     final db = context.read<AppDatabase>();
+    final player = context.read<PlayerProvider>();
+    final guid = uri.queryParameters['guid'];
+
+    // Episode deep link — open podcast first, load into player, then show sheet
+    if (guid != null && guid.isNotEmpty) {
+      final audio = uri.queryParameters['audio'] ?? '';
+      if (audio.isEmpty) return;
+      var episode = await db.getEpisode(guid);
+      if (episode == null) {
+        await db.insertTempEpisode(EpisodesCompanion(
+          id: Value(guid),
+          podcastId: Value(feed),
+          podcastTitle: Value(uri.queryParameters['podcast'] ?? ''),
+          podcastImageUrl: Value(uri.queryParameters['cover'] ?? ''),
+          title: Value(uri.queryParameters['title'] ?? ''),
+          description: const Value(''),
+          audioUrl: Value(audio),
+          durationSeconds: Value(int.tryParse(uri.queryParameters['duration'] ?? '') ?? 0),
+          publishDate: Value(DateTime.now()),
+          isSubscribed: const Value(false),
+        ));
+        episode = await db.getEpisode(guid);
+      }
+      if (episode == null || !mounted) return;
+
+      // Navigate to podcast context so it's visible behind the player sheet
+      final all = await db.getAllPodcasts();
+      if (!mounted) return;
+      final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
+      if (subscribed != null) {
+        setState(() {
+          _mode = _FeedMode.podcastFilter;
+          _filterPodcastId = subscribed.id;
+          _filterPodcast = subscribed;
+        });
+      } else {
+        // Run in background — loads full feed (including show notes) and updates db
+        _openPreview(PodcastResult(
+          id: uri.queryParameters['id'] ?? feed,
+          title: uri.queryParameters['title'] ?? '',
+          author: '',
+          description: '',
+          imageUrl: uri.queryParameters['cover'] ?? '',
+          feedUrl: feed,
+        ));
+      }
+
+      await player.load(episode);
+      if (!mounted) return;
+      await showPlayerSheet(context, onPodcastTap: _openPodcastFromPlayer);
+      return;
+    }
+
+    // Podcast deep link — navigate to subscribed feed or open preview
     final all = await db.getAllPodcasts();
     if (!mounted) return;
     final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
@@ -154,6 +216,34 @@ class _HomeScreenState extends State<HomeScreen> {
         feedUrl: feed,
       ));
     }
+  }
+
+  void _openPodcastFromPlayer() {
+    final player = context.read<PlayerProvider>();
+    final ep = player.currentEpisode;
+    if (ep == null || !mounted) return;
+    final db = context.read<AppDatabase>();
+    db.getAllPodcasts().then((all) {
+      if (!mounted) return;
+      final subscribed =
+          all.where((p) => p.feedUrl == ep.podcastId || p.id == ep.podcastId).firstOrNull;
+      if (subscribed != null) {
+        setState(() {
+          _mode = _FeedMode.podcastFilter;
+          _filterPodcastId = subscribed.id;
+          _filterPodcast = subscribed;
+        });
+      } else {
+        _openPreview(PodcastResult(
+          id: ep.podcastId,
+          title: ep.podcastTitle,
+          author: '',
+          description: '',
+          imageUrl: ep.podcastImageUrl,
+          feedUrl: ep.podcastId,
+        ));
+      }
+    });
   }
 
   Future<void> _loadFilterPrefs() async {
@@ -637,9 +727,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: _buildBody(db, cs, l10n),
                       ),
                     ),
-                    const Positioned(
+                    Positioned(
                       left: 0, right: 0, bottom: 0,
-                      child: MiniPlayer(),
+                      child: MiniPlayer(onPodcastTap: _openPodcastFromPlayer),
                     ),
                   ],
                 ),
