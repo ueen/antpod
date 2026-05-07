@@ -130,10 +130,10 @@ class PodcastService {
         .toList();
   }
 
-  // ── Empfehlungen ──────────────────────────────────────────────────────────
-  // Strategie: extrahiere die häufigsten Kategorien der abonnierten Podcasts,
-  // suche dann /podcasts/trending gefiltert nach diesen Kategorien,
-  // filtere bekannte Podcasts heraus.
+  // ── Recommendations ───────────────────────────────────────────────────────
+  // Strategy: look up subscribed podcasts on PodcastIndex to get their actual
+  // categories, then fetch trending filtered by those categories. Falls back to
+  // language-aware trending minus already-subscribed podcasts.
 
   static Future<List<PodcastResult>> recommendations({
     required List<Podcast> subscribed,
@@ -142,35 +142,66 @@ class PodcastService {
   }) async {
     if (subscribed.isEmpty) return trending(max: max, lang: lang);
 
-    // Häufigste Kategorie aus Podcast-Titeln/Beschreibungen ableiten
-    // (PodcastIndex gibt uns in /podcasts/trending auch cat-Filter)
-    // Wir wählen die erste Kategorie, die wir aus dem Trending-Feed
-    // und den abonnierten Titeln matchen können.
-    // Einfachere Heuristik: suche nach Termen aus Titeln der Abos
     final subscribedFeedUrls = subscribed.map((p) => p.feedUrl).toSet();
 
-    // Use search terms derived from subscribed titles as primary strategy
-    final terms = subscribed
-        .map((p) => p.title.split(' ').first)
-        .toSet()
-        .take(3)
-        .join(' ');
+    // Step 1: fetch PodcastIndex metadata for up to 5 subscribed podcasts
+    // to collect their real categories.
+    final categoryCount = <String, int>{};
+    await Future.wait(subscribed.take(5).map((podcast) async {
+      try {
+        final uri = Uri.parse('$_baseUrl/podcasts/byfeedurl').replace(
+          queryParameters: {'url': podcast.feedUrl},
+        );
+        final res = await http.get(uri, headers: _authHeaders());
+        if (res.statusCode == 200) {
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          final feed = body['feed'] as Map<String, dynamic>?;
+          final cats = feed?['categories'];
+          if (cats is Map) {
+            for (final v in cats.values) {
+              final cat = v.toString();
+              categoryCount[cat] = (categoryCount[cat] ?? 0) + 1;
+            }
+          }
+        }
+      } catch (_) {}
+    }));
 
+    // Step 2: pick the top 2 categories and fetch trending filtered by them.
+    final topCats = (categoryCount.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value)))
+        .take(2)
+        .map((e) => e.key)
+        .toList();
+
+    if (topCats.isNotEmpty) {
+      try {
+        final uri = Uri.parse('$_baseUrl/podcasts/trending').replace(
+          queryParameters: {
+            'max': '${max * 4}',
+            'lang': lang,
+            'cat': topCats.join(','),
+          },
+        );
+        final res = await http.get(uri, headers: _authHeaders());
+        if (res.statusCode == 200) {
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          final feeds = body['feeds'] as List? ?? [];
+          final results = feeds
+              .map((f) => PodcastResult.fromJson(f as Map<String, dynamic>))
+              .where((r) => !subscribedFeedUrls.contains(r.feedUrl))
+              .take(max)
+              .toList();
+          if (results.length >= 3) return results;
+        }
+      } catch (_) {}
+    }
+
+    // Fallback: broad trending in the user's language, excluding subscriptions.
     try {
-      final searchResults = await search(terms);
-      final fromSearch = searchResults
-          .where((r) => !subscribedFeedUrls.contains(r.feedUrl))
-          .toList();
-
-      if (fromSearch.isNotEmpty) {
-        return fromSearch.take(max).toList();
-      }
-
-      // Fallback: trending minus subscriptions (last resort)
       final trendResults = await trending(max: 50, lang: lang);
       return trendResults
           .where((r) => !subscribedFeedUrls.contains(r.feedUrl))
-          .skip(10) // skip items already in trending tab
           .take(max)
           .toList();
     } catch (_) {

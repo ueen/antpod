@@ -130,17 +130,30 @@ class _HomeScreenState extends State<HomeScreen> {
     _linkSub = links.uriLinkStream.listen(_handleDeepLink);
   }
 
-  void _handleDeepLink(Uri uri) {
+  Future<void> _handleDeepLink(Uri uri) async {
     final feed = uri.queryParameters['feed'];
     if (feed == null || feed.isEmpty) return;
-    _openPreview(PodcastResult(
-      id: uri.queryParameters['id'] ?? feed,
-      title: uri.queryParameters['title'] ?? '',
-      author: '',
-      description: '',
-      imageUrl: uri.queryParameters['cover'] ?? '',
-      feedUrl: feed,
-    ));
+    if (!mounted) return;
+    final db = context.read<AppDatabase>();
+    final all = await db.getAllPodcasts();
+    if (!mounted) return;
+    final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
+    if (subscribed != null) {
+      setState(() {
+        _mode = _FeedMode.podcastFilter;
+        _filterPodcastId = subscribed.id;
+        _filterPodcast = subscribed;
+      });
+    } else {
+      _openPreview(PodcastResult(
+        id: uri.queryParameters['id'] ?? feed,
+        title: uri.queryParameters['title'] ?? '',
+        author: '',
+        description: '',
+        imageUrl: uri.queryParameters['cover'] ?? '',
+        feedUrl: feed,
+      ));
+    }
   }
 
   Future<void> _loadFilterPrefs() async {
@@ -955,7 +968,7 @@ class _PodcastGrid extends StatelessWidget {
         }
 
         return GridView.builder(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
             crossAxisSpacing: 10,
@@ -1229,6 +1242,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       onRefresh: widget.onRefresh,
       child: AnimatedList(
         key: _listKey,
+        padding: const EdgeInsets.only(bottom: 88),
         initialItemCount: _displayed.length,
         itemBuilder: (ctx, i, anim) => _animatedTile(_displayed[i], anim),
       ),
@@ -1329,6 +1343,7 @@ class _PodcastFilteredFeedState extends State<_PodcastFilteredFeed> {
                       child: Text(l10n.emptySearchTitle,
                           style: TextStyle(color: cs.onSurfaceVariant)))
                   : ListView.separated(
+                      padding: const EdgeInsets.only(bottom: 88),
                       itemCount: eps.length,
                       separatorBuilder: (_, __) => Divider(
                           height: 1,
@@ -1393,6 +1408,7 @@ class _DiscoverListState extends State<_DiscoverList>
   }
 
   Widget _podcastList(List<PodcastResult> results) => ListView.builder(
+        padding: const EdgeInsets.only(bottom: 88),
         itemCount: results.length,
         itemBuilder: (_, i) => _DiscoverPodcastTile(
           result: results[i], rank: i + 1,
@@ -1648,6 +1664,7 @@ class _PreviewFeedState extends State<_PreviewFeed> {
                           style: TextStyle(color: cs.onSurfaceVariant)));
                     }
                     return ListView.separated(
+                      padding: const EdgeInsets.only(bottom: 88),
                       itemCount: eps.length,
                       separatorBuilder: (_, __) => Divider(
                           height: 1,

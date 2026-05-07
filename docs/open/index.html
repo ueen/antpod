@@ -250,11 +250,16 @@
       playerEl.style.display = 'block';
     }
 
-    // pod.link URL — numeric PodcastIndex ID maps directly to pod.link
-    if (podId && /^\d+$/.test(podId)) {
+    // pod.link supports https://pod.link/{base64url(feedURL)} for any RSS feed
+    if (feed) {
+      function toBase64Url(str) {
+        return btoa(unescape(encodeURIComponent(str)))
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      }
+      const podLinkBase = 'https://pod.link/' + toBase64Url(feed);
       const podLinkUrl = isEpisode
-        ? 'https://pod.link/' + podId + '/episode/' + encodeURIComponent(guid)
-        : 'https://pod.link/' + podId;
+        ? podLinkBase + '/episode/' + encodeURIComponent(guid)
+        : podLinkBase;
       document.getElementById('btn-podlink').href = podLinkUrl;
     }
 

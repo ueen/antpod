@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
+import 'share_utils.dart';
 
 class MiniPlayer extends StatefulWidget {
   const MiniPlayer({super.key});
@@ -248,7 +249,7 @@ class _PlayerSheet extends StatelessWidget {
       speed % 1 == 0 ? '${speed.toInt()}x' : '${speed}x';
 
   void _share(BuildContext context, dynamic ep) {
-    final text = '${ep.title}\n${ep.audioUrl}';
+    final text = '${ep.title}\n${ShareUtils.episodeUrl(ep)}';
     SharePlus.instance.share(ShareParams(text: text, subject: ep.title));
   }
 
