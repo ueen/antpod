@@ -176,9 +176,10 @@ class AppDatabase extends _$AppDatabase {
       );
 
   Future<void> insertTempEpisodes(List<EpisodesCompanion> eps) =>
-      batch((b) => b.insertAllOnConflictUpdate(
+      batch((b) => b.insertAll(
         episodes,
         eps.map((e) => e.copyWith(isSubscribed: const Value(false))).toList(),
+        mode: InsertMode.insertOrIgnore,
       ));
 
   Future<void> markEpisodesSubscribed(String podcastId) =>

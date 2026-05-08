@@ -78,7 +78,11 @@ class EpisodeTile extends StatelessWidget {
     final opacity = dimmed ? _kFinishedOpacity : 1.0;
 
     final dlProgress = downloads.progressForTask(episode.downloadTaskId);
-    final ringProgress = episode.isDownloaded ? 1.0 : dlProgress;
+    // If a task ID exists but isn't tracked yet (download just finished, DB
+    // hasn't flipped isDownloaded yet), hold the ring at 1.0 to avoid a flash.
+    final ringProgress = episode.isDownloaded
+        ? 1.0
+        : (dlProgress ?? (episode.downloadTaskId != null ? 1.0 : null));
 
     final activeTaskId = episode.downloadTaskId;
     final isDownloading = activeTaskId != null &&
@@ -479,12 +483,20 @@ class _ActionArea extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  CustomPaint(
-                    size: const Size(44, 44),
-                    painter: _RingPainter(
-                      progress: effectiveProgress,
-                      color: ringColor,
-                      trackColor: cs.outlineVariant.withValues(alpha: 0.5),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(
+                      begin: 0.0,
+                      end: effectiveProgress ?? 0.0,
+                    ),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOut,
+                    builder: (_, animValue, __) => CustomPaint(
+                      size: const Size(44, 44),
+                      painter: _RingPainter(
+                        progress: effectiveProgress == null ? null : animValue,
+                        color: ringColor,
+                        trackColor: cs.outlineVariant.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
                   if (isLoading)
@@ -627,5 +639,5 @@ class _RingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RingPainter old) =>
-      old.progress != progress || old.color != color;
+      old.progress != progress || old.color != color || old.trackColor != trackColor;
 }

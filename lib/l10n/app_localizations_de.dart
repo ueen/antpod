@@ -18,7 +18,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get searchNoResults => 'Keine Ergebnisse gefunden.';
 
   @override
-  String get sectionTrending => 'Trending diese Woche';
+  String get sectionTrending => 'Trending diesen Monat';
 
   @override
   String get sectionRecommended => 'Empfehlungen für dich';

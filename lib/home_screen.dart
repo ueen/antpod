@@ -292,6 +292,19 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_trending.isEmpty && _recommended.isEmpty) _loadDiscover();
   }
 
+  void _searchOnline() {
+    final q = _searchQuery;
+    setState(() {
+      _mode = _FeedMode.discover;
+      _piSearchResults = [];
+    });
+    if (q.isNotEmpty) {
+      _debouncedPISearch(q);
+    } else if (_trending.isEmpty && _recommended.isEmpty) {
+      _loadDiscover();
+    }
+  }
+
   void _exitToFeed() {
     setState(() {
       _mode = _FeedMode.feed;
@@ -304,6 +317,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ── Preview unsubscribed podcast ──────────────────────────────────────────
+
+  Future<void> _openPodcastResult(PodcastResult result) async {
+    final db = context.read<AppDatabase>();
+    final all = await db.getAllPodcasts();
+    if (!mounted) return;
+    final subscribed = all
+        .where((p) => p.feedUrl == result.feedUrl || p.id == result.feedUrl)
+        .firstOrNull;
+    if (subscribed != null) {
+      setState(() {
+        _mode = _FeedMode.podcastFilter;
+        _filterPodcastId = subscribed.id;
+        _filterPodcast = subscribed;
+      });
+    } else {
+      _openPreview(result);
+    }
+  }
 
   Future<void> _openPreview(PodcastResult result) async {
     setState(() {
@@ -519,12 +550,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _subscribe(PodcastResult result) async {
     final db = context.read<AppDatabase>();
-    // Insert podcast metadata and mark any temp episodes as subscribed (fast)
     await db.insertPodcast(result.toCompanion());
     await db.markEpisodesSubscribed(result.feedUrl);
-    // Fetch latest feed to get any new episodes
     final data = await PodcastService.loadFeed(result.feedUrl);
-    if (data != null) await db.insertEpisodes(data.episodes);
+    if (data != null) {
+      await db.insertEpisodes(
+        data.episodes
+            .map((e) => e.copyWith(isSubscribed: const Value(true)))
+            .toList(),
+      );
+    }
   }
 
   // ── Cover tap → podcast filter (or preview for temp episodes) ───────────
@@ -578,6 +613,8 @@ class _HomeScreenState extends State<HomeScreen> {
           podcastTitle: e.podcastTitle, podcastImageUrl: e.podcastImageUrl,
           title: e.title, description: e.description, audioUrl: e.audioUrl,
           durationSeconds: e.durationSeconds, publishDate: e.publishDate,
+          chaptersUrl: e.chaptersUrl,
+          isSubscribed: const Value(true),
         )).toList();
         await db.insertEpisodes(eps);
       }
@@ -774,7 +811,7 @@ class _HomeScreenState extends State<HomeScreen> {
           searchingPI: _searchingPI,
           trendingError: _trendingError,
           cs: cs, l10n: l10n,
-          onPreview: _openPreview,
+          onPreview: _openPodcastResult,
           onRefresh: _loadDiscover,
         );
 
@@ -790,6 +827,7 @@ class _HomeScreenState extends State<HomeScreen> {
           db: db, cs: cs, l10n: l10n, filter: _filter,
           searchQuery: _mode == _FeedMode.searchEpisodes ? _searchQuery : '',
           onCoverTap: _onCoverTap, onRefresh: () => _refresh(db),
+          onSearchOnline: _mode == _FeedMode.searchEpisodes ? _searchOnline : null,
         );
     }
   }
@@ -1145,12 +1183,14 @@ class _EpisodeFeed extends StatefulWidget {
   final _FilterState filter;
   final Future<void> Function(Episode, AppDatabase) onCoverTap;
   final Future<void> Function() onRefresh;
+  final VoidCallback? onSearchOnline;
 
   const _EpisodeFeed({
     required this.db, required this.cs,
     required this.l10n, required this.filter,
     required this.onCoverTap, required this.onRefresh,
     this.searchQuery = '',
+    this.onSearchOnline,
   });
 
   @override
@@ -1306,35 +1346,69 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     }
 
     if (_displayed.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      return RefreshIndicator(
+        onRefresh: widget.onRefresh,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 88),
           children: [
-            Icon(Icons.podcasts_outlined, size: 52, color: widget.cs.onSurfaceVariant),
-            const SizedBox(height: 16),
-            Text(
-              widget.searchQuery.isNotEmpty || widget.filter.hasAny
-                  ? widget.l10n.emptySearchTitle
-                  : widget.l10n.emptyFeedTitle,
-              style: TextStyle(fontSize: 16, color: widget.cs.onSurfaceVariant),
+            SizedBox(
+              height: 320,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.podcasts_outlined, size: 52, color: widget.cs.onSurfaceVariant),
+                    const SizedBox(height: 16),
+                    Text(
+                      widget.searchQuery.isNotEmpty || widget.filter.hasAny
+                          ? widget.l10n.emptySearchTitle
+                          : widget.l10n.emptyFeedTitle,
+                      style: TextStyle(fontSize: 16, color: widget.cs.onSurfaceVariant),
+                    ),
+                    if (widget.searchQuery.isEmpty && !widget.filter.hasAny) ...[
+                      const SizedBox(height: 6),
+                      Text(widget.l10n.emptyFeedSub,
+                          style: TextStyle(fontSize: 13, color: widget.cs.onSurfaceVariant)),
+                    ],
+                    if (widget.searchQuery.isNotEmpty && widget.onSearchOnline != null) ...[
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: widget.onSearchOnline,
+                        icon: const Icon(Icons.search, size: 18),
+                        label: const Text('Search online'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-            if (widget.searchQuery.isEmpty && !widget.filter.hasAny) ...[
-              const SizedBox(height: 6),
-              Text(widget.l10n.emptyFeedSub,
-                  style: TextStyle(fontSize: 13, color: widget.cs.onSurfaceVariant)),
-            ],
           ],
         ),
       );
     }
+
+    final hasFooter = widget.searchQuery.isNotEmpty && widget.onSearchOnline != null;
+    final itemCount = _displayed.length + (hasFooter ? 1 : 0);
 
     return RefreshIndicator(
       onRefresh: widget.onRefresh,
       child: AnimatedList(
         key: _listKey,
         padding: const EdgeInsets.only(bottom: 88),
-        initialItemCount: _displayed.length,
-        itemBuilder: (ctx, i, anim) => _animatedTile(_displayed[i], anim),
+        initialItemCount: itemCount,
+        itemBuilder: (ctx, i, anim) {
+          if (hasFooter && i == _displayed.length) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: OutlinedButton.icon(
+                onPressed: widget.onSearchOnline,
+                icon: const Icon(Icons.travel_explore, size: 18),
+                label: const Text('Search online'),
+              ),
+            );
+          }
+          return _animatedTile(_displayed[i], anim);
+        },
       ),
     );
   }

@@ -109,15 +109,15 @@ class PodcastService {
   }
 
   // ── Trending Top-10 ────────────────────────────────────────────────────────
-  // Endpoint: GET /podcasts/trending?max=10&lang=de,en&since=-604800
-  // since=-604800 = letzte 7 Tage
+  // Endpoint: GET /podcasts/trending?max=10&lang=de,en&since=-2592000
+  // since=-2592000 = last 30 days
 
   static Future<List<PodcastResult>> trending({
     int max = 10,
     String lang = 'en',
   }) async {
     final uri = Uri.parse('$_baseUrl/podcasts/trending').replace(
-      queryParameters: {'max': '$max', 'lang': lang},
+      queryParameters: {'max': '$max', 'lang': lang, 'since': '-2592000'},
     );
     final res = await http.get(uri, headers: _authHeaders());
     if (res.statusCode != 200) {
@@ -181,6 +181,7 @@ class PodcastService {
             'max': '${max * 4}',
             'lang': lang,
             'cat': topCats.join(','),
+            'since': '-2592000',
           },
         );
         final res = await http.get(uri, headers: _authHeaders());
