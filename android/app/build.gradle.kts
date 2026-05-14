@@ -43,9 +43,9 @@ android {
 
     buildTypes {
         release {
-            if (keystoreFile.exists()) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            signingConfig = signingConfigs.getByName(
+                if (keystoreFile.exists()) "release" else "debug"
+            )
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
