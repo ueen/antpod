@@ -217,54 +217,47 @@ class _StickySwipeable extends StatefulWidget {
 
 class _StickySwipeableState extends State<_StickySwipeable>
     with SingleTickerProviderStateMixin {
-  late AnimationController _snapCtrl;
-  double _dx = 0;
+  // Wide bounds so the spring can drive value through negative and positive px
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    lowerBound: -500,
+    upperBound: 500,
+  );
 
   static const _maxFraction = 0.40;
   static const _triggerFraction = 0.40;
 
   @override
-  void initState() {
-    super.initState();
-    // Wide bounds so the spring simulation can drive _snapCtrl.value freely
-    _snapCtrl = AnimationController(vsync: this, lowerBound: -500, upperBound: 500)
-      ..addListener(_onSnapTick);
-  }
-
-  @override
   void dispose() {
-    _snapCtrl.dispose();
+    _ctrl.dispose();
     super.dispose();
-  }
-
-  void _onSnapTick() {
-    if (mounted) setState(() => _dx = _snapCtrl.value);
   }
 
   double get _screenWidth => MediaQuery.of(context).size.width;
 
   void _onUpdate(DragUpdateDetails d) {
-    _snapCtrl.stop();
+    _ctrl.stop();
     final max = _screenWidth * _maxFraction;
-    setState(() => _dx = (_dx + d.delta.dx).clamp(-max, max));
+    // Setting .value notifies AnimatedBuilder — no setState needed
+    _ctrl.value = (_ctrl.value + d.delta.dx).clamp(-max, max);
   }
 
   Future<void> _onEnd(DragEndDetails _) async {
     final trigger = _screenWidth * _triggerFraction;
-    if (_dx > trigger) {
+    if (_ctrl.value >= trigger) {
       await widget.onSwipeStart();
-    } else if (_dx < -trigger) {
+    } else if (_ctrl.value <= -trigger) {
       await widget.onSwipeEnd();
     }
     _snapBack();
   }
 
   void _snapBack() {
-    _snapCtrl.stop();
-    // Slightly underdamped spring (ratio ≈ 0.7) — smooth with a gentle settle
-    _snapCtrl.animateWith(SpringSimulation(
-      const SpringDescription(mass: 1, stiffness: 400, damping: 28),
-      _dx,
+    final from = _ctrl.value;
+    _ctrl.stop();
+    _ctrl.animateWith(SpringSimulation(
+      const SpringDescription(mass: 1, stiffness: 200, damping: 30),
+      from,
       0.0,
       0.0,
     ));
@@ -275,16 +268,21 @@ class _StickySwipeableState extends State<_StickySwipeable>
     return GestureDetector(
       onHorizontalDragUpdate: _onUpdate,
       onHorizontalDragEnd: _onEnd,
-      child: Stack(
-        clipBehavior: Clip.hardEdge,
-        children: [
-          if (_dx > 4) Positioned.fill(child: widget.startBackground),
-          if (_dx < -4) Positioned.fill(child: widget.endBackground),
-          Transform.translate(
-            offset: Offset(_dx, 0),
-            child: widget.child,
-          ),
-        ],
+      // AnimatedBuilder rebuilds only the Stack/Transform, not widget.child
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, child) {
+          final dx = _ctrl.value;
+          return Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              if (dx > 4) Positioned.fill(child: widget.startBackground),
+              if (dx < -4) Positioned.fill(child: widget.endBackground),
+              Transform.translate(offset: Offset(dx, 0), child: child),
+            ],
+          );
+        },
+        child: widget.child,
       ),
     );
   }
