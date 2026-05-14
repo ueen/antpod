@@ -406,8 +406,8 @@ class _PlayerSheet extends StatelessWidget {
                 style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
             const SizedBox(height: 24),
 
-            // Chapter navigation — only shown when the episode has chapters
-            if (player.chapters.isNotEmpty) ...[
+            // Chapter navigation — shown when the episode has chapters or detected ad segments
+            if (player.chapters.isNotEmpty || player.adSegments.isNotEmpty) ...[
               const SizedBox(height: 4),
               _ChapterNavRow(player: player),
               const SizedBox(height: 4),
