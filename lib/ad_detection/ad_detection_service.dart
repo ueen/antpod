@@ -50,10 +50,10 @@ class AdDetectionService {
   const AdDetectionService(this._db);
   final AppDatabase _db;
 
-  /// Analyse a downloaded episode and persist results.
-  /// Fire-and-forget; caller should use `unawaited()`.
-  Future<void> analyzeEpisode(Episode episode) async {
-    if (episode.localPath == null) return;
+  /// Analyse a downloaded episode, persist results, and return the segment count.
+  /// Returns 0 on error or when nothing is found.
+  Future<int> analyzeEpisode(Episode episode) async {
+    if (episode.localPath == null) return 0;
     try {
       final segments = await compute(
         _runAnalysis,
@@ -63,7 +63,7 @@ class AdDetectionService {
           chaptersUrl: episode.chaptersUrl,
         ),
       );
-      if (segments.isEmpty) return;
+      if (segments.isEmpty) return 0;
       await _db.replaceAdSegments(
         episode.id,
         segments
@@ -78,8 +78,10 @@ class AdDetectionService {
       );
       debugPrint(
           '[AdDetect] ${segments.length} segments for "${episode.title}"');
+      return segments.length;
     } catch (e) {
       debugPrint('[AdDetect] error for "${episode.title}": $e');
+      return 0;
     }
   }
 }

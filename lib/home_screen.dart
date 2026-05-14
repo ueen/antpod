@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
 
 import 'app_database.dart';
+import 'download_provider.dart';
 import 'episode_tile.dart';
 import 'l10n/app_localizations.dart';
 import 'mini_player.dart';
@@ -161,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   StreamSubscription<Uri>? _linkSub;
   Uri? _pendingDeepLink;
+  StreamSubscription<AdDetectionResult>? _adResultSub;
 
   @override
   void initState() {
@@ -170,6 +172,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // Store initial link; process it only after the widget is fully initialized
     links.getInitialLink().then((uri) { if (uri != null) _pendingDeepLink = uri; });
     _linkSub = links.uriLinkStream.listen((uri) => _handleDeepLink(uri));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _adResultSub = context.read<DownloadProvider>().adDetectionResults
+          .listen((result) => _showAdDetectionDialog(result));
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadFilterPrefs();
@@ -325,9 +332,64 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setBool('filter_chipsVisible', _filterChipsVisible);
   }
 
+  void _showAdDetectionDialog(AdDetectionResult result) {
+    if (!mounted) return;
+    final cs = Theme.of(context).colorScheme;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ad detection complete'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              result.episodeTitle,
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            result.segmentCount == 0
+                ? const Text('No ad segments detected.')
+                : Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${result.segmentCount}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 20,
+                            color: cs.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        result.segmentCount == 1 ? 'ad segment found' : 'ad segments found',
+                        style: TextStyle(fontSize: 14, color: cs.onSurface),
+                      ),
+                    ],
+                  ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _linkSub?.cancel();
+    _adResultSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
