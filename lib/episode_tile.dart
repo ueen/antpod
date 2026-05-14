@@ -220,9 +220,8 @@ class _StickySwipeableState extends State<_StickySwipeable>
   late AnimationController _snapCtrl;
   double _dx = 0;
 
-  static const _maxFraction = 0.45;
-  // trigger at 40% of max drag distance (~18% of screen width)
-  static const _triggerFraction = _maxFraction * 0.40;
+  static const _maxFraction = 0.40;
+  static const _triggerFraction = 0.40;
 
   @override
   void initState() {
