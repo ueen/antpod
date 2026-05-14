@@ -1,9 +1,11 @@
 // lib/app_database.dart
 //
-// Schema version: 3
+// Schema version: 5
 //   v1 → v2: Episodes.isSubscribed added
 //   v2 → v3: Episodes.isFinished added (true = fully listened)
 //            Episodes.lastPositionMs added (millisecond precision resume point)
+//   v3 → v4: Episodes.chaptersUrl added
+//   v4 → v5: Episodes.lastPlayed added (timestamp of most recent playback)
 //
 // Regenerate after schema changes:
 //   dart run build_runner build --delete-conflicting-outputs
@@ -65,6 +67,10 @@ class Episodes extends Table {
   /// URL of the PodcastIndex chapters JSON file, if the episode has chapters.
   TextColumn get chaptersUrl => text().nullable()();
 
+  /// Timestamp of the most recent playback interaction.
+  /// Null if the episode has never been played.
+  DateTimeColumn get lastPlayed => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -76,7 +82,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'antpod'));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -91,6 +97,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 4) {
         await m.database.customStatement(
             'ALTER TABLE episodes ADD COLUMN chapters_url TEXT');
+      }
+      if (from < 5) {
+        await m.database.customStatement(
+            'ALTER TABLE episodes ADD COLUMN last_played INTEGER');
       }
     },
   );
@@ -149,11 +159,12 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
-  /// Finished/played episodes only (history view).
+  /// Finished/played episodes (history view). Includes temp episodes still within
+  /// the 7-day cleanup window so they appear in history until automatically removed.
   Stream<List<Episode>> watchFinishedEpisodes({bool downloadedOnly = false}) {
     return (select(episodes)
           ..where((e) {
-            final base = e.isSubscribed.equals(true) & e.isFinished.equals(true);
+            final base = e.isFinished.equals(true);
             return downloadedOnly ? base & e.isDownloaded.equals(true) : base;
           })
           ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
@@ -211,6 +222,7 @@ class AppDatabase extends _$AppDatabase {
         lastPositionMs: Value(positionMs),
         playbackPositionSeconds: Value(posSeconds),
         isFinished: Value(finished),
+        lastPlayed: Value(DateTime.now()),
       ),
     );
   }
@@ -218,7 +230,10 @@ class AppDatabase extends _$AppDatabase {
   /// Explicitly mark episode as finished (e.g. after natural completion).
   Future<void> markFinished(String id) =>
       (update(episodes)..where((e) => e.id.equals(id))).write(
-        const EpisodesCompanion(isFinished: Value(true)),
+        EpisodesCompanion(
+          isFinished: const Value(true),
+          lastPlayed: Value(DateTime.now()),
+        ),
       );
 
   /// Explicitly mark episode as unfinished (reset).
@@ -228,6 +243,7 @@ class AppDatabase extends _$AppDatabase {
           isFinished: Value(false),
           lastPositionMs: Value(0),
           playbackPositionSeconds: Value(0),
+          lastPlayed: Value(null),
         ),
       );
 
@@ -255,6 +271,51 @@ class AppDatabase extends _$AppDatabase {
         downloadTaskId: Value(null),
       ),
     );
+  }
+
+  /// Delete stale temp episodes and orphaned podcasts.
+  ///
+  /// Played episodes: removed 7 days after last playback.
+  /// Never-started episodes: removed if publish date is >7 days old.
+  /// In-progress episodes (started but not finished) are always kept.
+  Future<void> cleanupStaleTempEpisodes() async {
+    final cutoff = DateTime.now().subtract(const Duration(days: 7));
+
+    final stale = await (select(episodes)
+          ..where((e) =>
+              e.isSubscribed.equals(false) &
+              (
+                // Played: wait 7 days from last playback before removing
+                (e.isFinished.equals(true) &
+                    e.lastPlayed.isSmallerThanValue(cutoff)) |
+                // Never started: no play mark and old content
+                (e.lastPositionMs.equals(0) &
+                    e.isFinished.equals(false) &
+                    e.publishDate.isSmallerThanValue(cutoff))
+              )))
+        .get();
+
+    if (stale.isEmpty) return;
+
+    for (final ep in stale) {
+      if (ep.localPath != null) {
+        final f = File(ep.localPath!);
+        if (f.existsSync()) f.deleteSync();
+      }
+    }
+
+    final ids = stale.map((e) => e.id).toList();
+    await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
+
+    final affectedPodcastIds = stale.map((e) => e.podcastId).toSet();
+    for (final podId in affectedPodcastIds) {
+      final remaining =
+          await (select(episodes)..where((e) => e.podcastId.equals(podId)))
+              .get();
+      if (remaining.isEmpty) {
+        await (delete(podcasts)..where((p) => p.id.equals(podId))).go();
+      }
+    }
   }
 
   Future<void> cleanupTempEpisode(String id) async {

@@ -632,6 +632,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Refresh ───────────────────────────────────────────────────────────────
 
   Future<void> _refresh(AppDatabase db) async {
+    await db.cleanupStaleTempEpisodes();
     final pods = await db.getAllPodcasts();
     // Load all feeds in parallel instead of sequentially
     await Future.wait(pods.map((pod) async {

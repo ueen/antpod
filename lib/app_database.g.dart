@@ -559,6 +559,12 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
   late final GeneratedColumn<String> chaptersUrl = GeneratedColumn<String>(
       'chapters_url', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _lastPlayedMeta =
+      const VerificationMeta('lastPlayed');
+  @override
+  late final GeneratedColumn<DateTime> lastPlayed = GeneratedColumn<DateTime>(
+      'last_played', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -577,7 +583,8 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
         playbackPositionSeconds,
         isFinished,
         isSubscribed,
-        chaptersUrl
+        chaptersUrl,
+        lastPlayed
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -697,6 +704,12 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
           chaptersUrl.isAcceptableOrUnknown(
               data['chapters_url']!, _chaptersUrlMeta));
     }
+    if (data.containsKey('last_played')) {
+      context.handle(
+          _lastPlayedMeta,
+          lastPlayed.isAcceptableOrUnknown(
+              data['last_played']!, _lastPlayedMeta));
+    }
     return context;
   }
 
@@ -741,6 +754,8 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
           .read(DriftSqlType.bool, data['${effectivePrefix}is_subscribed'])!,
       chaptersUrl: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}chapters_url']),
+      lastPlayed: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}last_played']),
     );
   }
 
@@ -782,6 +797,10 @@ class Episode extends DataClass implements Insertable<Episode> {
 
   /// URL of the PodcastIndex chapters JSON file, if the episode has chapters.
   final String? chaptersUrl;
+
+  /// Timestamp of the most recent playback interaction.
+  /// Null if the episode has never been played.
+  final DateTime? lastPlayed;
   const Episode(
       {required this.id,
       required this.podcastId,
@@ -799,7 +818,8 @@ class Episode extends DataClass implements Insertable<Episode> {
       required this.playbackPositionSeconds,
       required this.isFinished,
       required this.isSubscribed,
-      this.chaptersUrl});
+      this.chaptersUrl,
+      this.lastPlayed});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -825,6 +845,9 @@ class Episode extends DataClass implements Insertable<Episode> {
     map['is_subscribed'] = Variable<bool>(isSubscribed);
     if (!nullToAbsent || chaptersUrl != null) {
       map['chapters_url'] = Variable<String>(chaptersUrl);
+    }
+    if (!nullToAbsent || lastPlayed != null) {
+      map['last_played'] = Variable<DateTime>(lastPlayed);
     }
     return map;
   }
@@ -854,6 +877,9 @@ class Episode extends DataClass implements Insertable<Episode> {
       chaptersUrl: chaptersUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(chaptersUrl),
+      lastPlayed: lastPlayed == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastPlayed),
     );
   }
 
@@ -879,6 +905,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       isFinished: serializer.fromJson<bool>(json['isFinished']),
       isSubscribed: serializer.fromJson<bool>(json['isSubscribed']),
       chaptersUrl: serializer.fromJson<String?>(json['chaptersUrl']),
+      lastPlayed: serializer.fromJson<DateTime?>(json['lastPlayed']),
     );
   }
   @override
@@ -903,6 +930,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       'isFinished': serializer.toJson<bool>(isFinished),
       'isSubscribed': serializer.toJson<bool>(isSubscribed),
       'chaptersUrl': serializer.toJson<String?>(chaptersUrl),
+      'lastPlayed': serializer.toJson<DateTime?>(lastPlayed),
     };
   }
 
@@ -923,7 +951,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           int? playbackPositionSeconds,
           bool? isFinished,
           bool? isSubscribed,
-          Value<String?> chaptersUrl = const Value.absent()}) =>
+          Value<String?> chaptersUrl = const Value.absent(),
+          Value<DateTime?> lastPlayed = const Value.absent()}) =>
       Episode(
         id: id ?? this.id,
         podcastId: podcastId ?? this.podcastId,
@@ -944,6 +973,7 @@ class Episode extends DataClass implements Insertable<Episode> {
         isFinished: isFinished ?? this.isFinished,
         isSubscribed: isSubscribed ?? this.isSubscribed,
         chaptersUrl: chaptersUrl.present ? chaptersUrl.value : this.chaptersUrl,
+        lastPlayed: lastPlayed.present ? lastPlayed.value : this.lastPlayed,
       );
   Episode copyWithCompanion(EpisodesCompanion data) {
     return Episode(
@@ -984,6 +1014,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           : this.isSubscribed,
       chaptersUrl:
           data.chaptersUrl.present ? data.chaptersUrl.value : this.chaptersUrl,
+      lastPlayed:
+          data.lastPlayed.present ? data.lastPlayed.value : this.lastPlayed,
     );
   }
 
@@ -1006,7 +1038,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           ..write('playbackPositionSeconds: $playbackPositionSeconds, ')
           ..write('isFinished: $isFinished, ')
           ..write('isSubscribed: $isSubscribed, ')
-          ..write('chaptersUrl: $chaptersUrl')
+          ..write('chaptersUrl: $chaptersUrl, ')
+          ..write('lastPlayed: $lastPlayed')
           ..write(')'))
         .toString();
   }
@@ -1029,7 +1062,8 @@ class Episode extends DataClass implements Insertable<Episode> {
       playbackPositionSeconds,
       isFinished,
       isSubscribed,
-      chaptersUrl);
+      chaptersUrl,
+      lastPlayed);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1050,7 +1084,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           other.playbackPositionSeconds == this.playbackPositionSeconds &&
           other.isFinished == this.isFinished &&
           other.isSubscribed == this.isSubscribed &&
-          other.chaptersUrl == this.chaptersUrl);
+          other.chaptersUrl == this.chaptersUrl &&
+          other.lastPlayed == this.lastPlayed);
 }
 
 class EpisodesCompanion extends UpdateCompanion<Episode> {
@@ -1071,6 +1106,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
   final Value<bool> isFinished;
   final Value<bool> isSubscribed;
   final Value<String?> chaptersUrl;
+  final Value<DateTime?> lastPlayed;
   final Value<int> rowid;
   const EpisodesCompanion({
     this.id = const Value.absent(),
@@ -1090,6 +1126,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.isFinished = const Value.absent(),
     this.isSubscribed = const Value.absent(),
     this.chaptersUrl = const Value.absent(),
+    this.lastPlayed = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   EpisodesCompanion.insert({
@@ -1110,6 +1147,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.isFinished = const Value.absent(),
     this.isSubscribed = const Value.absent(),
     this.chaptersUrl = const Value.absent(),
+    this.lastPlayed = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         podcastId = Value(podcastId),
@@ -1137,6 +1175,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     Expression<bool>? isFinished,
     Expression<bool>? isSubscribed,
     Expression<String>? chaptersUrl,
+    Expression<DateTime>? lastPlayed,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1158,6 +1197,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       if (isFinished != null) 'is_finished': isFinished,
       if (isSubscribed != null) 'is_subscribed': isSubscribed,
       if (chaptersUrl != null) 'chapters_url': chaptersUrl,
+      if (lastPlayed != null) 'last_played': lastPlayed,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1180,6 +1220,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       Value<bool>? isFinished,
       Value<bool>? isSubscribed,
       Value<String?>? chaptersUrl,
+      Value<DateTime?>? lastPlayed,
       Value<int>? rowid}) {
     return EpisodesCompanion(
       id: id ?? this.id,
@@ -1200,6 +1241,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       isFinished: isFinished ?? this.isFinished,
       isSubscribed: isSubscribed ?? this.isSubscribed,
       chaptersUrl: chaptersUrl ?? this.chaptersUrl,
+      lastPlayed: lastPlayed ?? this.lastPlayed,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1259,6 +1301,9 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     if (chaptersUrl.present) {
       map['chapters_url'] = Variable<String>(chaptersUrl.value);
     }
+    if (lastPlayed.present) {
+      map['last_played'] = Variable<DateTime>(lastPlayed.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1285,6 +1330,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
           ..write('isFinished: $isFinished, ')
           ..write('isSubscribed: $isSubscribed, ')
           ..write('chaptersUrl: $chaptersUrl, ')
+          ..write('lastPlayed: $lastPlayed, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1532,6 +1578,7 @@ typedef $$EpisodesTableCreateCompanionBuilder = EpisodesCompanion Function({
   Value<bool> isFinished,
   Value<bool> isSubscribed,
   Value<String?> chaptersUrl,
+  Value<DateTime?> lastPlayed,
   Value<int> rowid,
 });
 typedef $$EpisodesTableUpdateCompanionBuilder = EpisodesCompanion Function({
@@ -1552,6 +1599,7 @@ typedef $$EpisodesTableUpdateCompanionBuilder = EpisodesCompanion Function({
   Value<bool> isFinished,
   Value<bool> isSubscribed,
   Value<String?> chaptersUrl,
+  Value<DateTime?> lastPlayed,
   Value<int> rowid,
 });
 
@@ -1619,6 +1667,9 @@ class $$EpisodesTableFilterComposer
 
   ColumnFilters<String> get chaptersUrl => $composableBuilder(
       column: $table.chaptersUrl, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastPlayed => $composableBuilder(
+      column: $table.lastPlayed, builder: (column) => ColumnFilters(column));
 }
 
 class $$EpisodesTableOrderingComposer
@@ -1688,6 +1739,9 @@ class $$EpisodesTableOrderingComposer
 
   ColumnOrderings<String> get chaptersUrl => $composableBuilder(
       column: $table.chaptersUrl, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastPlayed => $composableBuilder(
+      column: $table.lastPlayed, builder: (column) => ColumnOrderings(column));
 }
 
 class $$EpisodesTableAnnotationComposer
@@ -1749,6 +1803,9 @@ class $$EpisodesTableAnnotationComposer
 
   GeneratedColumn<String> get chaptersUrl => $composableBuilder(
       column: $table.chaptersUrl, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastPlayed => $composableBuilder(
+      column: $table.lastPlayed, builder: (column) => column);
 }
 
 class $$EpisodesTableTableManager extends RootTableManager<
@@ -1791,6 +1848,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             Value<bool> isFinished = const Value.absent(),
             Value<bool> isSubscribed = const Value.absent(),
             Value<String?> chaptersUrl = const Value.absent(),
+            Value<DateTime?> lastPlayed = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               EpisodesCompanion(
@@ -1811,6 +1869,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             isFinished: isFinished,
             isSubscribed: isSubscribed,
             chaptersUrl: chaptersUrl,
+            lastPlayed: lastPlayed,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1831,6 +1890,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             Value<bool> isFinished = const Value.absent(),
             Value<bool> isSubscribed = const Value.absent(),
             Value<String?> chaptersUrl = const Value.absent(),
+            Value<DateTime?> lastPlayed = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               EpisodesCompanion.insert(
@@ -1851,6 +1911,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             isFinished: isFinished,
             isSubscribed: isSubscribed,
             chaptersUrl: chaptersUrl,
+            lastPlayed: lastPlayed,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
