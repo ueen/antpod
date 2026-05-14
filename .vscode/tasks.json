@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Switch to ad-detection test branch",
+      "type": "shell",
+      "command": "git checkout test/ad-detection-ui",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "group": "none"
+    },
+    {
+      "label": "Switch to master branch",
+      "type": "shell",
+      "command": "git checkout master",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "group": "none"
+    }
+  ]
+}
