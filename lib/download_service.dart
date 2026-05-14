@@ -10,6 +10,7 @@ import 'app_database.dart';
 
 const _kDownloadPort = 'antpod_downloads';
 
+@pragma('vm:entry-point')
 class DownloadService {
   static bool _initialized = false;
   static ReceivePort? _receivePort;

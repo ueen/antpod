@@ -80,6 +80,24 @@ class AppLocalizationsFr extends AppLocalizations {
   String get filterOldest => 'Les plus anciens';
 
   @override
+  String get filterPlaying => 'En cours';
+
+  @override
+  String get addRssFeed => 'Ajouter un flux RSS';
+
+  @override
+  String get openFeed => 'Ouvrir le flux';
+
+  @override
+  String get addByRssUrl => 'Ajouter par URL RSS';
+
+  @override
+  String get subscribeToRss => 'S\'abonner au flux RSS';
+
+  @override
+  String get searchOnline => 'Rechercher en ligne';
+
+  @override
   String get discoverTabTrending => 'Tendances';
 
   @override

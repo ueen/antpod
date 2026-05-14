@@ -1,0 +1,5 @@
+• Much smoother playback — list no longer rebuilds on every position tick
+• Pull-to-refresh loads all feeds in parallel (no more waiting for each one)
+• Fixed downloads silently breaking in release builds
+• Filter switching no longer drops frames on large lists
+• Download ring animates when deleting an episode

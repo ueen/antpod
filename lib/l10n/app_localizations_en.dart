@@ -80,6 +80,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get filterOldest => 'Oldest first';
 
   @override
+  String get filterPlaying => 'Playing';
+
+  @override
+  String get addRssFeed => 'Add RSS feed';
+
+  @override
+  String get openFeed => 'Open feed';
+
+  @override
+  String get addByRssUrl => 'Add by RSS feed URL';
+
+  @override
+  String get subscribeToRss => 'Subscribe to RSS feed';
+
+  @override
+  String get searchOnline => 'Search online';
+
+  @override
   String get discoverTabTrending => 'Trending';
 
   @override

@@ -123,33 +123,42 @@ class AppDatabase extends _$AppDatabase {
   // ── Episodes ──────────────────────────────────────────────────────────────
 
   /// Default feed: subscribed or actively-used temp episodes, not yet finished.
-  Stream<List<Episode>> watchUnfinishedEpisodes() =>
-      (select(episodes)
-            ..where((e) =>
-                e.isFinished.equals(false) &
+  Stream<List<Episode>> watchUnfinishedEpisodes({bool downloadedOnly = false}) {
+    return (select(episodes)
+          ..where((e) {
+            final base = e.isFinished.equals(false) &
                 (e.isSubscribed.equals(true) |
                  e.isDownloaded.equals(true) |
-                 e.lastPositionMs.isBiggerThanValue(0)))
-            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-          .watch();
+                 e.lastPositionMs.isBiggerThanValue(0));
+            return downloadedOnly ? base & e.isDownloaded.equals(true) : base;
+          })
+          ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+        .watch();
+  }
 
   /// All subscribed + actively-used temp episodes (no finished filter).
-  Stream<List<Episode>> watchAllFeedEpisodes() =>
-      (select(episodes)
-            ..where((e) =>
-                e.isSubscribed.equals(true) |
+  Stream<List<Episode>> watchAllFeedEpisodes({bool downloadedOnly = false}) {
+    return (select(episodes)
+          ..where((e) {
+            final base = e.isSubscribed.equals(true) |
                 e.isDownloaded.equals(true) |
-                e.lastPositionMs.isBiggerThanValue(0))
-            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-          .watch();
+                e.lastPositionMs.isBiggerThanValue(0);
+            return downloadedOnly ? base & e.isDownloaded.equals(true) : base;
+          })
+          ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+        .watch();
+  }
 
   /// Finished/played episodes only (history view).
-  Stream<List<Episode>> watchFinishedEpisodes() =>
-      (select(episodes)
-            ..where((e) => e.isSubscribed.equals(true))
-            ..where((e) => e.isFinished.equals(true))
-            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-          .watch();
+  Stream<List<Episode>> watchFinishedEpisodes({bool downloadedOnly = false}) {
+    return (select(episodes)
+          ..where((e) {
+            final base = e.isSubscribed.equals(true) & e.isFinished.equals(true);
+            return downloadedOnly ? base & e.isDownloaded.equals(true) : base;
+          })
+          ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+        .watch();
+  }
 
   /// All subscribed episodes (for "show all" filter — kept for podcast filter screen).
   Stream<List<Episode>> watchAllSubscribedEpisodes() =>

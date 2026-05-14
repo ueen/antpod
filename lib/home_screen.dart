@@ -27,7 +27,26 @@ import 'share_utils.dart';
 // Filter state
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _SortMode { none, alphabetical, oldest }
+enum _SortMode { none, alphabetical, oldest, inProgress }
+
+List<Episode> _sortEpisodes(List<Episode> eps, _SortMode sort) {
+  switch (sort) {
+    case _SortMode.alphabetical:
+      return List.of(eps)
+        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    case _SortMode.oldest:
+      return List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
+    case _SortMode.inProgress:
+      return List.of(eps)..sort((a, b) {
+        final aIn = a.lastPositionMs > 0;
+        final bIn = b.lastPositionMs > 0;
+        if (aIn != bIn) return aIn ? -1 : 1;
+        return b.publishDate.compareTo(a.publishDate);
+      });
+    case _SortMode.none:
+      return eps;
+  }
+}
 
 class _FilterState {
   final bool newOnly;    // true = show only unplayed (DEFAULT)
@@ -517,6 +536,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _debouncedPISearch(String q) async {
     if (q.trim().length < 2) { setState(() => _piSearchResults = []); return; }
+    final lower = q.trim().toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+      setState(() { _piSearchResults = []; _searchingPI = false; });
+      return;
+    }
     setState(() => _searchingPI = true);
     final results = await PodcastService.search(q.trim());
     if (mounted && _searchQuery == q) {
@@ -605,7 +629,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _refresh(AppDatabase db) async {
     final pods = await db.getAllPodcasts();
-    for (final pod in pods) {
+    // Load all feeds in parallel instead of sequentially
+    await Future.wait(pods.map((pod) async {
       final data = await PodcastService.loadFeed(pod.feedUrl);
       if (data != null) {
         final eps = data.episodes.map((e) => EpisodesCompanion(
@@ -618,12 +643,23 @@ class _HomeScreenState extends State<HomeScreen> {
         )).toList();
         await db.insertEpisodes(eps);
       }
-    }
+    }));
   }
 
   // ─── Filter chip handler ──────────────────────────────────────────────────
 
   void _onFilterToggle(String key) {
+    // From podcast view, tapping Podcasts chip exits to the grid
+    if (key == 'podcasts' && _mode == _FeedMode.podcastFilter) {
+      setState(() {
+        _mode = _FeedMode.feed;
+        _filterPodcastId = null;
+        _filterPodcast = null;
+        _filter = const _FilterState(podcasts: true, newOnly: false);
+      });
+      _saveFilterPrefs();
+      return;
+    }
     setState(() {
       switch (key) {
         case 'new':
@@ -650,6 +686,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _filter = _filter.copyWith(
             sort: _filter.sort == _SortMode.oldest
                 ? _SortMode.none : _SortMode.oldest,
+            podcasts: false,
+          );
+        case 'inprogress':
+          _filter = _filter.copyWith(
+            sort: _filter.sort == _SortMode.inProgress
+                ? _SortMode.none : _SortMode.inProgress,
             podcasts: false,
           );
         case 'podcasts':
@@ -800,6 +842,10 @@ class _HomeScreenState extends State<HomeScreen> {
           podcastId: _filterPodcastId!, podcast: _filterPodcast,
           onCoverTap: _onCoverTap,
           onUnsubscribe: _filterPodcast != null ? () => _unsubscribe(_filterPodcast!) : null,
+          filter: _filter,
+          filterChipsVisible: _filterChipsVisible,
+          onFilterToggle: _onFilterToggle,
+          l10n: l10n,
         );
 
       case _FeedMode.discover:
@@ -973,6 +1019,11 @@ class _FilterChipsRow extends StatelessWidget {
                 cs: cs, icon: Icons.headphones,
                 onTap: () => onToggle('new')),
             const SizedBox(width: 8),
+            _Chip(label: l10n.filterPlaying,
+                active: filter.sort == _SortMode.inProgress && !filter.podcasts,
+                cs: cs, icon: Icons.play_circle_outline,
+                onTap: () => onToggle('inprogress')),
+            const SizedBox(width: 8),
           ],
           if (showDownloadedChip) ...[
             _Chip(label: l10n.filterDownloaded,
@@ -1022,7 +1073,11 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOut,
+      clipBehavior: Clip.none,
+      child: AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
@@ -1054,6 +1109,7 @@ class _Chip extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -1214,18 +1270,13 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   void didUpdateWidget(_EpisodeFeed old) {
     super.didUpdateWidget(old);
     final streamChanged = old.filter.history != widget.filter.history ||
-        old.filter.newOnly != widget.filter.newOnly;
+        old.filter.newOnly != widget.filter.newOnly ||
+        old.filter.downloaded != widget.filter.downloaded;
     if (streamChanged) {
       _sub?.cancel();
       _subscribe();
     } else if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
-      // Sort/filter changed — reset the list entirely so reordering is applied.
-      // diffUpdate only handles insertions/removals, not positional changes.
-      final filtered = _applyFilters(_raw);
-      setState(() {
-        _listKey = GlobalKey<AnimatedListState>();
-        _displayed = List.of(filtered);
-      });
+      setState(() => _displayed = _applyFilters(_raw));
     }
   }
 
@@ -1236,9 +1287,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   }
 
   Stream<List<Episode>> get _stream {
-    if (widget.filter.history) return widget.db.watchFinishedEpisodes();
-    if (widget.filter.newOnly) return widget.db.watchUnfinishedEpisodes();
-    return widget.db.watchAllFeedEpisodes();
+    final dl = widget.filter.downloaded;
+    if (widget.filter.history) return widget.db.watchFinishedEpisodes(downloadedOnly: dl);
+    if (widget.filter.newOnly) return widget.db.watchUnfinishedEpisodes(downloadedOnly: dl);
+    return widget.db.watchAllFeedEpisodes(downloadedOnly: dl);
   }
 
   void _subscribe() {
@@ -1253,86 +1305,84 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
           e.title.toLowerCase().contains(q) ||
           e.podcastTitle.toLowerCase().contains(q)).toList();
     }
-    if (widget.filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
-    if (widget.filter.sort == _SortMode.alphabetical) {
-      eps = List.of(eps)
-        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-    } else if (widget.filter.sort == _SortMode.oldest) {
-      eps = List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
-    }
-    return eps;
+    return _sortEpisodes(eps, widget.filter.sort);
   }
 
   void _onData(List<Episode> raw) {
     _raw = raw;
     final filtered = _applyFilters(raw);
     if (_initialLoad) {
-      _initialLoad = false;
-      setState(() => _displayed = List.of(filtered));
+      setState(() {
+        _displayed = List.of(filtered);
+        _initialLoad = false;
+      });
       return;
     }
     _diffUpdate(filtered);
   }
 
-  void _diffUpdate(List<Episode> newList) {
+  void _diffUpdate(List<Episode> next) {
     final state = _listKey.currentState;
     if (state == null) {
-      setState(() => _displayed = List.of(newList));
+      setState(() => _displayed = List.of(next));
       return;
     }
 
-    // Remove items no longer in newList (backwards to keep indices stable)
+    // Count structural changes (insertions + removals)
+    int changes = 0;
+    for (final e in _displayed) {
+      if (!next.any((n) => n.id == e.id)) changes++;
+    }
+    for (final n in next) {
+      if (!_displayed.any((e) => e.id == n.id)) changes++;
+    }
+
+    // For large batch changes (e.g. filter switch) skip per-item animation —
+    // reset the AnimatedList key so Flutter rebuilds it fresh with no stale state.
+    if (changes > 8) {
+      setState(() {
+        _listKey = GlobalKey<AnimatedListState>();
+        _displayed = List.of(next);
+      });
+      return;
+    }
+
     for (int i = _displayed.length - 1; i >= 0; i--) {
-      final ep = _displayed[i];
-      if (!newList.any((e) => e.id == ep.id)) {
-        _displayed.removeAt(i);
-        state.removeItem(
-          i,
-          (ctx, anim) => _animatedTile(ep, anim),
-          duration: const Duration(milliseconds: 280),
-        );
+      if (!next.any((e) => e.id == _displayed[i].id)) {
+        final removed = _displayed.removeAt(i);
+        state.removeItem(i, (ctx, anim) => _animatedTile(removed, anim),
+            duration: const Duration(milliseconds: 250));
       }
     }
-
-    // Insert items now in newList that weren't before
-    for (int i = 0; i < newList.length; i++) {
-      final ep = newList[i];
-      if (!_displayed.any((e) => e.id == ep.id)) {
-        _displayed.insert(i, ep);
-        state.insertItem(i, duration: const Duration(milliseconds: 280));
+    for (int i = 0; i < next.length; i++) {
+      if (!_displayed.any((e) => e.id == next[i].id)) {
+        _displayed.insert(i, next[i]);
+        state.insertItem(i, duration: const Duration(milliseconds: 250));
       }
     }
-
-    // Update data for existing items in-place; do NOT replace the whole list,
-    // which would conflict with in-flight AnimatedList remove animations.
     setState(() {
       for (int i = 0; i < _displayed.length; i++) {
-        final updated = newList.firstWhere(
-          (e) => e.id == _displayed[i].id,
-          orElse: () => _displayed[i],
-        );
-        _displayed[i] = updated;
+        _displayed[i] = next.firstWhere(
+            (e) => e.id == _displayed[i].id, orElse: () => _displayed[i]);
       }
+      _displayed.sort((a, b) {
+        final ai = next.indexWhere((e) => e.id == a.id);
+        final bi = next.indexWhere((e) => e.id == b.id);
+        return ai.compareTo(bi);
+      });
     });
   }
 
   Widget _animatedTile(Episode ep, Animation<double> anim) {
-    final curved = CurvedAnimation(parent: anim, curve: Curves.easeOut);
     return SizeTransition(
-      sizeFactor: curved,
+      sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
       child: FadeTransition(
         opacity: CurvedAnimation(parent: anim, curve: Curves.easeIn),
         child: Column(
+          key: ValueKey(ep.id),
           children: [
-            EpisodeTile(
-              episode: ep,
-              onCoverTap: () => widget.onCoverTap(ep, widget.db),
-            ),
-            Divider(
-              height: 1,
-              color: widget.cs.outlineVariant.withValues(alpha: 0.5),
-              indent: 88,
-            ),
+            EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+            Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
           ],
         ),
       ),
@@ -1341,75 +1391,79 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 
   @override
   Widget build(BuildContext context) {
-    if (_initialLoad) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_displayed.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: widget.onRefresh,
-        child: ListView(
-          padding: const EdgeInsets.only(bottom: 88),
-          children: [
-            SizedBox(
-              height: 320,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.podcasts_outlined, size: 52, color: widget.cs.onSurfaceVariant),
-                    const SizedBox(height: 16),
-                    Text(
-                      widget.searchQuery.isNotEmpty || widget.filter.hasAny
-                          ? widget.l10n.emptySearchTitle
-                          : widget.l10n.emptyFeedTitle,
-                      style: TextStyle(fontSize: 16, color: widget.cs.onSurfaceVariant),
-                    ),
-                    if (widget.searchQuery.isEmpty && !widget.filter.hasAny) ...[
-                      const SizedBox(height: 6),
-                      Text(widget.l10n.emptyFeedSub,
-                          style: TextStyle(fontSize: 13, color: widget.cs.onSurfaceVariant)),
-                    ],
-                    if (widget.searchQuery.isNotEmpty && widget.onSearchOnline != null) ...[
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: widget.onSearchOnline,
-                        icon: const Icon(Icons.search, size: 18),
-                        label: const Text('Search online'),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    if (_initialLoad) return const Center(child: CircularProgressIndicator());
 
     final hasFooter = widget.searchQuery.isNotEmpty && widget.onSearchOnline != null;
-    final itemCount = _displayed.length + (hasFooter ? 1 : 0);
+    final isEmpty = _displayed.isEmpty;
 
-    return RefreshIndicator(
-      onRefresh: widget.onRefresh,
-      child: AnimatedList(
-        key: _listKey,
-        padding: const EdgeInsets.only(bottom: 88),
-        initialItemCount: itemCount,
-        itemBuilder: (ctx, i, anim) {
-          if (hasFooter && i == _displayed.length) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: OutlinedButton.icon(
-                onPressed: widget.onSearchOnline,
-                icon: const Icon(Icons.travel_explore, size: 18),
-                label: const Text('Search online'),
-              ),
-            );
-          }
-          return _animatedTile(_displayed[i], anim);
-        },
-      ),
+    final child = isEmpty
+        ? RefreshIndicator(
+            key: const ValueKey('empty'),
+            onRefresh: widget.onRefresh,
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 88),
+              children: [
+                SizedBox(
+                  height: 320,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.podcasts_outlined, size: 52, color: widget.cs.onSurfaceVariant),
+                        const SizedBox(height: 16),
+                        Text(
+                          widget.searchQuery.isNotEmpty || widget.filter.hasAny
+                              ? widget.l10n.emptySearchTitle
+                              : widget.l10n.emptyFeedTitle,
+                          style: TextStyle(fontSize: 16, color: widget.cs.onSurfaceVariant),
+                        ),
+                        if (widget.searchQuery.isEmpty && !widget.filter.hasAny) ...[
+                          const SizedBox(height: 6),
+                          Text(widget.l10n.emptyFeedSub,
+                              style: TextStyle(fontSize: 13, color: widget.cs.onSurfaceVariant)),
+                        ],
+                        if (widget.searchQuery.isNotEmpty && widget.onSearchOnline != null) ...[
+                          const SizedBox(height: 20),
+                          FilledButton.icon(
+                            onPressed: widget.onSearchOnline,
+                            icon: const Icon(Icons.search, size: 18),
+                            label: Text(widget.l10n.searchOnline),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        : RefreshIndicator(
+            key: const ValueKey('list'),
+            onRefresh: widget.onRefresh,
+            child: AnimatedList(
+              key: _listKey,
+              padding: const EdgeInsets.only(bottom: 88),
+              initialItemCount: _displayed.length + (hasFooter ? 1 : 0),
+              itemBuilder: (ctx, i, anim) {
+                if (hasFooter && i == _displayed.length) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: OutlinedButton.icon(
+                      onPressed: widget.onSearchOnline,
+                      icon: const Icon(Icons.travel_explore, size: 18),
+                      label: Text(widget.l10n.searchOnline),
+                    ),
+                  );
+                }
+                return _animatedTile(_displayed[i], anim);
+              },
+            ),
+          );
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+      child: child,
     );
   }
 }
@@ -1418,88 +1472,74 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 // Podcast-filtered feed (with filter chips)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PodcastFilteredFeed extends StatefulWidget {
+class _PodcastFilteredFeed extends StatelessWidget {
   final AppDatabase db;
   final ColorScheme cs;
   final String podcastId;
   final Podcast? podcast;
   final Future<void> Function(Episode, AppDatabase) onCoverTap;
   final VoidCallback? onUnsubscribe;
+  final _FilterState filter;
+  final bool filterChipsVisible;
+  final ValueChanged<String> onFilterToggle;
+  final AppLocalizations l10n;
 
   const _PodcastFilteredFeed({
     required this.db, required this.cs,
     required this.podcastId, required this.podcast,
     required this.onCoverTap,
+    required this.filter,
+    required this.filterChipsVisible,
+    required this.onFilterToggle,
+    required this.l10n,
     this.onUnsubscribe,
-  });
-
-  @override
-  State<_PodcastFilteredFeed> createState() => _PodcastFilteredFeedState();
-}
-
-class _PodcastFilteredFeedState extends State<_PodcastFilteredFeed> {
-  _FilterState _filter = const _FilterState();
-
-  void _onToggle(String key) => setState(() {
-    switch (key) {
-      case 'new':
-        _filter = _filter.copyWith(newOnly: !_filter.newOnly, history: false);
-      case 'history':
-        _filter = _filter.copyWith(history: !_filter.history, newOnly: false);
-      case 'dl':
-        _filter = _filter.copyWith(downloaded: !_filter.downloaded);
-      case 'az':
-        _filter = _filter.copyWith(
-          sort: _filter.sort == _SortMode.alphabetical
-              ? _SortMode.none : _SortMode.alphabetical);
-      case 'oldest':
-        _filter = _filter.copyWith(
-          sort: _filter.sort == _SortMode.oldest
-              ? _SortMode.none : _SortMode.oldest);
-    }
   });
 
   List<Episode> _applyFilters(List<Episode> raw) {
     var eps = raw;
-    if (_filter.history) {
+    if (filter.history) {
       eps = eps.where((e) => e.isFinished).toList();
-    } else if (_filter.newOnly) {
+    } else if (filter.newOnly) {
       eps = eps.where((e) => !e.isFinished).toList();
     }
-    if (_filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
-    if (_filter.sort == _SortMode.alphabetical) {
-      eps = List.of(eps)
-        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-    } else if (_filter.sort == _SortMode.oldest) {
-      eps = List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
-    }
-    return eps;
+    if (filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
+    return _sortEpisodes(eps, filter.sort);
   }
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final cs = widget.cs;
+    final cs = this.cs;
 
     return StreamBuilder<List<Episode>>(
-      stream: widget.db.watchEpisodesForPodcast(widget.podcastId),
+      stream: db.watchEpisodesForPodcast(podcastId),
       builder: (context, snap) {
         final eps = _applyFilters(snap.data ?? []);
         return Column(
           children: [
-            if (widget.podcast != null)
+            if (podcast != null)
               PodcastHeader(
-                imageUrl: widget.podcast!.imageUrl,
-                title: widget.podcast!.title,
-                author: widget.podcast!.author,
-                description: widget.podcast!.description,
-                shareUrl: ShareUtils.podcastUrl(widget.podcast!),
-                onUnsubscribe: widget.onUnsubscribe,
+                imageUrl: podcast!.imageUrl,
+                title: podcast!.title,
+                author: podcast!.author,
+                description: podcast!.description,
+                shareUrl: ShareUtils.podcastUrl(podcast!),
+                onUnsubscribe: onUnsubscribe,
               ),
-            // Filter chips (no Podcasts chip here)
-            _FilterChipsRow(
-              filter: _filter, l10n: l10n, cs: cs,
-              onToggle: _onToggle, showPodcastsChip: false,
+            ClipRect(
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                heightFactor: filterChipsVisible ? 1.0 : 0.0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: filterChipsVisible ? 1.0 : 0.0,
+                  child: _FilterChipsRow(
+                    filter: filter, l10n: l10n, cs: cs,
+                    onToggle: onFilterToggle,
+                  ),
+                ),
+              ),
             ),
             Expanded(
               child: eps.isEmpty
@@ -1515,7 +1555,7 @@ class _PodcastFilteredFeedState extends State<_PodcastFilteredFeed> {
                           indent: 88),
                       itemBuilder: (_, i) => EpisodeTile(
                         episode: eps[i],
-                        onCoverTap: () => widget.onCoverTap(eps[i], widget.db),
+                        onCoverTap: () => onCoverTap(eps[i], db),
                       ),
                     ),
             ),
@@ -1571,6 +1611,54 @@ class _DiscoverListState extends State<_DiscoverList>
     super.dispose();
   }
 
+  bool _isUrl(String q) {
+    final lower = q.trim().toLowerCase();
+    return lower.startsWith('http://') || lower.startsWith('https://');
+  }
+
+  void _showRssDialog(BuildContext context) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(widget.l10n.addRssFeed),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'https://...',
+            prefixIcon: Icon(Icons.rss_feed),
+          ),
+          keyboardType: TextInputType.url,
+          onSubmitted: (url) {
+            url = url.trim();
+            if (url.isEmpty) return;
+            Navigator.pop(ctx);
+            widget.onPreview(PodcastResult(
+              id: url, title: '', author: '', description: '',
+              imageUrl: '', feedUrl: url,
+            ));
+          },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(widget.l10n.cancel)),
+          FilledButton(
+            onPressed: () {
+              final url = ctrl.text.trim();
+              if (url.isEmpty) return;
+              Navigator.pop(ctx);
+              widget.onPreview(PodcastResult(
+                id: url, title: '', author: '', description: '',
+                imageUrl: '', feedUrl: url,
+              ));
+            },
+            child: Text(widget.l10n.openFeed),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _podcastList(List<PodcastResult> results) => ListView.builder(
         padding: const EdgeInsets.only(bottom: 88),
         itemCount: results.length,
@@ -1588,6 +1676,39 @@ class _DiscoverListState extends State<_DiscoverList>
 
     // ── Search results overlay ──────────────────────────────────────────────
     if (widget.searchQuery.trim().length >= 2) {
+      if (_isUrl(widget.searchQuery)) {
+        final url = widget.searchQuery.trim();
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.rss_feed, size: 44, color: cs.primary),
+                const SizedBox(height: 14),
+                Text(l10n.subscribeToRss,
+                    style: TextStyle(fontWeight: FontWeight.w600,
+                        fontSize: 16, color: cs.onSurface)),
+                const SizedBox(height: 6),
+                Text(url,
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    maxLines: 3, overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 22),
+                FilledButton.icon(
+                  onPressed: () => widget.onPreview(PodcastResult(
+                    id: url, title: '', author: '', description: '',
+                    imageUrl: '', feedUrl: url,
+                  )),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: Text(l10n.openFeed),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
       return AnimatedSwitcher(
         duration: const Duration(milliseconds: 220),
         child: widget.searchingPI
@@ -1602,6 +1723,24 @@ class _DiscoverListState extends State<_DiscoverList>
     // ── Two-tab view ────────────────────────────────────────────────────────
     return Column(
       children: [
+        InkWell(
+          onTap: () => _showRssDialog(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.rss_feed, color: cs.primary, size: 22),
+                const SizedBox(width: 12),
+                Text(l10n.addByRssUrl,
+                    style: TextStyle(fontWeight: FontWeight.w600,
+                        fontSize: 14, color: cs.onSurface)),
+                const Spacer(),
+                Icon(Icons.chevron_right, color: cs.onSurfaceVariant, size: 20),
+              ],
+            ),
+          ),
+        ),
+        Divider(height: 1, color: cs.outlineVariant),
         TabBar(
           controller: _tabCtrl,
           labelColor: cs.primary,

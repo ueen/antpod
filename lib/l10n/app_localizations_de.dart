@@ -71,13 +71,31 @@ class AppLocalizationsDe extends AppLocalizations {
   String get filterPodcasts => 'Podcasts';
 
   @override
-  String get filterDownloaded => 'Heruntergeladen';
+  String get filterDownloaded => 'Offline';
 
   @override
   String get filterAlphabetical => 'A–Z';
 
   @override
   String get filterOldest => 'Älteste zuerst';
+
+  @override
+  String get filterPlaying => 'Läuft';
+
+  @override
+  String get addRssFeed => 'RSS-Feed hinzufügen';
+
+  @override
+  String get openFeed => 'Feed öffnen';
+
+  @override
+  String get addByRssUrl => 'Per RSS-URL hinzufügen';
+
+  @override
+  String get subscribeToRss => 'RSS-Feed abonnieren';
+
+  @override
+  String get searchOnline => 'Online suchen';
 
   @override
   String get discoverTabTrending => 'Trends';

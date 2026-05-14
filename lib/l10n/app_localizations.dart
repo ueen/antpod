@@ -237,6 +237,13 @@ abstract class AppLocalizations {
   /// **'Oldest first'**
   String get filterOldest;
 
+  String get filterPlaying;
+  String get addRssFeed;
+  String get openFeed;
+  String get addByRssUrl;
+  String get subscribeToRss;
+  String get searchOnline;
+
   /// No description provided for @discoverTabTrending.
   ///
   /// In en, this message translates to:

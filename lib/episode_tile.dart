@@ -2,6 +2,7 @@
 import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -44,7 +45,7 @@ class EpisodeTile extends StatelessWidget {
         episode: episode,
         cs: cs,
         l10n: l10n,
-        onMarkUnplayed: episode.isFinished
+        onMarkUnplayed: (episode.isFinished || episode.lastPositionMs > 0)
             ? () {
                 db.markUnfinished(episode.id);
                 Navigator.pop(context);
@@ -67,12 +68,19 @@ class EpisodeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = context.watch<PlayerProvider>();
+    // select() instead of watch(): tiles only rebuild on episode/playing state changes,
+    // never on position ticks. List progress bar reads episode.lastPositionMs (DB-saved
+    // every ~5s) — live position is only needed in the mini player.
+    final isCurrent = context.select<PlayerProvider, bool>(
+        (p) => p.currentEpisode?.id == episode.id);
+    final isPlaying = context.select<PlayerProvider, bool>(
+        (p) => p.currentEpisode?.id == episode.id && p.isPlaying);
+    final isLoading = context.select<PlayerProvider, bool>(
+        (p) => p.currentEpisode?.id == episode.id && p.isLoading && episode.localPath == null);
+
     final downloads = context.watch<DownloadProvider>();
     final db = context.read<AppDatabase>();
     final l10n = AppLocalizations.of(context)!;
-    final isCurrent = player.currentEpisode?.id == episode.id;
-    final isPlaying = isCurrent && player.isPlaying;
     final cs = Theme.of(context).colorScheme;
     final dimmed = episode.isFinished && !isCurrent;
     final opacity = dimmed ? _kFinishedOpacity : 1.0;
@@ -115,7 +123,7 @@ class EpisodeTile extends StatelessWidget {
       child: GestureDetector(
         onLongPress: () => _showContextMenu(context, db, l10n),
         child: InkWell(
-          onTap: () => player.play(episode),
+          onTap: () => context.read<PlayerProvider>().play(episode),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             color: isCurrent
@@ -155,10 +163,7 @@ class EpisodeTile extends StatelessWidget {
                       isCurrent: isCurrent,
                       cs: cs,
                       formatDuration: _fmt,
-                      // Use live position for the current episode
-                      effectivePositionMs: isCurrent
-                          ? player.position.inMilliseconds
-                          : episode.lastPositionMs,
+                      effectivePositionMs: episode.lastPositionMs,
                     ),
                   ),
                 ),
@@ -167,15 +172,16 @@ class EpisodeTile extends StatelessWidget {
                   episode: episode,
                   isCurrent: isCurrent,
                   isPlaying: isPlaying,
-                  isLoading: player.isLoading && isCurrent && episode.localPath == null,
+                  isLoading: isLoading,
                   ringProgress: ringProgress,
                   dimmed: dimmed,
                   cs: cs,
                   onPlayTap: () {
+                    final p = context.read<PlayerProvider>();
                     if (isCurrent) {
-                      player.togglePlayPause();
+                      p.togglePlayPause();
                     } else {
-                      player.play(episode);
+                      p.play(episode);
                     }
                   },
                 ),
@@ -215,15 +221,15 @@ class _StickySwipeableState extends State<_StickySwipeable>
   double _dx = 0;
 
   static const _maxFraction = 0.45;
-  static const _triggerFraction = 0.22;
+  // trigger at 40% of max drag distance (~18% of screen width)
+  static const _triggerFraction = _maxFraction * 0.40;
 
   @override
   void initState() {
     super.initState();
-    _snapCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
+    // Wide bounds so the spring simulation can drive _snapCtrl.value freely
+    _snapCtrl = AnimationController(vsync: this, lowerBound: -500, upperBound: 500)
+      ..addListener(_onSnapTick);
   }
 
   @override
@@ -232,9 +238,14 @@ class _StickySwipeableState extends State<_StickySwipeable>
     super.dispose();
   }
 
+  void _onSnapTick() {
+    if (mounted) setState(() => _dx = _snapCtrl.value);
+  }
+
   double get _screenWidth => MediaQuery.of(context).size.width;
 
   void _onUpdate(DragUpdateDetails d) {
+    _snapCtrl.stop();
     final max = _screenWidth * _maxFraction;
     setState(() => _dx = (_dx + d.delta.dx).clamp(-max, max));
   }
@@ -250,15 +261,14 @@ class _StickySwipeableState extends State<_StickySwipeable>
   }
 
   void _snapBack() {
-    final start = _dx;
-    final anim = Tween<double>(begin: start, end: 0.0).animate(
-      CurvedAnimation(parent: _snapCtrl, curve: Curves.easeOutCubic),
-    );
-    _snapCtrl.reset();
-    anim.addListener(() {
-      if (mounted) setState(() => _dx = anim.value);
-    });
-    _snapCtrl.forward();
+    _snapCtrl.stop();
+    // Slightly underdamped spring (ratio ≈ 0.7) — smooth with a gentle settle
+    _snapCtrl.animateWith(SpringSimulation(
+      const SpringDescription(mass: 1, stiffness: 400, damping: 28),
+      _dx,
+      0.0,
+      0.0,
+    ));
   }
 
   @override
@@ -450,7 +460,7 @@ class _EpisodeMetadata extends StatelessWidget {
 
 // ─── Action area ──────────────────────────────────────────────────────────────
 
-class _ActionArea extends StatelessWidget {
+class _ActionArea extends StatefulWidget {
   final Episode episode;
   final bool isCurrent, isPlaying, isLoading, dimmed;
   final double? ringProgress;
@@ -464,65 +474,126 @@ class _ActionArea extends StatelessWidget {
   });
 
   @override
+  State<_ActionArea> createState() => _ActionAreaState();
+}
+
+class _ActionAreaState extends State<_ActionArea>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _drainCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 800),
+  );
+
+  @override
+  void didUpdateWidget(_ActionArea old) {
+    super.didUpdateWidget(old);
+    // Download deleted: animate ring draining 1.0 → 0.0
+    if (old.episode.isDownloaded &&
+        !widget.episode.isDownloaded &&
+        widget.ringProgress == null) {
+      _drainCtrl.forward(from: 0.0);
+    }
+    // Re-download started while drain was running: cancel drain
+    if (widget.ringProgress != null && _drainCtrl.isAnimating) {
+      _drainCtrl.stop();
+      _drainCtrl.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _drainCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isDownloading = ringProgress != null && !episode.isDownloaded;
-    final effectiveProgress = ringProgress; // actual progress while downloading
-    final ringColor = (episode.isDownloaded || isDownloading)
-        ? cs.primary
-        : (isCurrent ? cs.primary : cs.outlineVariant);
+    final isDownloading = widget.ringProgress != null && !widget.episode.isDownloaded;
+    final isDraining = _drainCtrl.isAnimating;
+    final ringColor = (widget.episode.isDownloaded || isDownloading || isDraining)
+        ? widget.cs.primary
+        : (widget.isCurrent ? widget.cs.primary : widget.cs.outlineVariant);
+
+    Widget ringPainter;
+    if (isDraining) {
+      // Drain: full ring animates down to empty
+      ringPainter = AnimatedBuilder(
+        animation: _drainCtrl,
+        builder: (_, __) => CustomPaint(
+          size: const Size(44, 44),
+          painter: _RingPainter(
+            progress: (1.0 - CurvedAnimation(
+                parent: _drainCtrl, curve: Curves.easeIn).value),
+            color: widget.cs.primary,
+            trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      );
+    } else if (widget.episode.isDownloaded) {
+      ringPainter = CustomPaint(
+        size: const Size(44, 44),
+        painter: _RingPainter(
+          progress: 1.0,
+          color: ringColor,
+          trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
+        ),
+      );
+    } else {
+      final effectiveProgress = widget.ringProgress;
+      ringPainter = TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.0, end: effectiveProgress ?? 0.0),
+        duration: const Duration(milliseconds: 900),
+        curve: Curves.easeOut,
+        builder: (_, animValue, __) => CustomPaint(
+          size: const Size(44, 44),
+          painter: _RingPainter(
+            progress: effectiveProgress == null ? null : animValue,
+            color: ringColor,
+            trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      );
+    }
 
     return Opacity(
-      opacity: dimmed ? _kFinishedOpacity : 1.0,
+      opacity: widget.dimmed ? _kFinishedOpacity : 1.0,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           GestureDetector(
-            onTap: onPlayTap,
+            onTap: widget.onPlayTap,
             child: SizedBox(
               width: 44, height: 44,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(
-                      begin: 0.0,
-                      end: effectiveProgress ?? 0.0,
-                    ),
-                    duration: const Duration(milliseconds: 900),
-                    curve: Curves.easeOut,
-                    builder: (_, animValue, __) => CustomPaint(
-                      size: const Size(44, 44),
-                      painter: _RingPainter(
-                        progress: effectiveProgress == null ? null : animValue,
-                        color: ringColor,
-                        trackColor: cs.outlineVariant.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ),
-                  if (isLoading)
+                  ringPainter,
+                  if (widget.isLoading)
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: cs.primary))
+                          strokeWidth: 2, color: widget.cs.primary))
                   else
                     Icon(
-                      isPlaying ? Icons.pause : Icons.play_arrow,
+                      widget.isPlaying ? Icons.pause : Icons.play_arrow,
                       size: 22,
-                      color: isCurrent ? cs.primary : cs.onSurface,
+                      color: widget.isCurrent ? widget.cs.primary : widget.cs.onSurface,
                     ),
                 ],
               ),
             ),
           ),
-          if (episode.isDownloaded)
-            Container(
-              margin: const EdgeInsets.only(top: 3),
-              width: 20, height: 2,
-              decoration: BoxDecoration(
-                color: cs.primary,
-                borderRadius: BorderRadius.circular(1),
-              ),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 380),
+            curve: Curves.easeOut,
+            margin: EdgeInsets.only(top: widget.episode.isDownloaded ? 3 : 0),
+            width: widget.episode.isDownloaded ? 20 : 0,
+            height: widget.episode.isDownloaded ? 2 : 0,
+            decoration: BoxDecoration(
+              color: widget.cs.primary,
+              borderRadius: BorderRadius.circular(1),
             ),
+          ),
         ],
       ),
     );

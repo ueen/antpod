@@ -79,10 +79,21 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    final player = context.watch<PlayerProvider>();
-    if (!player.hasEpisode) return const SizedBox.shrink();
+    // select() avoids rebuilding the whole mini player on every position tick.
+    // Only _MiniProgress (the thin bar) rebuilds at 5Hz during playback.
+    final hasEpisode = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
+    if (!hasEpisode) return const SizedBox.shrink();
 
-    final episode = player.currentEpisode!;
+    final imageUrl = context.select<PlayerProvider, String>(
+        (p) => p.currentEpisode?.podcastImageUrl ?? '');
+    final title = context.select<PlayerProvider, String>(
+        (p) => p.currentEpisode?.title ?? '');
+    final podcastTitle = context.select<PlayerProvider, String>(
+        (p) => p.currentEpisode?.podcastTitle ?? '');
+    final isPlaying = context.select<PlayerProvider, bool>((p) => p.isPlaying);
+    final isLoading = context.select<PlayerProvider, bool>((p) => p.isLoading);
+    final rewindSec = context.select<PlayerProvider, int>((p) => p.rewindSeconds);
+    final forwardSec = context.select<PlayerProvider, int>((p) => p.forwardSeconds);
     final cs = Theme.of(context).colorScheme;
 
     return Transform.translate(
@@ -126,18 +137,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
           borderRadius: BorderRadius.circular(12),
           child: Stack(
             children: [
-              // Thin progress bar at the bottom of the card
-              Positioned(
+              // Isolated widget — only this rebuilds on position ticks
+              const Positioned(
                 left: 0, right: 0, bottom: 0,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: LinearProgressIndicator(
-                    value: player.progress.clamp(0.0, 1.0),
-                    minHeight: 5,
-                    backgroundColor: Colors.transparent,
-                    color: cs.inversePrimary.withValues(alpha: 0.7),
-                  ),
-                ),
+                child: _MiniProgress(),
               ),
 
               Padding(
@@ -147,7 +150,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child: CachedNetworkImage(
-                        imageUrl: episode.podcastImageUrl,
+                        imageUrl: imageUrl,
                         width: 44, height: 44, fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => Container(
                           color: cs.onInverseSurface,
@@ -162,7 +165,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            episode.title,
+                            title,
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                                 color: cs.onInverseSurface,
@@ -170,7 +173,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                 fontSize: 13),
                           ),
                           Text(
-                            episode.podcastTitle,
+                            podcastTitle,
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                                 color: cs.onInverseSurface.withValues(alpha: 0.6),
@@ -179,25 +182,27 @@ class _MiniPlayerState extends State<MiniPlayer> {
                         ],
                       ),
                     ),
-                    _iconBtn(cs, _skipRewindIcon(player.rewindSeconds), player.skipBackward),
+                    _iconBtn(cs, _skipRewindIcon(rewindSec),
+                        () => context.read<PlayerProvider>().skipBackward()),
                     SizedBox(
                       width: 36, height: 36,
-                      child: player.isLoading
+                      child: isLoading
                           ? Padding(
                               padding: const EdgeInsets.all(8),
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: cs.onInverseSurface),
                             )
                           : IconButton(
-                              onPressed: player.togglePlayPause,
+                              onPressed: () => context.read<PlayerProvider>().togglePlayPause(),
                               icon: Icon(
-                                player.isPlaying ? Icons.pause : Icons.play_arrow,
+                                isPlaying ? Icons.pause : Icons.play_arrow,
                                 color: cs.onInverseSurface, size: 28),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),
                     ),
-                    _iconBtn(cs, _skipForwardIcon(player.forwardSeconds), player.skipForward),
+                    _iconBtn(cs, _skipForwardIcon(forwardSec),
+                        () => context.read<PlayerProvider>().skipForward()),
                   ],
                 ),
               ),
@@ -218,6 +223,27 @@ class _MiniPlayerState extends State<MiniPlayer> {
       icon: Icon(icon, color: cs.onInverseSurface, size: size),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+    );
+  }
+}
+
+// Isolated progress bar — only this widget rebuilds on position ticks (~5Hz).
+// The rest of MiniPlayer stays still until episode/isPlaying changes.
+class _MiniProgress extends StatelessWidget {
+  const _MiniProgress();
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = context.select<PlayerProvider, double>((p) => p.progress);
+    final cs = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: LinearProgressIndicator(
+        value: progress.clamp(0.0, 1.0),
+        minHeight: 5,
+        backgroundColor: Colors.transparent,
+        color: cs.inversePrimary.withValues(alpha: 0.7),
+      ),
     );
   }
 }
@@ -326,7 +352,7 @@ class _PlayerSheet extends StatelessWidget {
     // expand: false keeps the widget sized to its rendered height so the
     // transparent area above it passes taps through to the modal barrier.
     return DraggableScrollableSheet(
-      initialChildSize: 0.55,
+      initialChildSize: 0.6,
       minChildSize: 0.3,
       maxChildSize: 0.95,
       expand: false,
