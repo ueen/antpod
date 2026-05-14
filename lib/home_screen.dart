@@ -27,7 +27,35 @@ import 'share_utils.dart';
 // Filter state
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _SortMode { none, alphabetical, oldest }
+// Scrolls ~40 % further than Android default (friction 0.015 → 0.009) while
+// keeping a clean exponential decay — no spring tail.
+class _SmoothScrollPhysics extends ClampingScrollPhysics {
+  const _SmoothScrollPhysics()
+      : super(parent: const AlwaysScrollableScrollPhysics());
+
+  @override
+  _SmoothScrollPhysics applyTo(ScrollPhysics? ancestor) =>
+      const _SmoothScrollPhysics();
+
+  @override
+  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
+    final tolerance = toleranceFor(position);
+    if (position.outOfRange) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+    if (velocity.abs() < tolerance.velocity) return null;
+    if (velocity > 0 && position.pixels >= position.maxScrollExtent) return null;
+    if (velocity < 0 && position.pixels <= position.minScrollExtent) return null;
+    return ClampingScrollSimulation(
+      position: position.pixels,
+      velocity: velocity,
+      friction: 0.007,
+      tolerance: tolerance,
+    );
+  }
+}
+
+enum _SortMode { none, alphabetical, oldest, random }
 
 List<Episode> _sortEpisodes(List<Episode> eps, _SortMode sort, {bool inProgress = false}) {
   List<Episode> result;
@@ -36,6 +64,8 @@ List<Episode> _sortEpisodes(List<Episode> eps, _SortMode sort, {bool inProgress 
       result = List.of(eps)..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     case _SortMode.oldest:
       result = List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
+    case _SortMode.random:
+      result = List.of(eps)..shuffle(math.Random());
     case _SortMode.none:
       result = List.of(eps);
   }
@@ -693,6 +723,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? _SortMode.none : _SortMode.oldest,
             podcasts: false,
           );
+        case 'random':
+          _filter = _filter.copyWith(
+            sort: _filter.sort == _SortMode.random
+                ? _SortMode.none : _SortMode.random,
+            podcasts: false,
+          );
         case 'inprogress':
           _filter = _filter.copyWith(
             inProgress: !_filter.inProgress,
@@ -1057,6 +1093,11 @@ class _FilterChipsRow extends StatelessWidget {
               active: filter.sort == _SortMode.oldest && !filter.podcasts,
               cs: cs, icon: Icons.arrow_upward_rounded,
               onTap: () => onToggle('oldest')),
+          const SizedBox(width: 8),
+          _Chip(label: l10n.filterRandom,
+              active: filter.sort == _SortMode.random && !filter.podcasts,
+              cs: cs, icon: Icons.shuffle_rounded,
+              onTap: () => onToggle('random')),
         ],
       ),
     );
@@ -1389,12 +1430,14 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
       child: FadeTransition(
         opacity: CurvedAnimation(parent: anim, curve: Curves.easeIn),
-        child: Column(
-          key: ValueKey(ep.id),
-          children: [
-            EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
-            Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
-          ],
+        child: RepaintBoundary(
+          child: Column(
+            key: ValueKey(ep.id),
+            children: [
+              _LazyTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+              Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
+            ],
+          ),
         ),
       ),
     );
@@ -1454,7 +1497,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
             child: AnimatedList(
               key: _listKey,
               controller: _scrollCtrl,
-              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              physics: const _SmoothScrollPhysics(),
               padding: const EdgeInsets.only(bottom: 88),
               initialItemCount: _displayed.length + (hasFooter ? 1 : 0),
               itemBuilder: (ctx, i, anim) {
@@ -1956,6 +1999,10 @@ class _PreviewFeedState extends State<_PreviewFeed> {
         _filter = _filter.copyWith(
           sort: _filter.sort == _SortMode.oldest
               ? _SortMode.none : _SortMode.oldest);
+      case 'random':
+        _filter = _filter.copyWith(
+          sort: _filter.sort == _SortMode.random
+              ? _SortMode.none : _SortMode.random);
     }
   });
 
@@ -2327,4 +2374,76 @@ class _AntPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AntPainter old) => old.legPhase != legPhase || old.color != color;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lazy tile — skeleton on first frame, real EpisodeTile on second
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LazyTile extends StatefulWidget {
+  final Episode episode;
+  final VoidCallback onCoverTap;
+  const _LazyTile({required this.episode, required this.onCoverTap});
+
+  @override
+  State<_LazyTile> createState() => _LazyTileState();
+}
+
+class _LazyTileState extends State<_LazyTile> {
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _ready = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) return _SkeletonTile(cs: Theme.of(context).colorScheme);
+    return EpisodeTile(episode: widget.episode, onCoverTap: widget.onCoverTap);
+  }
+}
+
+class _SkeletonTile extends StatelessWidget {
+  final ColorScheme cs;
+  const _SkeletonTile({required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = cs.surfaceContainerHighest;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: SizedBox(
+        height: 68,
+        child: Row(
+          children: [
+            Container(
+              width: 60, height: 60,
+              decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(8)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(height: 13, decoration: BoxDecoration(
+                      color: fill, borderRadius: BorderRadius.circular(3))),
+                  const SizedBox(height: 7),
+                  Container(height: 11, width: 150, decoration: BoxDecoration(
+                      color: fill, borderRadius: BorderRadius.circular(3))),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            Container(width: 44, height: 44,
+                decoration: BoxDecoration(color: fill, shape: BoxShape.circle)),
+          ],
+        ),
+      ),
+    );
+  }
 }

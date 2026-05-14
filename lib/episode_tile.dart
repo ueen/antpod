@@ -224,7 +224,6 @@ class _StickySwipeableState extends State<_StickySwipeable>
   late AnimationController _snapCtrl;
 
   double _dx = 0;
-  double _screenWidth = 400; // safe fallback; updated in didChangeDependencies
 
   static const _maxFraction = 0.40;
   static const _triggerFraction = 0.40;
@@ -241,12 +240,6 @@ class _StickySwipeableState extends State<_StickySwipeable>
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _screenWidth = MediaQuery.of(context).size.width;
-  }
-
-  @override
   void dispose() {
     _snapCtrl.dispose();
     super.dispose();
@@ -257,15 +250,13 @@ class _StickySwipeableState extends State<_StickySwipeable>
   }
 
   void _onUpdate(DragUpdateDetails d) {
-    if (!mounted) return;
     _snapCtrl.stop();
-    final max = _screenWidth * _maxFraction;
+    final max = MediaQuery.of(context).size.width * _maxFraction;
     setState(() => _dx = (_dx + d.delta.dx).clamp(-max, max));
   }
 
   void _onEnd(DragEndDetails _) {
-    if (!mounted) return;
-    final trigger = _screenWidth * _triggerFraction;
+    final trigger = MediaQuery.of(context).size.width * _triggerFraction;
     final didStart = _dx >= trigger;
     final didEnd = _dx <= -trigger;
     _snapCtrl.value = _dx; // sync controller with current drag position

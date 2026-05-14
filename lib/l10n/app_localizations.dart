@@ -236,6 +236,7 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Oldest first'**
   String get filterOldest;
+  String get filterRandom;
 
   String get filterPlaying;
   String get addRssFeed;

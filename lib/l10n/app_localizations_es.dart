@@ -78,6 +78,8 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get filterOldest => 'Más antiguos';
+  @override
+  String get filterRandom => 'Aleatorio';
 
   @override
   String get filterPlaying => 'En curso';

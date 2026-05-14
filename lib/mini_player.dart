@@ -19,19 +19,13 @@ class MiniPlayer extends StatefulWidget {
 class _MiniPlayerState extends State<MiniPlayer> {
   double _dragProgress = 0.0;
   bool _sheetOpen = false;
-  double _screenH = 800; // safe fallback; updated in didChangeDependencies
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _screenH = MediaQuery.of(context).size.height;
-  }
 
   void _onDragUpdate(DragUpdateDetails d) {
+    final screenH = MediaQuery.of(context).size.height;
     if (d.delta.dy < 0) {
       setState(() {
         _dragProgress =
-            (_dragProgress - d.delta.dy / (_screenH * 0.35)).clamp(0.0, 1.0);
+            (_dragProgress - d.delta.dy / (screenH * 0.35)).clamp(0.0, 1.0);
       });
     } else if (_dragProgress > 0) {
       setState(() {
