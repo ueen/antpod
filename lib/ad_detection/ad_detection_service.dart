@@ -50,10 +50,11 @@ class AdDetectionService {
   const AdDetectionService(this._db);
   final AppDatabase _db;
 
-  /// Analyse a downloaded episode, persist results, and return the segment count.
-  /// Returns 0 on error or when nothing is found.
-  Future<int> analyzeEpisode(Episode episode) async {
-    if (episode.localPath == null) return 0;
+  /// Analyse a downloaded episode and persist results.
+  /// Fire-and-forget; caller should use `unawaited()`.
+  Future<void> analyzeEpisode(Episode episode) async {
+    if (episode.localPath == null) return;
+    debugPrint('[AdDetect] ▶ starting analysis for "${episode.title}"');
     try {
       final segments = await compute(
         _runAnalysis,
@@ -63,7 +64,10 @@ class AdDetectionService {
           chaptersUrl: episode.chaptersUrl,
         ),
       );
-      if (segments.isEmpty) return 0;
+      if (segments.isEmpty) {
+        debugPrint('[AdDetect] ✓ "${episode.title}" — no ad segments found');
+        return;
+      }
       await _db.replaceAdSegments(
         episode.id,
         segments
@@ -76,12 +80,14 @@ class AdDetectionService {
                 ))
             .toList(),
       );
-      debugPrint(
-          '[AdDetect] ${segments.length} segments for "${episode.title}"');
-      return segments.length;
+      final details = segments.map((s) =>
+          '  [${s.source}] ${s.startSeconds.toStringAsFixed(1)}s'
+          '–${s.endSeconds.toStringAsFixed(1)}s'
+          ' (${s.confidence}%)').join('\n');
+      debugPrint('[AdDetect] ✓ "${episode.title}"'
+          ' — ${segments.length} ad segment(s) found:\n$details');
     } catch (e) {
-      debugPrint('[AdDetect] error for "${episode.title}": $e');
-      return 0;
+      debugPrint('[AdDetect] ✗ error for "${episode.title}": $e');
     }
   }
 }

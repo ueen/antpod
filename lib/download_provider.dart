@@ -17,19 +17,10 @@ import 'package:drift/drift.dart' show Value;
 import 'ad_detection/ad_detection_service.dart';
 import 'app_database.dart';
 
-class AdDetectionResult {
-  final String episodeTitle;
-  final int segmentCount;
-  const AdDetectionResult({required this.episodeTitle, required this.segmentCount});
-}
-
 class DownloadProvider extends ChangeNotifier {
   final AppDatabase _db;
   final Map<String, double> _progress = {}; // taskId → 0.0..1.0
   Timer? _pollTimer;
-
-  final _adResultCtrl = StreamController<AdDetectionResult>.broadcast();
-  Stream<AdDetectionResult> get adDetectionResults => _adResultCtrl.stream;
 
   DownloadProvider(this._db) {
     _reconcileCompletedDownloads();
@@ -117,14 +108,7 @@ class DownloadProvider extends ChangeNotifier {
       if (File(fullPath).existsSync()) {
         await _db.updateEpisodeDownload(episode.id, true, fullPath, taskId);
         final updated = episode.copyWith(localPath: Value(fullPath));
-        unawaited(AdDetectionService(_db).analyzeEpisode(updated).then((count) {
-          if (!_adResultCtrl.isClosed) {
-            _adResultCtrl.add(AdDetectionResult(
-              episodeTitle: episode.title,
-              segmentCount: count,
-            ));
-          }
-        }));
+        unawaited(AdDetectionService(_db).analyzeEpisode(updated));
       }
     }
   }
@@ -170,7 +154,6 @@ class DownloadProvider extends ChangeNotifier {
   @override
   void dispose() {
     _pollTimer?.cancel();
-    _adResultCtrl.close();
     super.dispose();
   }
 }
