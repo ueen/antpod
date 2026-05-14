@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — AntPod</title>
+  <meta name="description" content="AntPod does not collect any personal data. Your podcasts stay on your device." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.svg" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #FFFAF5; color: #1A0E07; font-family: system-ui, -apple-system, sans-serif; }
+    nav { border-bottom: 1px solid #F0E4D4; background: #FFFAF5; }
+    nav > div { max-width: 640px; margin: 0 auto; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 0.625rem; }
+    nav a { text-decoration: none; display: flex; align-items: center; gap: 0.625rem; }
+    nav span { font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; color: #1A0E07; }
+    main { max-width: 640px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    h1 { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.4rem; }
+    .subtitle { font-size: 0.85rem; color: #9E7056; margin-bottom: 2.5rem; }
+    h2 { font-size: 1rem; font-weight: 700; color: #1A0E07; margin: 2rem 0 0.5rem; }
+    p { font-size: 0.95rem; line-height: 1.75; color: #5C3A1E; }
+    a { color: #FF9A30; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: rgba(255,154,48,.1); color: #7B3F00;
+      padding: 0.35rem 0.75rem; border-radius: 2rem;
+      font-size: 0.82rem; font-weight: 600; margin: 0.2rem 0.2rem 0 0;
+    }
+    .chips { margin: 1.25rem 0 0; }
+    footer { border-top: 1px solid #F0E4D4; padding: 1.5rem; text-align: center; }
+    footer p { font-size: 0.8rem; color: #9E7056; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div>
+      <a href="/">
+        <img src="/favicon.svg" width="28" height="28" style="border-radius:50%;" alt="AntPod logo" />
+        <span>AntPod</span>
+      </a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Privacy Policy</h1>
+    <p class="subtitle">Last updated: May 2026</p>
+
+    <p>AntPod is built on a simple principle: your podcasts are yours. The app does not collect, transmit, or share any personal data.</p>
+
+    <div class="chips">
+      <span class="chip">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        No accounts
+      </span>
+      <span class="chip">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        No analytics
+      </span>
+      <span class="chip">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        No ads
+      </span>
+      <span class="chip">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        No third-party SDKs
+      </span>
+    </div>
+
+    <h2>What AntPod does not collect</h2>
+    <p>AntPod does not collect any information about you, your device, or your listening habits. There are no crash reporters, no usage analytics, and no advertising identifiers. All subscription data, episode history, and playback progress is stored locally on your device and never leaves it.</p>
+
+    <h2>Network requests made by the app</h2>
+    <p>AntPod communicates directly with the services you use — no middleman server is involved:</p>
+
+    <h2>PodcastIndex</h2>
+    <p>Podcast search and discovery use the <a href="https://podcastindex.org" target="_blank" rel="noopener">PodcastIndex</a> API. Your search queries are sent to their servers. Please refer to the <a href="https://podcastindex.org/privacy" target="_blank" rel="noopener">PodcastIndex privacy policy</a> for details on how they handle requests.</p>
+
+    <h2>Podcast hosts</h2>
+    <p>When you subscribe to a podcast or stream/download an episode, your device connects directly to the podcast host's server to fetch the RSS feed or audio file. Podcast hosts can see and may log your IP address and the requests made to their servers — this is the same as visiting any website. AntPod has no control over what podcast hosts collect or how they use that information.</p>
+
+    <h2>Open source</h2>
+    <p>AntPod is fully open source. You can audit every line of code at <a href="https://github.com/ueen/antpod" target="_blank" rel="noopener">github.com/ueen/antpod</a>. If you have questions or concerns, feel free to open an issue.</p>
+
+    <h2>Contact</h2>
+    <p>For any privacy-related questions, open an issue on <a href="https://github.com/ueen/antpod/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+  </main>
+
+  <footer>
+    <p>
+      <a href="/">AntPod</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/ueen/antpod/blob/master/LICENSE" style="color:#9E7056;">License</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/ueen/antpod/issues" style="color:#9E7056;">Issues</a>
+    </p>
+  </footer>
+
+</body>
+</html>
