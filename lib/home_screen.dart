@@ -1454,6 +1454,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
             child: AnimatedList(
               key: _listKey,
               controller: _scrollCtrl,
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
               padding: const EdgeInsets.only(bottom: 88),
               initialItemCount: _displayed.length + (hasFooter ? 1 : 0),
               itemBuilder: (ctx, i, anim) {
@@ -1473,6 +1474,9 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
           );
 
     final cs = Theme.of(context).colorScheme;
+    final hasMiniPlayer = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
+    // 64px mini player + 16px gap when visible, 24px from bottom otherwise
+    final fabBottom = _showScrollTop ? (hasMiniPlayer ? 88.0 : 24.0) : -56.0;
     return Stack(
       children: [
         AnimatedSwitcher(
@@ -1484,18 +1488,18 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
           right: 16,
-          bottom: _showScrollTop ? 96 : -56,
+          bottom: fabBottom,
           child: GestureDetector(
             onTap: () => _scrollCtrl.animateTo(
               0, duration: const Duration(milliseconds: 350), curve: Curves.easeOut),
             child: Container(
               width: 44, height: 44,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cs.primaryContainer,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))],
               ),
-              child: Icon(Icons.arrow_upward, color: cs.primary, size: 22),
+              child: Icon(Icons.north, color: cs.onPrimaryContainer, size: 22),
             ),
           ),
         ),

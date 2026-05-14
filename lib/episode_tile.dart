@@ -46,11 +46,14 @@ class EpisodeTile extends StatelessWidget {
         l10n: l10n,
         onMarkUnplayed: (episode.isFinished || episode.lastPositionMs > 0)
             ? () {
+                // Capture messenger before the DB write, which triggers a stream
+                // rebuild that may deactivate this context before the snackbar call.
+                final messenger = ScaffoldMessenger.of(context);
                 db.markUnfinished(episode.id);
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(l10n.markUnplayed),
-                      duration: const Duration(seconds: 2)));
+                messenger.showSnackBar(SnackBar(
+                    content: Text(l10n.markUnplayed),
+                    duration: const Duration(seconds: 2)));
               }
             : null,
         onShare: () {
@@ -218,17 +221,30 @@ class _StickySwipeable extends StatefulWidget {
 
 class _StickySwipeableState extends State<_StickySwipeable>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _snapCtrl = AnimationController(
-    vsync: this,
-    lowerBound: -500,
-    upperBound: 500,
-    value: 0.0,
-  )..addListener(_onSnapTick);
+  late AnimationController _snapCtrl;
 
   double _dx = 0;
+  double _screenWidth = 400; // safe fallback; updated in didChangeDependencies
 
   static const _maxFraction = 0.40;
   static const _triggerFraction = 0.40;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapCtrl = AnimationController(
+      vsync: this,
+      lowerBound: -500,
+      upperBound: 500,
+      value: 0.0,
+    )..addListener(_onSnapTick);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _screenWidth = MediaQuery.of(context).size.width;
+  }
 
   @override
   void dispose() {
@@ -240,15 +256,15 @@ class _StickySwipeableState extends State<_StickySwipeable>
     if (mounted) setState(() => _dx = _snapCtrl.value);
   }
 
-  double get _screenWidth => MediaQuery.of(context).size.width;
-
   void _onUpdate(DragUpdateDetails d) {
+    if (!mounted) return;
     _snapCtrl.stop();
     final max = _screenWidth * _maxFraction;
     setState(() => _dx = (_dx + d.delta.dx).clamp(-max, max));
   }
 
   void _onEnd(DragEndDetails _) {
+    if (!mounted) return;
     final trigger = _screenWidth * _triggerFraction;
     final didStart = _dx >= trigger;
     final didEnd = _dx <= -trigger;
@@ -258,8 +274,8 @@ class _StickySwipeableState extends State<_StickySwipeable>
       duration: const Duration(milliseconds: 140),
       curve: Curves.easeIn,
     ).then((_) {
-      if (didStart) widget.onSwipeStart();
-      if (didEnd) widget.onSwipeEnd();
+      if (mounted && didStart) widget.onSwipeStart();
+      if (mounted && didEnd) widget.onSwipeEnd();
     });
   }
 
@@ -471,14 +487,8 @@ class _ActionArea extends StatefulWidget {
 
 class _ActionAreaState extends State<_ActionArea>
     with TickerProviderStateMixin {
-  late final AnimationController _drainCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 800),
-  );
-  late final AnimationController _dotsCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1000),
-  );
+  late AnimationController _drainCtrl;
+  late AnimationController _dotsCtrl;
   double _drainFrom = 1.0;
   double? _lastRealProgress;
   bool _dotsBuiltUp = false;
@@ -505,6 +515,14 @@ class _ActionAreaState extends State<_ActionArea>
   @override
   void initState() {
     super.initState();
+    _drainCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _dotsCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
     if (_isPending) _startDots();
   }
 
