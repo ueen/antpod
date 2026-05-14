@@ -775,8 +775,12 @@ class _RingDotsPainter extends CustomPainter {
   final List<(double sweep, double opacity)> dots;
   const _RingDotsPainter({required this.color, required this.dots});
 
-  static const _maxSweep = math.pi / 10; // 18° pill — 3 pills + 2 gaps = 90° (12→3 o'clock)
-  static const _spacing  = math.pi / 5;  // 36° = 2× pill — gap equals pill length
+  // StrokeCap.round caps extend each pill by cap ≈ strokeWidth/(2r) ≈ 0.061 rad per end.
+  // Target: visual pill:gap = 6:5, arc stops slightly before 3 o'clock (~82° visual).
+  // With V = visual pill, visual gap = 5V/6, total visual = 14V/3 → V ≈ 0.318 rad.
+  // drawn_pill = V − 2·cap ≈ 0.196 rad (~11°), drawn_gap = 5V/6 + 2·cap ≈ 0.387 rad.
+  static const _maxSweep = 0.196; // ~11° drawn pill → ~18° visual (pill slightly larger)
+  static const _spacing  = 0.583; // ~33° start-to-start (drawn_pill + drawn_gap)
 
   @override
   void paint(Canvas canvas, Size size) {
