@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
+import 'app_database.dart';
 import 'player_provider.dart';
 import 'share_utils.dart';
 
@@ -558,6 +559,8 @@ class _ChapterNavRow extends StatelessWidget {
     final chapter = player.currentChapter;
     final hasPrev = idx > 0;
     final hasNext = idx >= 0 && idx < player.chapters.length - 1;
+    final isInAd = player.isCurrentlyInAd;
+    final adSeg = player.currentAdSegment;
 
     return Row(
       children: [
@@ -569,17 +572,56 @@ class _ChapterNavRow extends StatelessWidget {
         Expanded(
           child: GestureDetector(
             onTap: () => _showChapterList(context),
-            child: Text(
-              chapter?.title ?? '',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
-              ),
-            ),
+            child: isInAd
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'AD',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: cs.onErrorContainer,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      if (adSeg != null) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            adSeg.source,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: cs.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  )
+                : Text(
+                    chapter?.title ?? '',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
+                    ),
+                  ),
           ),
         ),
         IconButton(
@@ -593,6 +635,26 @@ class _ChapterNavRow extends StatelessWidget {
 }
 
 // ── Chapter list popup ────────────────────────────────────────────────────────
+
+// Unified timeline entry — either a podcast chapter or a detected ad segment.
+class _TimelineEntry {
+  final double startSeconds;
+  final bool isAd;
+  // chapter fields
+  final PodcastChapter? chapter;
+  // ad fields
+  final AdSegment? adSegment;
+
+  _TimelineEntry.chapter(this.chapter)
+      : isAd = false,
+        adSegment = null,
+        startSeconds = chapter!.startTimeSeconds;
+
+  _TimelineEntry.ad(this.adSegment)
+      : isAd = true,
+        chapter = null,
+        startSeconds = adSegment!.startSeconds;
+}
 
 class _ChapterListSheet extends StatelessWidget {
   final ColorScheme cs;
@@ -612,7 +674,15 @@ class _ChapterListSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final player = context.watch<PlayerProvider>();
     final chapters = player.chapters;
+    final adSegments = player.adSegments;
     final currentIdx = player.currentChapterIndex;
+    final posSeconds = player.position.inMilliseconds / 1000.0;
+
+    // Merge chapters + ad segments into a single time-sorted list.
+    final entries = [
+      ...chapters.map(_TimelineEntry.chapter),
+      ...adSegments.map(_TimelineEntry.ad),
+    ]..sort((a, b) => a.startSeconds.compareTo(b.startSeconds));
 
     return Container(
       decoration: BoxDecoration(
@@ -632,28 +702,91 @@ class _ChapterListSheet extends StatelessWidget {
           Flexible(
             child: ListView.builder(
               shrinkWrap: true,
-              itemCount: chapters.length,
+              itemCount: entries.length,
               itemBuilder: (ctx, i) {
-                final chapter = chapters[i];
-                final isActive = i == currentIdx;
+                final entry = entries[i];
+
+                if (entry.isAd) {
+                  final seg = entry.adSegment!;
+                  final isActive = posSeconds >= seg.startSeconds &&
+                      posSeconds < seg.endSeconds;
+                  return ListTile(
+                    leading: SizedBox(
+                      width: 20,
+                      child: isActive
+                          ? Icon(Icons.play_arrow_rounded,
+                              color: cs.error, size: 18)
+                          : null,
+                    ),
+                    title: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'AD',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onErrorContainer,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          seg.source,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurface.withValues(alpha: 0.55),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: Text(
+                      _fmt(seg.startSeconds),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
+                    onTap: () {
+                      player.seekTo(Duration(
+                          milliseconds: (seg.startSeconds * 1000).round()));
+                      Navigator.pop(ctx);
+                    },
+                  );
+                }
+
+                // Podcast chapter entry
+                final chapter = entry.chapter!;
+                final chapterIdx =
+                    chapters.indexWhere((c) => c == chapter);
+                final isActive = chapterIdx == currentIdx;
                 return ListTile(
                   leading: SizedBox(
                     width: 20,
                     child: isActive
-                        ? Icon(Icons.play_arrow_rounded, color: cs.primary, size: 18)
+                        ? Icon(Icons.play_arrow_rounded,
+                            color: cs.primary, size: 18)
                         : null,
                   ),
                   title: Text(
                     chapter.title,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                      fontWeight:
+                          isActive ? FontWeight.w700 : FontWeight.w400,
                       color: isActive ? cs.primary : cs.onSurface,
                     ),
                   ),
                   trailing: Text(
                     _fmt(chapter.startTimeSeconds),
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    style:
+                        TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                   ),
                   onTap: () {
                     player.seekToChapter(chapter);

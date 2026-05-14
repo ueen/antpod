@@ -22,6 +22,7 @@ class PlayerProvider extends ChangeNotifier {
   bool _isLoading = false;
   double? _downloadProgress;
   List<PodcastChapter> _chapters = [];
+  List<AdSegment> _adSegments = [];
 
   StreamSubscription<Episode?>? _episodeWatchSub;
 
@@ -93,6 +94,29 @@ class PlayerProvider extends ChangeNotifier {
 
   List<PodcastChapter> get chapters => _chapters;
 
+  // ── Ad segments ───────────────────────────────────────────────────────────
+
+  List<AdSegment> get adSegments => _adSegments;
+
+  bool get isCurrentlyInAd {
+    final posS = _position.inMilliseconds / 1000.0;
+    return _adSegments.any(
+        (s) => posS >= s.startSeconds && posS < s.endSeconds);
+  }
+
+  AdSegment? get currentAdSegment {
+    final posS = _position.inMilliseconds / 1000.0;
+    for (final s in _adSegments) {
+      if (posS >= s.startSeconds && posS < s.endSeconds) return s;
+    }
+    return null;
+  }
+
+  void _loadAdSegments(String episodeId) async {
+    _adSegments = await _db.getAdSegments(episodeId);
+    notifyListeners();
+  }
+
   int get currentChapterIndex {
     if (_chapters.isEmpty) return -1;
     final posSeconds = _position.inMilliseconds / 1000.0;
@@ -141,11 +165,13 @@ class PlayerProvider extends ChangeNotifier {
     _lastSavedMs = 0;
     _currentEpisode = episode;
     _chapters = [];
+    _adSegments = [];
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
     _position = Duration(milliseconds: startMs);
     _isLoading = episode.localPath == null;
     notifyListeners();
     _loadChapters(episode.chaptersUrl);
+    _loadAdSegments(episode.id);
     _episodeWatchSub?.cancel();
     _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
     await (audioHandler as AntPodAudioHandler).loadEpisode(
@@ -169,6 +195,7 @@ class PlayerProvider extends ChangeNotifier {
     _lastSavedMs = 0;
     _currentEpisode = episode;
     _chapters = [];
+    _adSegments = [];
 
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
     // Pre-fill position so progress bar doesn't flash from zero
@@ -178,6 +205,7 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
 
     _loadChapters(episode.chaptersUrl);
+    _loadAdSegments(episode.id);
 
     // Watch for download completion or deletion to pivot source mid-playback
     _episodeWatchSub?.cancel();

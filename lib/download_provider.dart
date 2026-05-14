@@ -13,6 +13,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:drift/drift.dart' show Value;
+import 'ad_detection/ad_detection_service.dart';
 import 'app_database.dart';
 
 class DownloadProvider extends ChangeNotifier {
@@ -105,6 +107,8 @@ class DownloadProvider extends ChangeNotifier {
       final fullPath = p.join(saveDir, fileName);
       if (File(fullPath).existsSync()) {
         await _db.updateEpisodeDownload(episode.id, true, fullPath, taskId);
+        final updated = episode.copyWith(localPath: Value(fullPath));
+        unawaited(AdDetectionService(_db).analyzeEpisode(updated));
       }
     }
   }

@@ -1337,16 +1337,364 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
   }
 }
 
+class $AdSegmentsTable extends AdSegments
+    with TableInfo<$AdSegmentsTable, AdSegment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AdSegmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _episodeIdMeta =
+      const VerificationMeta('episodeId');
+  @override
+  late final GeneratedColumn<String> episodeId = GeneratedColumn<String>(
+      'episode_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _startSecondsMeta =
+      const VerificationMeta('startSeconds');
+  @override
+  late final GeneratedColumn<double> startSeconds = GeneratedColumn<double>(
+      'start_seconds', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _endSecondsMeta =
+      const VerificationMeta('endSeconds');
+  @override
+  late final GeneratedColumn<double> endSeconds = GeneratedColumn<double>(
+      'end_seconds', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _confidenceMeta =
+      const VerificationMeta('confidence');
+  @override
+  late final GeneratedColumn<int> confidence = GeneratedColumn<int>(
+      'confidence', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+      'source', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, episodeId, startSeconds, endSeconds, confidence, source];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'ad_segments';
+  @override
+  VerificationContext validateIntegrity(Insertable<AdSegment> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('episode_id')) {
+      context.handle(_episodeIdMeta,
+          episodeId.isAcceptableOrUnknown(data['episode_id']!, _episodeIdMeta));
+    } else if (isInserting) {
+      context.missing(_episodeIdMeta);
+    }
+    if (data.containsKey('start_seconds')) {
+      context.handle(
+          _startSecondsMeta,
+          startSeconds.isAcceptableOrUnknown(
+              data['start_seconds']!, _startSecondsMeta));
+    } else if (isInserting) {
+      context.missing(_startSecondsMeta);
+    }
+    if (data.containsKey('end_seconds')) {
+      context.handle(
+          _endSecondsMeta,
+          endSeconds.isAcceptableOrUnknown(
+              data['end_seconds']!, _endSecondsMeta));
+    } else if (isInserting) {
+      context.missing(_endSecondsMeta);
+    }
+    if (data.containsKey('confidence')) {
+      context.handle(
+          _confidenceMeta,
+          confidence.isAcceptableOrUnknown(
+              data['confidence']!, _confidenceMeta));
+    } else if (isInserting) {
+      context.missing(_confidenceMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(_sourceMeta,
+          source.isAcceptableOrUnknown(data['source']!, _sourceMeta));
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AdSegment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AdSegment(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      episodeId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}episode_id'])!,
+      startSeconds: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}start_seconds'])!,
+      endSeconds: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}end_seconds'])!,
+      confidence: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}confidence'])!,
+      source: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}source'])!,
+    );
+  }
+
+  @override
+  $AdSegmentsTable createAlias(String alias) {
+    return $AdSegmentsTable(attachedDatabase, alias);
+  }
+}
+
+class AdSegment extends DataClass implements Insertable<AdSegment> {
+  final int id;
+  final String episodeId;
+  final double startSeconds;
+  final double endSeconds;
+  final int confidence;
+  final String source;
+  const AdSegment(
+      {required this.id,
+      required this.episodeId,
+      required this.startSeconds,
+      required this.endSeconds,
+      required this.confidence,
+      required this.source});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['episode_id'] = Variable<String>(episodeId);
+    map['start_seconds'] = Variable<double>(startSeconds);
+    map['end_seconds'] = Variable<double>(endSeconds);
+    map['confidence'] = Variable<int>(confidence);
+    map['source'] = Variable<String>(source);
+    return map;
+  }
+
+  AdSegmentsCompanion toCompanion(bool nullToAbsent) {
+    return AdSegmentsCompanion(
+      id: Value(id),
+      episodeId: Value(episodeId),
+      startSeconds: Value(startSeconds),
+      endSeconds: Value(endSeconds),
+      confidence: Value(confidence),
+      source: Value(source),
+    );
+  }
+
+  factory AdSegment.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AdSegment(
+      id: serializer.fromJson<int>(json['id']),
+      episodeId: serializer.fromJson<String>(json['episodeId']),
+      startSeconds: serializer.fromJson<double>(json['startSeconds']),
+      endSeconds: serializer.fromJson<double>(json['endSeconds']),
+      confidence: serializer.fromJson<int>(json['confidence']),
+      source: serializer.fromJson<String>(json['source']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'episodeId': serializer.toJson<String>(episodeId),
+      'startSeconds': serializer.toJson<double>(startSeconds),
+      'endSeconds': serializer.toJson<double>(endSeconds),
+      'confidence': serializer.toJson<int>(confidence),
+      'source': serializer.toJson<String>(source),
+    };
+  }
+
+  AdSegment copyWith(
+          {int? id,
+          String? episodeId,
+          double? startSeconds,
+          double? endSeconds,
+          int? confidence,
+          String? source}) =>
+      AdSegment(
+        id: id ?? this.id,
+        episodeId: episodeId ?? this.episodeId,
+        startSeconds: startSeconds ?? this.startSeconds,
+        endSeconds: endSeconds ?? this.endSeconds,
+        confidence: confidence ?? this.confidence,
+        source: source ?? this.source,
+      );
+  AdSegment copyWithCompanion(AdSegmentsCompanion data) {
+    return AdSegment(
+      id: data.id.present ? data.id.value : this.id,
+      episodeId: data.episodeId.present ? data.episodeId.value : this.episodeId,
+      startSeconds: data.startSeconds.present
+          ? data.startSeconds.value
+          : this.startSeconds,
+      endSeconds:
+          data.endSeconds.present ? data.endSeconds.value : this.endSeconds,
+      confidence:
+          data.confidence.present ? data.confidence.value : this.confidence,
+      source: data.source.present ? data.source.value : this.source,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AdSegment(')
+          ..write('id: $id, ')
+          ..write('episodeId: $episodeId, ')
+          ..write('startSeconds: $startSeconds, ')
+          ..write('endSeconds: $endSeconds, ')
+          ..write('confidence: $confidence, ')
+          ..write('source: $source')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, episodeId, startSeconds, endSeconds, confidence, source);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AdSegment &&
+          other.id == this.id &&
+          other.episodeId == this.episodeId &&
+          other.startSeconds == this.startSeconds &&
+          other.endSeconds == this.endSeconds &&
+          other.confidence == this.confidence &&
+          other.source == this.source);
+}
+
+class AdSegmentsCompanion extends UpdateCompanion<AdSegment> {
+  final Value<int> id;
+  final Value<String> episodeId;
+  final Value<double> startSeconds;
+  final Value<double> endSeconds;
+  final Value<int> confidence;
+  final Value<String> source;
+  const AdSegmentsCompanion({
+    this.id = const Value.absent(),
+    this.episodeId = const Value.absent(),
+    this.startSeconds = const Value.absent(),
+    this.endSeconds = const Value.absent(),
+    this.confidence = const Value.absent(),
+    this.source = const Value.absent(),
+  });
+  AdSegmentsCompanion.insert({
+    this.id = const Value.absent(),
+    required String episodeId,
+    required double startSeconds,
+    required double endSeconds,
+    required int confidence,
+    required String source,
+  })  : episodeId = Value(episodeId),
+        startSeconds = Value(startSeconds),
+        endSeconds = Value(endSeconds),
+        confidence = Value(confidence),
+        source = Value(source);
+  static Insertable<AdSegment> custom({
+    Expression<int>? id,
+    Expression<String>? episodeId,
+    Expression<double>? startSeconds,
+    Expression<double>? endSeconds,
+    Expression<int>? confidence,
+    Expression<String>? source,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (episodeId != null) 'episode_id': episodeId,
+      if (startSeconds != null) 'start_seconds': startSeconds,
+      if (endSeconds != null) 'end_seconds': endSeconds,
+      if (confidence != null) 'confidence': confidence,
+      if (source != null) 'source': source,
+    });
+  }
+
+  AdSegmentsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? episodeId,
+      Value<double>? startSeconds,
+      Value<double>? endSeconds,
+      Value<int>? confidence,
+      Value<String>? source}) {
+    return AdSegmentsCompanion(
+      id: id ?? this.id,
+      episodeId: episodeId ?? this.episodeId,
+      startSeconds: startSeconds ?? this.startSeconds,
+      endSeconds: endSeconds ?? this.endSeconds,
+      confidence: confidence ?? this.confidence,
+      source: source ?? this.source,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (episodeId.present) {
+      map['episode_id'] = Variable<String>(episodeId.value);
+    }
+    if (startSeconds.present) {
+      map['start_seconds'] = Variable<double>(startSeconds.value);
+    }
+    if (endSeconds.present) {
+      map['end_seconds'] = Variable<double>(endSeconds.value);
+    }
+    if (confidence.present) {
+      map['confidence'] = Variable<int>(confidence.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AdSegmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('episodeId: $episodeId, ')
+          ..write('startSeconds: $startSeconds, ')
+          ..write('endSeconds: $endSeconds, ')
+          ..write('confidence: $confidence, ')
+          ..write('source: $source')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $PodcastsTable podcasts = $PodcastsTable(this);
   late final $EpisodesTable episodes = $EpisodesTable(this);
+  late final $AdSegmentsTable adSegments = $AdSegmentsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [podcasts, episodes];
+  List<DatabaseSchemaEntity> get allSchemaEntities =>
+      [podcasts, episodes, adSegments];
 }
 
 typedef $$PodcastsTableCreateCompanionBuilder = PodcastsCompanion Function({
@@ -1933,6 +2281,181 @@ typedef $$EpisodesTableProcessedTableManager = ProcessedTableManager<
     (Episode, BaseReferences<_$AppDatabase, $EpisodesTable, Episode>),
     Episode,
     PrefetchHooks Function()>;
+typedef $$AdSegmentsTableCreateCompanionBuilder = AdSegmentsCompanion Function({
+  Value<int> id,
+  required String episodeId,
+  required double startSeconds,
+  required double endSeconds,
+  required int confidence,
+  required String source,
+});
+typedef $$AdSegmentsTableUpdateCompanionBuilder = AdSegmentsCompanion Function({
+  Value<int> id,
+  Value<String> episodeId,
+  Value<double> startSeconds,
+  Value<double> endSeconds,
+  Value<int> confidence,
+  Value<String> source,
+});
+
+class $$AdSegmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $AdSegmentsTable> {
+  $$AdSegmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get episodeId => $composableBuilder(
+      column: $table.episodeId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get startSeconds => $composableBuilder(
+      column: $table.startSeconds, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get endSeconds => $composableBuilder(
+      column: $table.endSeconds, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get confidence => $composableBuilder(
+      column: $table.confidence, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get source => $composableBuilder(
+      column: $table.source, builder: (column) => ColumnFilters(column));
+}
+
+class $$AdSegmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AdSegmentsTable> {
+  $$AdSegmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get episodeId => $composableBuilder(
+      column: $table.episodeId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get startSeconds => $composableBuilder(
+      column: $table.startSeconds,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get endSeconds => $composableBuilder(
+      column: $table.endSeconds, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get confidence => $composableBuilder(
+      column: $table.confidence, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get source => $composableBuilder(
+      column: $table.source, builder: (column) => ColumnOrderings(column));
+}
+
+class $$AdSegmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AdSegmentsTable> {
+  $$AdSegmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get episodeId =>
+      $composableBuilder(column: $table.episodeId, builder: (column) => column);
+
+  GeneratedColumn<double> get startSeconds => $composableBuilder(
+      column: $table.startSeconds, builder: (column) => column);
+
+  GeneratedColumn<double> get endSeconds => $composableBuilder(
+      column: $table.endSeconds, builder: (column) => column);
+
+  GeneratedColumn<int> get confidence => $composableBuilder(
+      column: $table.confidence, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+}
+
+class $$AdSegmentsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $AdSegmentsTable,
+    AdSegment,
+    $$AdSegmentsTableFilterComposer,
+    $$AdSegmentsTableOrderingComposer,
+    $$AdSegmentsTableAnnotationComposer,
+    $$AdSegmentsTableCreateCompanionBuilder,
+    $$AdSegmentsTableUpdateCompanionBuilder,
+    (AdSegment, BaseReferences<_$AppDatabase, $AdSegmentsTable, AdSegment>),
+    AdSegment,
+    PrefetchHooks Function()> {
+  $$AdSegmentsTableTableManager(_$AppDatabase db, $AdSegmentsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AdSegmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AdSegmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AdSegmentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> episodeId = const Value.absent(),
+            Value<double> startSeconds = const Value.absent(),
+            Value<double> endSeconds = const Value.absent(),
+            Value<int> confidence = const Value.absent(),
+            Value<String> source = const Value.absent(),
+          }) =>
+              AdSegmentsCompanion(
+            id: id,
+            episodeId: episodeId,
+            startSeconds: startSeconds,
+            endSeconds: endSeconds,
+            confidence: confidence,
+            source: source,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String episodeId,
+            required double startSeconds,
+            required double endSeconds,
+            required int confidence,
+            required String source,
+          }) =>
+              AdSegmentsCompanion.insert(
+            id: id,
+            episodeId: episodeId,
+            startSeconds: startSeconds,
+            endSeconds: endSeconds,
+            confidence: confidence,
+            source: source,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$AdSegmentsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $AdSegmentsTable,
+    AdSegment,
+    $$AdSegmentsTableFilterComposer,
+    $$AdSegmentsTableOrderingComposer,
+    $$AdSegmentsTableAnnotationComposer,
+    $$AdSegmentsTableCreateCompanionBuilder,
+    $$AdSegmentsTableUpdateCompanionBuilder,
+    (AdSegment, BaseReferences<_$AppDatabase, $AdSegmentsTable, AdSegment>),
+    AdSegment,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1941,4 +2464,6 @@ class $AppDatabaseManager {
       $$PodcastsTableTableManager(_db, _db.podcasts);
   $$EpisodesTableTableManager get episodes =>
       $$EpisodesTableTableManager(_db, _db.episodes);
+  $$AdSegmentsTableTableManager get adSegments =>
+      $$AdSegmentsTableTableManager(_db, _db.adSegments);
 }

@@ -75,14 +75,23 @@ class Episodes extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class AdSegments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get episodeId => text()();
+  RealColumn get startSeconds => real()();
+  RealColumn get endSeconds => real()();
+  IntColumn get confidence => integer()(); // 0–100
+  TextColumn get source => text()(); // 'chapters' | 'encoding' | 'silence'
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
-@DriftDatabase(tables: [Podcasts, Episodes])
+@DriftDatabase(tables: [Podcasts, Episodes, AdSegments])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'antpod'));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -101,6 +110,18 @@ class AppDatabase extends _$AppDatabase {
       if (from < 5) {
         await m.database.customStatement(
             'ALTER TABLE episodes ADD COLUMN last_played INTEGER');
+      }
+      if (from < 6) {
+        await m.database.customStatement('''
+          CREATE TABLE IF NOT EXISTS ad_segments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            episode_id TEXT NOT NULL,
+            start_seconds REAL NOT NULL,
+            end_seconds REAL NOT NULL,
+            confidence INTEGER NOT NULL,
+            source TEXT NOT NULL
+          )
+        ''');
       }
     },
   );
@@ -336,4 +357,23 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<Episode?> watchEpisode(String id) =>
       (select(episodes)..where((e) => e.id.equals(id))).watchSingleOrNull();
+
+  // ── Ad segments ───────────────────────────────────────────────────────────
+
+  Future<List<AdSegment>> getAdSegments(String episodeId) =>
+      (select(adSegments)
+            ..where((s) => s.episodeId.equals(episodeId))
+            ..orderBy([(s) => OrderingTerm.asc(s.startSeconds)]))
+          .get();
+
+  Future<void> replaceAdSegments(
+    String episodeId,
+    List<AdSegmentsCompanion> segs,
+  ) =>
+      transaction(() async {
+        await (delete(adSegments)
+              ..where((s) => s.episodeId.equals(episodeId)))
+            .go();
+        await batch((b) => b.insertAll(adSegments, segs));
+      });
 }
