@@ -1262,11 +1262,17 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
   bool _initialLoad = true;
+  final _scrollCtrl = ScrollController();
+  bool _showScrollTop = false;
 
   @override
   void initState() {
     super.initState();
     _subscribe();
+    _scrollCtrl.addListener(() {
+      final show = _scrollCtrl.offset > 300;
+      if (show != _showScrollTop) setState(() => _showScrollTop = show);
+    });
   }
 
   @override
@@ -1286,6 +1292,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   @override
   void dispose() {
     _sub?.cancel();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -1445,6 +1452,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
             onRefresh: widget.onRefresh,
             child: AnimatedList(
               key: _listKey,
+              controller: _scrollCtrl,
               padding: const EdgeInsets.only(bottom: 88),
               initialItemCount: _displayed.length + (hasFooter ? 1 : 0),
               itemBuilder: (ctx, i, anim) {
@@ -1463,10 +1471,34 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
             ),
           );
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
-      child: child,
+    final cs = Theme.of(context).colorScheme;
+    return Stack(
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+          child: child,
+        ),
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          right: 16,
+          bottom: _showScrollTop ? 96 : -56,
+          child: GestureDetector(
+            onTap: () => _scrollCtrl.animateTo(
+              0, duration: const Duration(milliseconds: 350), curve: Curves.easeOut),
+            child: Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+              ),
+              child: Icon(Icons.arrow_upward, color: cs.primary, size: 22),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

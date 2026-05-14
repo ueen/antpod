@@ -291,33 +291,95 @@
     const podcast = p.get('podcast') || '';
     const cover   = p.get('cover')   || '';
     const audio   = p.get('audio')   || '';
-    const podId   = p.get('id')      || '';   // numeric PodcastIndex ID if available
+    const podId   = p.get('id')      || '';
+    const showId    = p.get('showId')    || '';  // PodcastIndex feed ID
+    const episodeId = p.get('episodeId') || '';  // PodcastIndex episode ID
 
-    const isEpisode = !!guid;
-
-    // Page title
-    document.title = (title || (isEpisode ? 'Episode' : 'Podcast')) +
-      (podcast ? ' · ' + podcast : '') + ' — AntPod';
-
-    // Cover
-    if (cover) {
-      const img = document.getElementById('cover-img');
-      img.src = cover;
-      img.alt = title;
+    // ── PodcastIndex API fetch (used when only showId/episodeId is given) ─────
+    async function piHeaders() {
+      const key = 'WVABNRFZXMR56UKS7488', secret = 'Yrb2fXKRtwFRkzcj4XNZBKmBhVbg8Uz5ZvMj5Prd';
+      const ts = Math.floor(Date.now() / 1000).toString();
+      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(key + secret + ts));
+      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      return { 'User-Agent': 'AntPod/1.0', 'X-Auth-Key': key, 'X-Auth-Date': ts, 'Authorization': hash };
     }
 
-    // Badge + labels
-    if (isEpisode) document.getElementById('badge').style.display = 'inline-flex';
-    if (podcast)   document.getElementById('podcast-name').textContent = podcast;
-    document.getElementById('ep-title').textContent = title || (isEpisode ? 'Episode' : 'Podcast');
+    async function fetchFromPI() {
+      try {
+        const headers = await piHeaders();
+        if (episodeId) {
+          const r = await fetch('https://api.podcastindex.org/api/1.0/episodes/byid?id=' + episodeId, { headers });
+          const d = await r.json();
+          const ep = d.episode || {};
+          render(ep.feedUrl || '', String(ep.id || ''), ep.title || '', ep.feedTitle || '',
+                 ep.image || ep.feedImage || '', ep.enclosureUrl || '', String(ep.feedId || ''));
+        } else {
+          const r = await fetch('https://api.podcastindex.org/api/1.0/podcasts/byfeedid?id=' + showId, { headers });
+          const d = await r.json();
+          const f = d.feed || {};
+          render(f.url || '', '', f.title || '', '', f.image || '', '', String(f.id || ''));
+        }
+      } catch (e) {
+        document.getElementById('ep-title').textContent = 'Failed to load';
+      }
+    }
 
-    // Custom audio player
-    const audioEl = document.getElementById('audio-el');
-    if (audio) {
-      document.getElementById('player').style.display = 'block';
-      audioEl.src = audio;
+    function render(rFeed, rGuid, rTitle, rPodcast, rCover, rAudio, rPodId) {
+      const isEpisode = !!rGuid;
 
-      const playBtn  = document.getElementById('play-btn');
+      // Page title
+      document.title = (rTitle || (isEpisode ? 'Episode' : 'Podcast')) +
+        (rPodcast ? ' · ' + rPodcast : '') + ' — AntPod';
+
+      // Cover
+      if (rCover) {
+        const img = document.getElementById('cover-img');
+        img.src = rCover; img.alt = rTitle;
+      }
+
+      // Badge + labels
+      if (isEpisode) document.getElementById('badge').style.display = 'inline-flex';
+      if (rPodcast)  document.getElementById('podcast-name').textContent = rPodcast;
+      document.getElementById('ep-title').textContent = rTitle || (isEpisode ? 'Episode' : 'Podcast');
+
+      // Audio player
+      const audioEl = document.getElementById('audio-el');
+      if (rAudio) {
+        document.getElementById('player').style.display = 'block';
+        audioEl.src = rAudio;
+        wirePlayer(audioEl);
+      }
+
+      // pod.link
+      if (rFeed) {
+        function toBase64Url(str) {
+          return btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+        }
+        document.getElementById('btn-podlink').href = 'https://pod.link/' + toBase64Url(rFeed);
+      }
+
+      // Feed URL row
+      if (rFeed) {
+        document.getElementById('feed-url-text').innerHTML =
+          '<a href="' + encodeURI(rFeed) + '" target="_blank" rel="noopener">' +
+          rFeed.replace(/^https?:\/\//, '') + '</a>';
+        document.getElementById('feed-row').style.display = 'flex';
+      }
+
+      // Rewrite open-in-app button to use fetched params
+      const q = new URLSearchParams();
+      if (rFeed)    q.set('feed',    rFeed);
+      if (rGuid)    q.set('guid',    rGuid);
+      if (rTitle)   q.set('title',   rTitle);
+      if (rPodcast) q.set('podcast', rPodcast);
+      if (rCover)   q.set('cover',   rCover);
+      if (rAudio)   q.set('audio',   rAudio);
+      if (rPodId)   q.set('id',      rPodId);
+      window._openQuery = '?' + q.toString();
+    }
+
+    // ── Audio player wiring ───────────────────────────────────────────────────
+    function wirePlayer(audioEl) {
       const iconPlay  = document.getElementById('icon-play');
       const iconPause = document.getElementById('icon-pause');
       const fill  = document.getElementById('cp-fill');
@@ -329,27 +391,19 @@
       function fmt(s) {
         if (!isFinite(s)) return '0:00';
         s = Math.floor(s);
-        const m = Math.floor(s / 60), sec = s % 60;
-        return m + ':' + String(sec).padStart(2, '0');
+        return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
       }
-      function setProgress(pct) {
-        fill.style.width  = pct + '%';
-        thumb.style.left  = pct + '%';
-      }
+      function setProgress(pct) { fill.style.width = pct + '%'; thumb.style.left = pct + '%'; }
 
-      audioEl.addEventListener('loadedmetadata', () => {
-        durEl.textContent = fmt(audioEl.duration);
-      });
+      audioEl.addEventListener('loadedmetadata', () => durEl.textContent = fmt(audioEl.duration));
       audioEl.addEventListener('timeupdate', () => {
         const pct = audioEl.duration ? (audioEl.currentTime / audioEl.duration) * 100 : 0;
-        setProgress(pct);
-        curEl.textContent = fmt(audioEl.currentTime);
+        setProgress(pct); curEl.textContent = fmt(audioEl.currentTime);
       });
       audioEl.addEventListener('play',  () => { iconPlay.style.display='none';  iconPause.style.display='block'; });
       audioEl.addEventListener('pause', () => { iconPlay.style.display='block'; iconPause.style.display='none'; });
       audioEl.addEventListener('ended', () => { iconPlay.style.display='block'; iconPause.style.display='none'; setProgress(0); });
 
-      // Seek on track click/drag
       let seeking = false;
       function seekFromEvent(e) {
         const rect = track.getBoundingClientRect();
@@ -366,36 +420,22 @@
       window.addEventListener('touchend',  () => seeking = false);
     }
 
+    // ── Init ──────────────────────────────────────────────────────────────────
+    window._openQuery = location.search;
+
+    if (showId || episodeId) {
+      fetchFromPI();
+    } else {
+      render(feed, guid, title, podcast, cover, audio, podId);
+    }
+
     function togglePlay() {
+      const audioEl = document.getElementById('audio-el');
       if (audioEl.paused) audioEl.play(); else audioEl.pause();
     }
 
-    // pod.link supports https://pod.link/{base64url(feedURL)} for any RSS feed
-    if (feed) {
-      function toBase64Url(str) {
-        return btoa(unescape(encodeURIComponent(str)))
-          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-      }
-      // pod.link episode deep links require an Apple Podcast ID which we don't
-      // have — link to the podcast page in all cases so the user can find it.
-      const podLinkUrl = 'https://pod.link/' + toBase64Url(feed);
-      document.getElementById('btn-podlink').href = podLinkUrl;
-    }
-
-    // Feed URL display
-    if (feed) {
-      const row = document.getElementById('feed-row');
-      const txt = document.getElementById('feed-url-text');
-      txt.innerHTML = '<a href="' + encodeURI(feed) + '" target="_blank" rel="noopener">' +
-        feed.replace(/^https?:\/\//, '') + '</a>';
-      row.style.display = 'flex';
-    }
-
-    // Open in AntPod
     function openInApp() {
-      const appUrl = 'antpod://open' + location.search;
-      window.location.href = appUrl;
-      // Show hint after 2.5 s if the app didn't intercept the link
+      window.location.href = 'antpod://open' + window._openQuery;
       setTimeout(() => {
         document.getElementById('not-installed').style.display = 'block';
       }, 2500);

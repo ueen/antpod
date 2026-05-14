@@ -1,17 +1,5 @@
-The anthill for your podcasts — every episode carried home to the hill tirelessly. A nimble scout hatched from the spirit of the grand old AntennaPod.
+The anthill for your podcasts — every episode carried home tirelessly. A nimble scout hatched from the spirit of the grand old AntennaPod.
 
-FEATURES
-
-• Browse & subscribe — search the PodcastIndex catalogue and subscribe to any podcast
-• Episode feed — chronological feed across all subscriptions, filterable by podcast, downloaded, or played status
-• Background playback — audio keeps playing when the screen is off, with lock screen and notification controls
-• Downloads — save episodes for offline listening
-• Trending & recommendations — discover new podcasts based on what's popular or what matches your taste
-• Material You — adapts to your device's color palette on Android 12+, with full light/dark mode support
-• Multilingual — English, German, Spanish, and French
+Browse and subscribe to any podcast via the PodcastIndex catalogue. Your episode feed spans all subscriptions and can be filtered by podcast, downloaded, or played status. Audio keeps playing in the background with lock screen and notification controls. Save episodes for offline listening, discover trending and recommended shows, and enjoy full Material You theming on Android 12+.
 
 No ads. No tracking. No accounts. Just podcasts.
-
-AntPod is free and open-source software licensed under the GNU General Public License v3.
-Website: https://antpod.eu
-Source code: https://github.com/ueen/antpod
