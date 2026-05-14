@@ -2,7 +2,6 @@
 import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -137,8 +136,9 @@ class EpisodeTile extends StatelessWidget {
                 SizedBox(
                   width: 60, height: 68,
                   child: Center(
-                    child: Opacity(
+                    child: AnimatedOpacity(
                       opacity: opacity,
+                      duration: const Duration(milliseconds: 200),
                       child: GestureDetector(
                         onTap: onCoverTap,
                         child: ClipRRect(
@@ -156,8 +156,9 @@ class EpisodeTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Opacity(
+                  child: AnimatedOpacity(
                     opacity: opacity,
+                    duration: const Duration(milliseconds: 200),
                     child: _EpisodeMetadata(
                       episode: episode,
                       isCurrent: isCurrent,
@@ -217,50 +218,49 @@ class _StickySwipeable extends StatefulWidget {
 
 class _StickySwipeableState extends State<_StickySwipeable>
     with SingleTickerProviderStateMixin {
-  // Wide bounds so the spring can drive value through negative and positive px
-  late final AnimationController _ctrl = AnimationController(
+  late final AnimationController _snapCtrl = AnimationController(
     vsync: this,
     lowerBound: -500,
     upperBound: 500,
-  );
+    value: 0.0,
+  )..addListener(_onSnapTick);
+
+  double _dx = 0;
 
   static const _maxFraction = 0.40;
   static const _triggerFraction = 0.40;
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _snapCtrl.dispose();
     super.dispose();
+  }
+
+  void _onSnapTick() {
+    if (mounted) setState(() => _dx = _snapCtrl.value);
   }
 
   double get _screenWidth => MediaQuery.of(context).size.width;
 
   void _onUpdate(DragUpdateDetails d) {
-    _ctrl.stop();
+    _snapCtrl.stop();
     final max = _screenWidth * _maxFraction;
-    // Setting .value notifies AnimatedBuilder — no setState needed
-    _ctrl.value = (_ctrl.value + d.delta.dx).clamp(-max, max);
+    setState(() => _dx = (_dx + d.delta.dx).clamp(-max, max));
   }
 
-  Future<void> _onEnd(DragEndDetails _) async {
+  void _onEnd(DragEndDetails _) {
     final trigger = _screenWidth * _triggerFraction;
-    if (_ctrl.value >= trigger) {
-      await widget.onSwipeStart();
-    } else if (_ctrl.value <= -trigger) {
-      await widget.onSwipeEnd();
-    }
-    _snapBack();
-  }
-
-  void _snapBack() {
-    final from = _ctrl.value;
-    _ctrl.stop();
-    _ctrl.animateWith(SpringSimulation(
-      const SpringDescription(mass: 1, stiffness: 200, damping: 30),
-      from,
+    final didStart = _dx >= trigger;
+    final didEnd = _dx <= -trigger;
+    _snapCtrl.value = _dx; // sync controller with current drag position
+    _snapCtrl.animateTo(
       0.0,
-      0.0,
-    ));
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeIn,
+    ).then((_) {
+      if (didStart) widget.onSwipeStart();
+      if (didEnd) widget.onSwipeEnd();
+    });
   }
 
   @override
@@ -268,21 +268,16 @@ class _StickySwipeableState extends State<_StickySwipeable>
     return GestureDetector(
       onHorizontalDragUpdate: _onUpdate,
       onHorizontalDragEnd: _onEnd,
-      // AnimatedBuilder rebuilds only the Stack/Transform, not widget.child
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (context, child) {
-          final dx = _ctrl.value;
-          return Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              if (dx > 4) Positioned.fill(child: widget.startBackground),
-              if (dx < -4) Positioned.fill(child: widget.endBackground),
-              Transform.translate(offset: Offset(dx, 0), child: child),
-            ],
-          );
-        },
-        child: widget.child,
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          if (_dx > 4) Positioned.fill(child: widget.startBackground),
+          if (_dx < -4) Positioned.fill(child: widget.endBackground),
+          Transform.translate(
+            offset: Offset(_dx, 0),
+            child: widget.child,
+          ),
+        ],
       ),
     );
   }
@@ -475,32 +470,93 @@ class _ActionArea extends StatefulWidget {
 }
 
 class _ActionAreaState extends State<_ActionArea>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _drainCtrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 800),
   );
+  late final AnimationController _dotsCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1000),
+  );
+  double _drainFrom = 1.0;
+  double? _lastRealProgress;
+  bool _dotsBuiltUp = false;
+
+  bool get _isPending =>
+      widget.ringProgress != null &&
+      !widget.episode.isDownloaded &&
+      widget.ringProgress! < 0.10;
+
+  void _onFirstDotsComplete(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _dotsCtrl.removeStatusListener(_onFirstDotsComplete);
+      _dotsBuiltUp = true; // AnimatedBuilder repaints each tick — no setState needed
+      _dotsCtrl.repeat();
+    }
+  }
+
+  void _startDots() {
+    _dotsBuiltUp = false;
+    _dotsCtrl.addStatusListener(_onFirstDotsComplete);
+    _dotsCtrl.forward(from: 0.0);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isPending) _startDots();
+  }
 
   @override
   void didUpdateWidget(_ActionArea old) {
     super.didUpdateWidget(old);
-    // Download deleted: animate ring draining 1.0 → 0.0
-    if (old.episode.isDownloaded &&
-        !widget.episode.isDownloaded &&
-        widget.ringProgress == null) {
-      _drainCtrl.forward(from: 0.0);
+    if (widget.ringProgress != null && !widget.episode.isDownloaded && widget.ringProgress! < 0.99) {
+      _lastRealProgress = widget.ringProgress;
     }
-    // Re-download started while drain was running: cancel drain
     if (widget.ringProgress != null && _drainCtrl.isAnimating) {
       _drainCtrl.stop();
       _drainCtrl.reset();
+      return;
+    }
+    if (old.episode.isDownloaded && !widget.episode.isDownloaded && widget.ringProgress == null) {
+      _drainFrom = 1.0;
+      _drainCtrl.forward(from: 0.0);
+    } else if (old.ringProgress != null && widget.ringProgress == null && !widget.episode.isDownloaded) {
+      _drainFrom = _lastRealProgress ?? 0.0;
+      _lastRealProgress = null;
+      _drainCtrl.forward(from: 0.0);
+    }
+    if (_isPending && !_dotsCtrl.isAnimating) {
+      _startDots();
+    } else if (!_isPending && _dotsCtrl.isAnimating) {
+      _dotsCtrl.removeStatusListener(_onFirstDotsComplete);
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) { _dotsCtrl.stop(); _dotsCtrl.reset(); _dotsBuiltUp = false; }
+      });
     }
   }
 
   @override
   void dispose() {
+    _dotsCtrl.removeStatusListener(_onFirstDotsComplete);
     _drainCtrl.dispose();
+    _dotsCtrl.dispose();
     super.dispose();
+  }
+
+  // 3 phases per pill (each 1/3 of the cycle), staggered by 1/3:
+  //   extend: arc grows 0→full at full opacity
+  //   hold:   full arc, full opacity
+  //   fade:   full arc, fades to 50%  (starts when next-next pill begins extending)
+  // First cycle: pills 2 & 3 hidden until their phase starts.
+  (double sweep, double opacity) _dotParams(double t, int index) {
+    const third = 1.0 / 3.0;
+    if (!_dotsBuiltUp && t < index * third) return (0.0, 0.0);
+    final phase = (t - index * third) % 1.0;
+    if (phase < third) return (phase / third, 1.0);
+    if (phase < 2 * third) return (1.0, 1.0);
+    return (1.0, 1.0 - (phase - 2 * third) / third);
   }
 
   @override
@@ -519,7 +575,7 @@ class _ActionAreaState extends State<_ActionArea>
         builder: (_, __) => CustomPaint(
           size: const Size(44, 44),
           painter: _RingPainter(
-            progress: (1.0 - CurvedAnimation(
+            progress: _drainFrom * (1.0 - CurvedAnimation(
                 parent: _drainCtrl, curve: Curves.easeIn).value),
             color: widget.cs.primary,
             trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
@@ -537,14 +593,15 @@ class _ActionAreaState extends State<_ActionArea>
       );
     } else {
       final effectiveProgress = widget.ringProgress;
+      final showProgress = effectiveProgress != null && effectiveProgress >= 0.10;
       ringPainter = TweenAnimationBuilder<double>(
-        tween: Tween<double>(begin: 0.0, end: effectiveProgress ?? 0.0),
+        tween: Tween<double>(begin: 0.0, end: showProgress ? effectiveProgress : 0.0),
         duration: const Duration(milliseconds: 900),
         curve: Curves.easeOut,
         builder: (_, animValue, __) => CustomPaint(
           size: const Size(44, 44),
           painter: _RingPainter(
-            progress: effectiveProgress == null ? null : animValue,
+            progress: showProgress ? animValue : null,
             color: ringColor,
             trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
           ),
@@ -552,8 +609,9 @@ class _ActionAreaState extends State<_ActionArea>
       );
     }
 
-    return Opacity(
+    return AnimatedOpacity(
       opacity: widget.dimmed ? _kFinishedOpacity : 1.0,
+      duration: const Duration(milliseconds: 200),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -565,6 +623,24 @@ class _ActionAreaState extends State<_ActionArea>
                 alignment: Alignment.center,
                 children: [
                   ringPainter,
+                  AnimatedOpacity(
+                    opacity: _isPending ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 250),
+                    child: AnimatedBuilder(
+                      animation: _dotsCtrl,
+                      builder: (_, __) => CustomPaint(
+                        size: const Size(44, 44),
+                        painter: _RingDotsPainter(
+                          color: widget.cs.primary,
+                          dots: [
+                            _dotParams(_dotsCtrl.value, 0),
+                            _dotParams(_dotsCtrl.value, 1),
+                            _dotParams(_dotsCtrl.value, 2),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   if (widget.isLoading)
                     Padding(
                       padding: const EdgeInsets.all(12),
@@ -684,6 +760,40 @@ class _MenuItem extends StatelessWidget {
 }
 
 // ─── Ring painter ─────────────────────────────────────────────────────────────
+
+class _RingDotsPainter extends CustomPainter {
+  final Color color;
+  final List<(double sweep, double opacity)> dots;
+  const _RingDotsPainter({required this.color, required this.dots});
+
+  static const _maxSweep = math.pi / 10; // 18° pill — 3 pills + 2 gaps = 90° (12→3 o'clock)
+  static const _spacing  = math.pi / 5;  // 36° = 2× pill — gap equals pill length
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = (size.width - 3) / 2;
+    final rect = Rect.fromCircle(center: Offset(size.width / 2, size.height / 2), radius: r);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+    for (int i = 0; i < dots.length; i++) {
+      final (sweepFraction, opacity) = dots[i];
+      if (sweepFraction < 0.001 || opacity < 0.01) continue;
+      canvas.drawArc(rect, -math.pi / 2 + i * _spacing, _maxSweep * sweepFraction, false,
+          paint..color = color.withValues(alpha: opacity));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingDotsPainter old) {
+    if (old.color != color) return true;
+    for (int i = 0; i < dots.length; i++) {
+      if (old.dots[i] != dots[i]) return true;
+    }
+    return false;
+  }
+}
 
 class _RingPainter extends CustomPainter {
   final double? progress;

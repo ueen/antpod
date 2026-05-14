@@ -27,25 +27,24 @@ import 'share_utils.dart';
 // Filter state
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _SortMode { none, alphabetical, oldest, inProgress }
+enum _SortMode { none, alphabetical, oldest }
 
-List<Episode> _sortEpisodes(List<Episode> eps, _SortMode sort) {
+List<Episode> _sortEpisodes(List<Episode> eps, _SortMode sort, {bool inProgress = false}) {
+  List<Episode> result;
   switch (sort) {
     case _SortMode.alphabetical:
-      return List.of(eps)
-        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      result = List.of(eps)..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     case _SortMode.oldest:
-      return List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
-    case _SortMode.inProgress:
-      return List.of(eps)..sort((a, b) {
-        final aIn = a.lastPositionMs > 0;
-        final bIn = b.lastPositionMs > 0;
-        if (aIn != bIn) return aIn ? -1 : 1;
-        return b.publishDate.compareTo(a.publishDate);
-      });
+      result = List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
     case _SortMode.none:
-      return eps;
+      result = List.of(eps);
   }
+  if (!inProgress) return result;
+  // Float started episodes to top while preserving base sort within each group
+  return [
+    ...result.where((e) => e.lastPositionMs > 0),
+    ...result.where((e) => e.lastPositionMs <= 0),
+  ];
 }
 
 class _FilterState {
@@ -53,6 +52,7 @@ class _FilterState {
   final bool history;   // true = show only finished episodes
   final bool downloaded;
   final _SortMode sort;
+  final bool inProgress; // float started episodes to top, combinable with sort
   final bool podcasts;
 
   const _FilterState({
@@ -60,24 +60,26 @@ class _FilterState {
     this.history = false,
     this.downloaded = false,
     this.sort = _SortMode.none,
+    this.inProgress = false,
     this.podcasts = false,
   });
 
   // Dot appears whenever any chip is visually active
   bool get hasAny =>
-      newOnly || history || downloaded || sort != _SortMode.none || podcasts;
+      newOnly || history || downloaded || sort != _SortMode.none || inProgress || podcasts;
 
   bool get isOldestFirst => sort == _SortMode.oldest;
 
   _FilterState copyWith({
     bool? newOnly, bool? history, bool? downloaded,
-    _SortMode? sort, bool? podcasts,
+    _SortMode? sort, bool? inProgress, bool? podcasts,
   }) =>
       _FilterState(
         newOnly: newOnly ?? this.newOnly,
         history: history ?? this.history,
         downloaded: downloaded ?? this.downloaded,
         sort: sort ?? this.sort,
+        inProgress: inProgress ?? this.inProgress,
         podcasts: podcasts ?? this.podcasts,
       );
 
@@ -275,6 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
         history: prefs.getBool('filter_history') ?? false,
         downloaded: prefs.getBool('filter_downloaded') ?? false,
         sort: _SortMode.values[sortIndex.clamp(0, _SortMode.values.length - 1)],
+        inProgress: prefs.getBool('filter_inProgress') ?? false,
         podcasts: prefs.getBool('filter_podcasts') ?? false,
       );
       _filterChipsVisible = prefs.getBool('filter_chipsVisible') ?? true;
@@ -287,6 +290,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setBool('filter_history', _filter.history);
     await prefs.setBool('filter_downloaded', _filter.downloaded);
     await prefs.setInt('filter_sort', _filter.sort.index);
+    await prefs.setBool('filter_inProgress', _filter.inProgress);
     await prefs.setBool('filter_podcasts', _filter.podcasts);
     await prefs.setBool('filter_chipsVisible', _filterChipsVisible);
   }
@@ -690,8 +694,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         case 'inprogress':
           _filter = _filter.copyWith(
-            sort: _filter.sort == _SortMode.inProgress
-                ? _SortMode.none : _SortMode.inProgress,
+            inProgress: !_filter.inProgress,
             podcasts: false,
           );
         case 'podcasts':
@@ -1020,7 +1023,7 @@ class _FilterChipsRow extends StatelessWidget {
                 onTap: () => onToggle('new')),
             const SizedBox(width: 8),
             _Chip(label: l10n.filterPlaying,
-                active: filter.sort == _SortMode.inProgress && !filter.podcasts,
+                active: filter.inProgress && !filter.podcasts,
                 cs: cs, icon: Icons.play_circle_outline,
                 onTap: () => onToggle('inprogress')),
             const SizedBox(width: 8),
@@ -1305,7 +1308,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
           e.title.toLowerCase().contains(q) ||
           e.podcastTitle.toLowerCase().contains(q)).toList();
     }
-    return _sortEpisodes(eps, widget.filter.sort);
+    return _sortEpisodes(eps, widget.filter.sort, inProgress: widget.filter.inProgress);
   }
 
   void _onData(List<Episode> raw) {
@@ -1503,7 +1506,7 @@ class _PodcastFilteredFeed extends StatelessWidget {
       eps = eps.where((e) => !e.isFinished).toList();
     }
     if (filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
-    return _sortEpisodes(eps, filter.sort);
+    return _sortEpisodes(eps, filter.sort, inProgress: filter.inProgress);
   }
 
   @override
