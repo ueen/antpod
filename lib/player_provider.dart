@@ -147,7 +147,10 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _loadChapters(String? url, String audioUrl) async {
     _chapters = [];
     _id3ChapterImages = {};
-    if (url == null || url.isEmpty) return;
+    if (url == null || url.isEmpty) {
+      debugPrint('[chapters] no chaptersUrl — skipping');
+      return;
+    }
     try {
       final result = await ps.Feed.loadChaptersByUrl(url: url);
       _chapters = result.chapters
@@ -158,13 +161,23 @@ class PlayerProvider extends ChangeNotifier {
                 imageUrl: c.imageUrl.isNotEmpty ? c.imageUrl : null,
               ))
           .toList();
+      debugPrint('[chapters] loaded ${_chapters.length} chapters; '
+          'withImage=${_chapters.where((c) => c.imageUrl != null).length}');
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[chapters] loadChaptersByUrl error: $e');
+    }
 
     // If no JSON chapter images, try ID3v2 CHAP tags embedded in the audio file
     if (_chapters.isNotEmpty && _chapters.every((c) => c.imageUrl == null)) {
+      debugPrint('[chapters] fetching ID3 images from $audioUrl');
       _id3ChapterImages = await fetchId3ChapterImages(audioUrl);
+      debugPrint('[chapters] ID3 images: ${_id3ChapterImages.length} found '
+          '(keys=${_id3ChapterImages.keys.toList()})');
       if (_id3ChapterImages.isNotEmpty) notifyListeners();
+    } else {
+      debugPrint('[chapters] skipping ID3 fetch: chapters=${_chapters.length}, '
+          'allNullImages=${_chapters.every((c) => c.imageUrl == null)}');
     }
   }
 

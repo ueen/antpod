@@ -1308,6 +1308,11 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   bool _initialLoad = true;
   final _scrollCtrl = ScrollController();
   bool _showScrollTop = false;
+  // GlobalKeys per episode so state (_ready flag) survives AnimatedList slot shifts
+  final _tileKeys = <String, GlobalKey<_LazyTileState>>{};
+
+  GlobalKey<_LazyTileState> _tileKey(String id) =>
+      _tileKeys.putIfAbsent(id, () => GlobalKey<_LazyTileState>());
 
   @override
   void initState() {
@@ -1404,6 +1409,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     for (int i = _displayed.length - 1; i >= 0; i--) {
       if (!next.any((e) => e.id == _displayed[i].id)) {
         final removed = _displayed.removeAt(i);
+        _tileKeys.remove(removed.id);
         state.removeItem(i, (ctx, anim) => _animatedTile(removed, anim),
             duration: const Duration(milliseconds: 250));
       }
@@ -1435,7 +1441,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         child: RepaintBoundary(
           child: Column(
             children: [
-              _LazyTile(key: ValueKey(ep.id), episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+              _LazyTile(key: _tileKey(ep.id), episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
               Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
             ],
           ),

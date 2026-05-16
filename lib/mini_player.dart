@@ -718,11 +718,6 @@ class _ChapterCover extends StatelessWidget {
       );
     }
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      transitionBuilder: (child, animation) =>
-          FadeTransition(opacity: animation, child: child),
-      child: image,
-    );
+    return image;
   }
 }
