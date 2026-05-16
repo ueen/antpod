@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:podcast_search/podcast_search.dart' as ps;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_database.dart';
 import 'audio_handler.dart';
+import 'id3_chapters.dart';
 
 class PodcastChapter {
   final String title;
   final double startTimeSeconds;
-  const PodcastChapter({required this.title, required this.startTimeSeconds});
+  final String? imageUrl;
+  const PodcastChapter({required this.title, required this.startTimeSeconds, this.imageUrl});
 }
 
 class PlayerProvider extends ChangeNotifier {
@@ -22,10 +25,13 @@ class PlayerProvider extends ChangeNotifier {
   bool _isLoading = false;
   double? _downloadProgress;
   List<PodcastChapter> _chapters = [];
+  // startTimeMs → image bytes, populated from ID3v2 CHAP tags when JSON has no images
+  Map<int, Uint8List> _id3ChapterImages = {};
 
   StreamSubscription<Episode?>? _episodeWatchSub;
 
   static const _saveIntervalMs = 5000;
+  static const _prefLastEpisodeId = 'player_last_episode_id';
   int _lastSavedMs = 0;
 
   PlayerProvider(this._db) {
@@ -107,6 +113,24 @@ class PlayerProvider extends ChangeNotifier {
     return i >= 0 ? _chapters[i] : null;
   }
 
+  String get currentCoverImageUrl =>
+      currentChapter?.imageUrl ?? _currentEpisode?.podcastImageUrl ?? '';
+
+  /// Image bytes from ID3v2 CHAP tag for the current chapter, or null.
+  Uint8List? get currentChapterImageBytes {
+    final idx = currentChapterIndex;
+    if (idx < 0 || _chapters.isEmpty) return null;
+    final startMs = (_chapters[idx].startTimeSeconds * 1000).round();
+    // Find the closest ID3 chapter within 2 s tolerance
+    int? best;
+    int bestDiff = 2001;
+    for (final ms in _id3ChapterImages.keys) {
+      final diff = (ms - startMs).abs();
+      if (diff < bestDiff) { bestDiff = diff; best = ms; }
+    }
+    return best != null ? _id3ChapterImages[best] : null;
+  }
+
   Future<void> seekToChapter(PodcastChapter chapter) =>
       seekTo(Duration(milliseconds: (chapter.startTimeSeconds * 1000).round()));
 
@@ -120,32 +144,62 @@ class PlayerProvider extends ChangeNotifier {
     if (i > 0) seekToChapter(_chapters[i - 1]);
   }
 
-  Future<void> _loadChapters(String? url) async {
+  Future<void> _loadChapters(String? url, String audioUrl) async {
     _chapters = [];
+    _id3ChapterImages = {};
     if (url == null || url.isEmpty) return;
     try {
       final result = await ps.Feed.loadChaptersByUrl(url: url);
       _chapters = result.chapters
           .where((c) => c.toc && c.title.isNotEmpty)
-          .map((c) => PodcastChapter(title: c.title, startTimeSeconds: c.startTime))
+          .map((c) => PodcastChapter(
+                title: c.title,
+                startTimeSeconds: c.startTime,
+                imageUrl: c.imageUrl.isNotEmpty ? c.imageUrl : null,
+              ))
           .toList();
       notifyListeners();
     } catch (_) {}
+
+    // If no JSON chapter images, try ID3v2 CHAP tags embedded in the audio file
+    if (_chapters.isNotEmpty && _chapters.every((c) => c.imageUrl == null)) {
+      _id3ChapterImages = await fetchId3ChapterImages(audioUrl);
+      if (_id3ChapterImages.isNotEmpty) notifyListeners();
+    }
   }
 
   // ── Playback ──────────────────────────────────────────────────────────────
+
+  /// Restore the last-played episode on startup (silent load, no playback).
+  /// Skips if the episode is finished or no longer in the DB.
+  Future<void> restoreLastEpisode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final id = prefs.getString(_prefLastEpisodeId);
+      if (id == null) return;
+      final ep = await _db.getEpisode(id);
+      if (ep == null || ep.isFinished) return;
+      await load(ep);
+    } catch (_) {}
+  }
+
+  void _persistLastEpisode(String id) {
+    SharedPreferences.getInstance()
+        .then((p) => p.setString(_prefLastEpisodeId, id));
+  }
 
   /// Load episode into player without starting playback.
   Future<void> load(Episode episode) async {
     if (_currentEpisode?.id == episode.id) return;
     _lastSavedMs = 0;
     _currentEpisode = episode;
+    _persistLastEpisode(episode.id);
     _chapters = [];
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
     _position = Duration(milliseconds: startMs);
     _isLoading = episode.localPath == null;
     notifyListeners();
-    _loadChapters(episode.chaptersUrl);
+    _loadChapters(episode.chaptersUrl, episode.audioUrl);
     _episodeWatchSub?.cancel();
     _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
     await (audioHandler as AntPodAudioHandler).loadEpisode(
@@ -168,6 +222,7 @@ class PlayerProvider extends ChangeNotifier {
     }
     _lastSavedMs = 0;
     _currentEpisode = episode;
+    _persistLastEpisode(episode.id);
     _chapters = [];
 
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
@@ -177,7 +232,7 @@ class PlayerProvider extends ChangeNotifier {
     _isLoading = episode.localPath == null;
     notifyListeners();
 
-    _loadChapters(episode.chaptersUrl);
+    _loadChapters(episode.chaptersUrl, episode.audioUrl);
 
     // Watch for download completion or deletion to pivot source mid-playback
     _episodeWatchSub?.cancel();

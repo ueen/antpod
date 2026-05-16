@@ -78,11 +78,9 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get filterOldest => 'Älteste zuerst';
-  @override
-  String get filterRandom => 'Zufällig';
 
   @override
-  String get filterPlaying => 'Läuft';
+  String get filterPlaying => 'Angefangen';
 
   @override
   String get addRssFeed => 'RSS-Feed hinzufügen';
@@ -128,4 +126,13 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get unsubscribe => 'Abonnement beenden';
+
+  @override
+  String get filterRandom => 'Zufällig';
+
+  @override
+  String get removeEpisode => 'Episode entfernen';
+
+  @override
+  String get exportFile => 'Datei exportieren';
 }

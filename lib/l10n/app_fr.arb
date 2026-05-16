@@ -39,5 +39,8 @@
   "cancel": "Annuler",
   "shareEpisode": "Partager l'épisode",
   "sharePodcast": "Partager le podcast",
-  "unsubscribe": "Se désabonner"
+  "unsubscribe": "Se désabonner",
+  "filterRandom": "Aléatoire",
+  "removeEpisode": "Supprimer l'épisode",
+  "exportFile": "Exporter le fichier"
 }

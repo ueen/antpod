@@ -175,12 +175,14 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadFilterPrefs();
       if (!mounted) return;
       final db = context.read<AppDatabase>();
+      final player = context.read<PlayerProvider>();
       final pods = await db.getAllPodcasts();
       if (!mounted) return;
       if (pods.isEmpty) {
         _enterDiscover();
       } else {
         _refresh(db); // async background sync on startup
+        player.restoreLastEpisode();
       }
       // Process initial deep link after the app has finished initializing
       final pending = _pendingDeepLink;
@@ -1432,9 +1434,8 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         opacity: CurvedAnimation(parent: anim, curve: Curves.easeIn),
         child: RepaintBoundary(
           child: Column(
-            key: ValueKey(ep.id),
             children: [
-              _LazyTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+              _LazyTile(key: ValueKey(ep.id), episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
               Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
             ],
           ),
@@ -1889,7 +1890,7 @@ class _DiscoverListState extends State<_DiscoverList>
 // Discover podcast tile
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _DiscoverPodcastTile extends StatefulWidget {
+class _DiscoverPodcastTile extends StatelessWidget {
   final PodcastResult result;
   final int rank;
   final ColorScheme cs;
@@ -1902,24 +1903,19 @@ class _DiscoverPodcastTile extends StatefulWidget {
   });
 
   @override
-  State<_DiscoverPodcastTile> createState() => _DiscoverPodcastTileState();
-}
-
-class _DiscoverPodcastTileState extends State<_DiscoverPodcastTile> {
-  @override
   Widget build(BuildContext context) {
-    final r = widget.result;
-    final cs = widget.cs;
+    final r = result;
+    final cs = this.cs;
 
     return InkWell(
-      onTap: () => widget.onPreview(r),
+      onTap: () => onPreview(r),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
             SizedBox(
               width: 28,
-              child: Text('${widget.rank}',
+              child: Text('$rank',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w700, color: cs.primary)),
@@ -2010,13 +2006,7 @@ class _PreviewFeedState extends State<_PreviewFeed> {
     var eps = raw;
     if (_filter.history) eps = eps.where((e) => e.isFinished).toList();
     if (_filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
-    if (_filter.sort == _SortMode.alphabetical) {
-      eps = List.of(eps)
-        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-    } else if (_filter.sort == _SortMode.oldest) {
-      eps = List.of(eps)..sort((a, b) => a.publishDate.compareTo(b.publishDate));
-    }
-    return eps;
+    return _sortEpisodes(eps, _filter.sort);
   }
 
   @override
@@ -2183,8 +2173,8 @@ class _AntWalkerState extends State<_AntWalker> with TickerProviderStateMixin {
   }
 
   void _scheduleNext() {
-    // Random gap between 5 and 10 minutes
-    final ms = 300000 + _rng.nextInt(300001);
+    // Random gap between 8 and 20 minutes
+    final ms = 480000 + _rng.nextInt(720001);
     _timer = Timer(Duration(milliseconds: ms), () {
       if (mounted) _startWalk();
     });
@@ -2383,7 +2373,7 @@ class _AntPainter extends CustomPainter {
 class _LazyTile extends StatefulWidget {
   final Episode episode;
   final VoidCallback onCoverTap;
-  const _LazyTile({required this.episode, required this.onCoverTap});
+  const _LazyTile({super.key, required this.episode, required this.onCoverTap});
 
   @override
   State<_LazyTile> createState() => _LazyTileState();

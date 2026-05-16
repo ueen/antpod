@@ -18,7 +18,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get searchNoResults => 'Aucun résultat trouvé.';
 
   @override
-  String get sectionTrending => 'Tendances ce mois-ci';
+  String get sectionTrending => 'Tendances cette semaine';
 
   @override
   String get sectionRecommended => 'Recommandé pour vous';
@@ -78,11 +78,9 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get filterOldest => 'Les plus anciens';
-  @override
-  String get filterRandom => 'Aléatoire';
 
   @override
-  String get filterPlaying => 'En cours';
+  String get filterPlaying => 'Commencé';
 
   @override
   String get addRssFeed => 'Ajouter un flux RSS';
@@ -128,4 +126,13 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get unsubscribe => 'Se désabonner';
+
+  @override
+  String get filterRandom => 'Random';
+
+  @override
+  String get removeEpisode => 'Remove episode';
+
+  @override
+  String get exportFile => 'Export file';
 }

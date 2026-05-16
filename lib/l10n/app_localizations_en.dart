@@ -78,8 +78,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get filterOldest => 'Oldest first';
-  @override
-  String get filterRandom => 'Random';
 
   @override
   String get filterPlaying => 'Playing';
@@ -128,4 +126,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get unsubscribe => 'Unsubscribe';
+
+  @override
+  String get filterRandom => 'Random';
+
+  @override
+  String get removeEpisode => 'Remove episode';
+
+  @override
+  String get exportFile => 'Export file';
 }

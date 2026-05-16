@@ -35,7 +35,8 @@ class EpisodeTile extends StatelessWidget {
     return '${s % 60}s';
   }
 
-  void _showContextMenu(BuildContext context, AppDatabase db, AppLocalizations l10n) {
+  void _showContextMenu(BuildContext context, AppDatabase db, AppLocalizations l10n,
+      {required bool isDownloading, required DownloadProvider downloads}) {
     final cs = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
@@ -44,10 +45,11 @@ class EpisodeTile extends StatelessWidget {
         episode: episode,
         cs: cs,
         l10n: l10n,
+        onMarkPlayed: !episode.isFinished
+            ? () { Navigator.pop(context); db.markFinished(episode.id); }
+            : null,
         onMarkUnplayed: (episode.isFinished || episode.lastPositionMs > 0)
             ? () {
-                // Capture messenger before the DB write, which triggers a stream
-                // rebuild that may deactivate this context before the snackbar call.
                 final messenger = ScaffoldMessenger.of(context);
                 db.markUnfinished(episode.id);
                 Navigator.pop(context);
@@ -56,13 +58,35 @@ class EpisodeTile extends StatelessWidget {
                     duration: const Duration(seconds: 2)));
               }
             : null,
+        onDownload: (!episode.isDownloaded && !isDownloading)
+            ? () async {
+                Navigator.pop(context);
+                final taskId = await DownloadService.downloadEpisode(
+                  episodeId: episode.id, audioUrl: episode.audioUrl,
+                  episodeTitle: episode.title, db: db,
+                );
+                if (taskId != null) downloads.trackDownload(taskId);
+              }
+            : null,
         onShare: () {
           Navigator.pop(context);
-          final text = '${episode.title}\n${ShareUtils.episodeUrl(episode)}';
+          final text = '${episode.title} (${episode.podcastTitle})\n${ShareUtils.episodeUrl(episode)}';
           SharePlus.instance.share(ShareParams(text: text, subject: episode.title));
         },
+        onExportFile: episode.isDownloaded && episode.localPath != null
+            ? () {
+                Navigator.pop(context);
+                SharePlus.instance.share(ShareParams(
+                  files: [XFile(episode.localPath!)],
+                  subject: episode.title,
+                ));
+              }
+            : null,
         onDeleteDownload: episode.isDownloaded
             ? () { Navigator.pop(context); db.deleteLocalFile(episode.id); }
+            : null,
+        onRemoveEpisode: !episode.isSubscribed
+            ? () { Navigator.pop(context); db.cleanupTempEpisode(episode.id); }
             : null,
       ),
     );
@@ -123,7 +147,8 @@ class EpisodeTile extends StatelessWidget {
         }
       },
       child: GestureDetector(
-        onLongPress: () => _showContextMenu(context, db, l10n),
+        onLongPress: () => _showContextMenu(context, db, l10n,
+            isDownloading: isDownloading, downloads: downloads),
         child: InkWell(
           onTap: () => context.read<PlayerProvider>().play(episode),
           child: AnimatedContainer(
@@ -688,13 +713,19 @@ class _EpisodeContextMenu extends StatelessWidget {
   final Episode episode;
   final ColorScheme cs;
   final AppLocalizations l10n;
+  final VoidCallback? onMarkPlayed;
   final VoidCallback? onMarkUnplayed;
+  final VoidCallback? onDownload;
   final VoidCallback onShare;
+  final VoidCallback? onExportFile;
   final VoidCallback? onDeleteDownload;
+  final VoidCallback? onRemoveEpisode;
 
   const _EpisodeContextMenu({
     required this.episode, required this.cs, required this.l10n,
-    required this.onShare, this.onMarkUnplayed, this.onDeleteDownload,
+    required this.onShare,
+    this.onMarkPlayed, this.onMarkUnplayed, this.onDownload,
+    this.onExportFile, this.onDeleteDownload, this.onRemoveEpisode,
   });
 
   @override
@@ -725,11 +756,19 @@ class _EpisodeContextMenu extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          _MenuItem(icon: Icons.share_outlined, label: l10n.shareEpisode, cs: cs, onTap: onShare),
+          if (onMarkPlayed != null)
+            _MenuItem(icon: Icons.check_circle_outline, label: l10n.markPlayed, cs: cs, onTap: onMarkPlayed!),
           if (onMarkUnplayed != null)
             _MenuItem(icon: Icons.mark_email_unread_outlined, label: l10n.markUnplayed, cs: cs, onTap: onMarkUnplayed!),
+          if (onDownload != null)
+            _MenuItem(icon: Icons.download_outlined, label: l10n.downloading, cs: cs, onTap: onDownload!),
+          _MenuItem(icon: Icons.share_outlined, label: l10n.shareEpisode, cs: cs, onTap: onShare),
+          if (onExportFile != null)
+            _MenuItem(icon: Icons.save_alt_outlined, label: l10n.exportFile, cs: cs, onTap: onExportFile!),
           if (onDeleteDownload != null)
             _MenuItem(icon: Icons.delete_outline, label: l10n.deleteDownload, cs: cs, color: cs.error, onTap: onDeleteDownload!),
+          if (onRemoveEpisode != null)
+            _MenuItem(icon: Icons.remove_circle_outline, label: l10n.removeEpisode, cs: cs, color: cs.error, onTap: onRemoveEpisode!),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
         ],
       ),

@@ -120,7 +120,7 @@ abstract class AppLocalizations {
   /// No description provided for @sectionTrending.
   ///
   /// In en, this message translates to:
-  /// **'Trending this week'**
+  /// **'Trending this month'**
   String get sectionTrending;
 
   /// No description provided for @sectionRecommended.
@@ -236,13 +236,41 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Oldest first'**
   String get filterOldest;
-  String get filterRandom;
 
+  /// No description provided for @filterPlaying.
+  ///
+  /// In en, this message translates to:
+  /// **'Playing'**
   String get filterPlaying;
+
+  /// No description provided for @addRssFeed.
+  ///
+  /// In en, this message translates to:
+  /// **'Add RSS feed'**
   String get addRssFeed;
+
+  /// No description provided for @openFeed.
+  ///
+  /// In en, this message translates to:
+  /// **'Open feed'**
   String get openFeed;
+
+  /// No description provided for @addByRssUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Add by RSS feed URL'**
   String get addByRssUrl;
+
+  /// No description provided for @subscribeToRss.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscribe to RSS feed'**
   String get subscribeToRss;
+
+  /// No description provided for @searchOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Search online'**
   String get searchOnline;
 
   /// No description provided for @discoverTabTrending.
@@ -254,7 +282,7 @@ abstract class AppLocalizations {
   /// No description provided for @discoverTabSuggestions.
   ///
   /// In en, this message translates to:
-  /// **'For You'**
+  /// **'Suggestions'**
   String get discoverTabSuggestions;
 
   /// No description provided for @aboutAntpod.
@@ -304,6 +332,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unsubscribe'**
   String get unsubscribe;
+
+  /// No description provided for @filterRandom.
+  ///
+  /// In en, this message translates to:
+  /// **'Random'**
+  String get filterRandom;
+
+  /// No description provided for @removeEpisode.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove episode'**
+  String get removeEpisode;
+
+  /// No description provided for @exportFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export file'**
+  String get exportFile;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

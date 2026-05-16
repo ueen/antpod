@@ -306,7 +306,7 @@ class _PlayerSheet extends StatelessWidget {
       speed % 1 == 0 ? '${speed.toInt()}x' : '${speed}x';
 
   void _share(BuildContext context, dynamic ep) {
-    final text = '${ep.title}\n${ShareUtils.episodeUrl(ep)}';
+    final text = '${ep.title} (${ep.podcastTitle})\n${ShareUtils.episodeUrl(ep)}';
     SharePlus.instance.share(ShareParams(text: text, subject: ep.title));
   }
 
@@ -385,9 +385,9 @@ class _PlayerSheet extends StatelessWidget {
                     : null,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: CachedNetworkImage(
-                    imageUrl: ep.podcastImageUrl,
-                    width: 220, height: 220, fit: BoxFit.cover,
+                  child: _ChapterCover(
+                    player: player,
+                    fallbackUrl: ep.podcastImageUrl,
                   ),
                 ),
               ),
@@ -569,15 +569,32 @@ class _ChapterNavRow extends StatelessWidget {
         Expanded(
           child: GestureDetector(
             onTap: () => _showChapterList(context),
-            child: Text(
-              chapter?.title ?? '',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: cs.secondaryContainer.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.list_rounded, size: 14, color: cs.onSecondaryContainer),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      chapter?.title ?? '',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSecondaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -670,3 +687,42 @@ class _ChapterListSheet extends StatelessWidget {
   }
 }
 
+// ── Chapter cover image with crossfade ───────────────────────────────────────
+
+class _ChapterCover extends StatelessWidget {
+  final PlayerProvider player;
+  final String fallbackUrl;
+  const _ChapterCover({required this.player, required this.fallbackUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = player.currentChapterImageBytes;
+    final url = player.currentCoverImageUrl;
+    final idx = player.currentChapterIndex;
+
+    Widget image;
+    if (bytes != null) {
+      image = Image.memory(
+        bytes,
+        key: ValueKey('chap_$idx'),
+        width: 220, height: 220, fit: BoxFit.cover,
+        gaplessPlayback: true,
+      );
+    } else {
+      final src = url.isNotEmpty ? url : fallbackUrl;
+      image = CachedNetworkImage(
+        key: ValueKey('cover_$src'),
+        imageUrl: src,
+        width: 220, height: 220, fit: BoxFit.cover,
+        errorWidget: (_, __, ___) => const SizedBox(width: 220, height: 220),
+      );
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      transitionBuilder: (child, animation) =>
+          FadeTransition(opacity: animation, child: child),
+      child: image,
+    );
+  }
+}
