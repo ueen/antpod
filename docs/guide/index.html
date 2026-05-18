@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guide — AntPod</title>
+  <meta name="description" content="How to use AntPod — subscribe, filter, play, download, and share." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.svg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            orange: { DEFAULT: '#FF9A30', dark: '#E07E18', light: '#FFF3E6' },
+            brown:  { DEFAULT: '#7B3F00', dark: '#2C1A0E', mid: '#5C2E0A' },
+          },
+          fontFamily: { sans: ['system-ui', '-apple-system', 'sans-serif'] },
+        },
+      },
+    }
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+
+    /* ── Prose ───────────────────────────────────────────────────────────── */
+    .prose h2 {
+      font-size: 1.15rem; font-weight: 700; color: #1A0E07;
+      margin: 2.25rem 0 0.6rem; padding-bottom: 0.4rem;
+      border-bottom: 1px solid #F0E4D4;
+    }
+    .prose h2:first-child { margin-top: 0; }
+    .prose p  { font-size: 0.95rem; color: #5C3A1E; line-height: 1.75; margin: 0 0 0.9rem; }
+    .prose p:last-child { margin-bottom: 0; }
+    .prose strong { color: #1A0E07; }
+    .prose code {
+      font-family: ui-monospace, monospace;
+      font-size: 0.82rem; background: #F7EFE6;
+      color: #7B3F00; padding: 0.15em 0.45em;
+      border-radius: 0.3rem;
+    }
+
+    /* ── Table ───────────────────────────────────────────────────────────── */
+    .guide-table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1.1rem; }
+    .guide-table th {
+      text-align: left; font-size: 0.78rem; font-weight: 700;
+      color: #9E7056; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 0 0.75rem 0.5rem; border-bottom: 1px solid #F0E4D4;
+    }
+    .guide-table th:first-child { padding-left: 0; }
+    .guide-table td {
+      font-size: 0.88rem; color: #5C3A1E; line-height: 1.6;
+      padding: 0.55rem 0.75rem; border-bottom: 1px solid #F7EFE6;
+      vertical-align: top;
+    }
+    .guide-table td:first-child { padding-left: 0; color: #1A0E07; font-weight: 600; white-space: nowrap; }
+    .guide-table tr:last-child td { border-bottom: none; }
+
+    /* ── Step pill ───────────────────────────────────────────────────────── */
+    .step {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1.5rem; height: 1.5rem; border-radius: 50%;
+      background: #FF9A30; color: #fff;
+      font-size: 0.72rem; font-weight: 800;
+      flex-shrink: 0; margin-right: 0.65rem; margin-top: 0.05rem;
+    }
+    .step-row { display: flex; align-items: flex-start; margin-bottom: 0.7rem; }
+    .step-row p { margin: 0; }
+
+    /* ── Nav / buttons ───────────────────────────────────────────────────── */
+    .btn-back {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      font-size: 0.85rem; font-weight: 600; color: #9E7056;
+      text-decoration: none; transition: color 0.15s;
+    }
+    .btn-back:hover { color: #FF9A30; }
+  </style>
+</head>
+<body style="background:#FFFAF5; color:#1A0E07; font-family:system-ui,sans-serif;">
+
+  <!-- ── Nav ──────────────────────────────────────────────────────────────── -->
+  <nav style="border-bottom:1px solid #F0E4D4; background:#FFFAF5; position:sticky; top:0; z-index:100;">
+    <div style="max-width:640px; margin:0 auto; padding:1rem 1.5rem; display:flex; align-items:center; gap:0.75rem;">
+      <a href="/" class="btn-back">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        antpod.eu
+      </a>
+      <span style="color:#F0E4D4;">|</span>
+      <span style="font-size:0.85rem; font-weight:600; color:#1A0E07;">Guide</span>
+    </div>
+  </nav>
+
+  <!-- ── Header ───────────────────────────────────────────────────────────── -->
+  <section style="max-width:640px; margin:0 auto; padding:2.5rem 1.5rem 0;">
+    <div style="display:flex; align-items:center; gap:0.875rem; margin-bottom:0.75rem;">
+      <div style="width:2.75rem; height:2.75rem; background:rgba(255,154,48,.12); border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF9A30" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div>
+        <div style="font-size:0.7rem; font-weight:700; letter-spacing:0.1em; color:#FF9A30; text-transform:uppercase; margin-bottom:0.15rem;">AntPod</div>
+        <h1 style="font-size:1.6rem; font-weight:800; line-height:1.1; letter-spacing:-0.03em; margin:0;">Guide</h1>
+      </div>
+    </div>
+    <p style="font-size:0.95rem; color:#9E7056; margin:0 0 2rem; line-height:1.6;">Everything from first launch to fine-tuning your feed.</p>
+  </section>
+
+  <!-- ── Content ──────────────────────────────────────────────────────────── -->
+  <main style="max-width:640px; margin:0 auto; padding:0 1.5rem 3rem;" class="prose">
+
+    <!-- Subscribe -->
+    <h2>Subscribe</h2>
+    <p>First launch opens <strong>Discover</strong> automatically. Tap <strong>+</strong> any time to get back.</p>
+
+    <div class="step-row">
+      <span class="step">1</span>
+      <p class="prose">Type a podcast name to search the PodcastIndex catalogue, or paste an RSS URL directly — AntPod detects it and shows a subscribe prompt.</p>
+    </div>
+    <div class="step-row">
+      <span class="step">2</span>
+      <p class="prose">Tap any result to preview the podcast and its full episode list before committing.</p>
+    </div>
+    <div class="step-row">
+      <span class="step">3</span>
+      <p class="prose">Hit <strong>Subscribe</strong>. The feed refreshes in the background and episodes appear immediately.</p>
+    </div>
+
+    <p>The <strong>Trending</strong> and <strong>Suggestions</strong> tabs surface new podcasts based on what's popular or what matches your existing subscriptions.</p>
+    <p>To unsubscribe, open the podcast → share icon → <strong>Unsubscribe</strong>.</p>
+
+    <!-- Feed -->
+    <h2>Feed</h2>
+    <p>All subscriptions in one chronological list. Filter chips at the top narrow it down.</p>
+
+    <table class="guide-table">
+      <thead><tr><th>Chip</th><th>Shows</th></tr></thead>
+      <tbody>
+        <tr><td>New</td><td>Unplayed episodes — on by default</td></tr>
+        <tr><td>Playing</td><td>Started but not finished, floated to top</td></tr>
+        <tr><td>Downloaded</td><td>Saved to device only</td></tr>
+        <tr><td>Listened</td><td>Completed episodes</td></tr>
+        <tr><td>Podcasts</td><td>Switch to cover grid; tap any cover to open that show</td></tr>
+        <tr><td>A–Z / Oldest / Random</td><td>Sort order, combinable with any filter above</td></tr>
+      </tbody>
+    </table>
+
+    <p>Tap the <strong>tune icon</strong> (top-right) to collapse or expand the chip bar. A dot signals active filters.</p>
+    <p>Tap the <strong>search icon</strong> to filter by title or podcast name. No results? A button lets you search PodcastIndex without leaving the screen.</p>
+    <p>Tap any <strong>episode cover</strong> to jump to that podcast's episode list. The <strong>New</strong> filter is cleared automatically so you see all episodes. Tap the cover again to return — <strong>New</strong> reselects automatically.</p>
+    <p>Pull down to refresh all subscriptions.</p>
+
+    <!-- Playback -->
+    <h2>Playback</h2>
+    <p>Tap the play button on any episode. A sheet slides up with the full player; a <strong>mini player</strong> stays pinned at the bottom everywhere else.</p>
+
+    <table class="guide-table">
+      <thead><tr><th>Control</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Progress bar</td><td>Drag to scrub anywhere in the episode</td></tr>
+        <tr><td>Skip back / forward</td><td>10 s and 30 s by default — long-press either button to set your own value</td></tr>
+        <tr><td>Speed</td><td>Tap to cycle 1× → 1.5× → 2× → 0.8×</td></tr>
+        <tr><td>Chapters</td><td>Listed below the progress bar when available; cover art updates per chapter</td></tr>
+        <tr><td>Share</td><td>Generates an <code>antpod.eu/open?…</code> link — anyone can tap it to open the same episode</td></tr>
+      </tbody>
+    </table>
+
+    <p>Audio continues in the background with lock-screen and notification controls. The last-played episode restores on next launch at the exact same position.</p>
+
+    <!-- Downloads -->
+    <h2>Downloads</h2>
+    <p>Tap the <strong>download icon</strong> on any episode to save it locally. A progress ring appears while downloading; tap again to cancel.</p>
+    <p>Once downloaded, playback uses the local file — no streaming. The file is <strong>deleted automatically</strong> when the episode finishes, or when you pause within the last minute.</p>
+    <p>To delete manually: tap the icon again → <strong>Delete download</strong>, or long-press the tile → context menu.</p>
+
+    <!-- Episode actions -->
+    <h2>Episode actions</h2>
+    <p>Long-press any episode tile, or tap the action button on the tile, to open the context menu.</p>
+
+    <table class="guide-table">
+      <thead><tr><th>Action</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Mark as played</td><td>Moves to Listened, removes from New</td></tr>
+        <tr><td>Mark as unplayed</td><td>Restores to New, clears progress</td></tr>
+        <tr><td>Download / Delete</td><td>Save to device or remove the local file</td></tr>
+        <tr><td>Share episode</td><td>Deep link that opens the episode directly in AntPod</td></tr>
+        <tr><td>Export file</td><td>Share the downloaded audio file to any app</td></tr>
+        <tr><td>Remove episode</td><td>Delete from feed — preview episodes only</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Sharing & deep links -->
+    <h2>Sharing &amp; deep links</h2>
+    <p>Every share action — episode or podcast — produces an <code>antpod.eu/open?…</code> URL. Opening it on a device with AntPod installed jumps directly to the podcast or loads the episode into the player. On other devices it opens the website.</p>
+    <p>Share a podcast from its header; share an episode from the player sheet or episode action menu.</p>
+
+  </main>
+
+  <!-- ── Footer ───────────────────────────────────────────────────────────── -->
+  <footer style="border-top:1px solid #F0E4D4; padding:1.5rem; text-align:center;">
+    <p style="font-size:0.8rem; color:#9E7056; margin:0;">
+      Made with 🐜 by <a href="https://github.com/ueen" style="color:#FF9A30; text-decoration:none; font-weight:600;">ueen</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/ueen/antpod" style="color:#9E7056; text-decoration:none;">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="/privacy.html" style="color:#9E7056; text-decoration:none;">Privacy</a>
+    </p>
+  </footer>
+
+</body>
+</html>

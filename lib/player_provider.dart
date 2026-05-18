@@ -56,6 +56,7 @@ class PlayerProvider extends ChangeNotifier {
           );
           _db.markFinished(_currentEpisode!.id);
           _db.cleanupTempEpisode(_currentEpisode!.id);
+          _db.deleteLocalFile(_currentEpisode!.id);
         }
       }
       notifyListeners();
@@ -301,9 +302,22 @@ class PlayerProvider extends ChangeNotifier {
     if (_isPlaying) {
       await audioHandler.pause();
       _flushPosition();
+      _maybeComplete();
     } else {
       await audioHandler.play();
     }
+  }
+
+  void _maybeComplete() {
+    if (_currentEpisode == null) return;
+    if (_duration.inSeconds <= 0) return;
+    if (_position.inSeconds < _duration.inSeconds - 60) return;
+    _db.updatePlaybackPosition(_currentEpisode!.id,
+        positionMs: _duration.inMilliseconds,
+        durationMs: _duration.inMilliseconds);
+    _db.markFinished(_currentEpisode!.id);
+    _db.cleanupTempEpisode(_currentEpisode!.id);
+    _db.deleteLocalFile(_currentEpisode!.id);
   }
 
   Future<void> seekTo(Duration pos) async {

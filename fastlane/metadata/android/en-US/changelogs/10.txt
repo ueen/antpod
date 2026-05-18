@@ -1,0 +1,4 @@
+• Opening a podcast clears the New filter — all episodes shown; returning home restores it
+• Downloads deleted automatically when episode finishes or when paused in the last minute
+• Podcast and preview feeds share the same full set of filter chips
+• Guide page linked from the toolbar info icon (antpod.eu/guide)

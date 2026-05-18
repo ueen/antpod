@@ -226,11 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
       if (subscribed != null) {
-        setState(() {
-          _mode = _FeedMode.podcastFilter;
-          _filterPodcastId = subscribed.id;
-          _filterPodcast = subscribed;
-        });
+        _enterPodcastFilter(subscribed);
       } else {
         // Run in background — loads full feed (including show notes) and updates db
         _openPreview(PodcastResult(
@@ -254,11 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
     if (subscribed != null) {
-      setState(() {
-        _mode = _FeedMode.podcastFilter;
-        _filterPodcastId = subscribed.id;
-        _filterPodcast = subscribed;
-      });
+      _enterPodcastFilter(subscribed);
     } else {
       _openPreview(PodcastResult(
         id: uri.queryParameters['id'] ?? feed,
@@ -281,11 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final subscribed =
           all.where((p) => p.feedUrl == ep.podcastId || p.id == ep.podcastId).firstOrNull;
       if (subscribed != null) {
-        setState(() {
-          _mode = _FeedMode.podcastFilter;
-          _filterPodcastId = subscribed.id;
-          _filterPodcast = subscribed;
-        });
+        _enterPodcastFilter(subscribed);
       } else {
         _openPreview(PodcastResult(
           id: ep.podcastId,
@@ -368,6 +356,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _searchQuery = '';
       _searchCtrl.clear();
       _piSearchResults = [];
+      _filter = _filter.copyWith(newOnly: true, history: false, podcasts: false);
     });
   }
 
@@ -381,11 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .where((p) => p.feedUrl == result.feedUrl || p.id == result.feedUrl)
         .firstOrNull;
     if (subscribed != null) {
-      setState(() {
-        _mode = _FeedMode.podcastFilter;
-        _filterPodcastId = subscribed.id;
-        _filterPodcast = subscribed;
-      });
+      _enterPodcastFilter(subscribed);
     } else {
       _openPreview(result);
     }
@@ -397,6 +382,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadingPreview = true;
       _previewFrom = _mode;
       _mode = _FeedMode.previewPodcast;
+      _filter = _filter.copyWith(newOnly: false, podcasts: false);
     });
     final db = context.read<AppDatabase>();
     final data = await PodcastService.loadFeed(result.feedUrl);
@@ -627,7 +613,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _onCoverTap(Episode episode, AppDatabase db) async {
     if (_filterPodcastId == episode.podcastId) {
       setState(() {
-        _mode = _FeedMode.feed; _filterPodcastId = null; _filterPodcast = null;
+        _mode = _FeedMode.feed;
+        _filterPodcastId = null;
+        _filterPodcast = null;
+        _filter = _filter.copyWith(newOnly: true, history: false, podcasts: false);
       });
       return;
     }
@@ -645,21 +634,19 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
       return;
     }
+    _enterPodcastFilter(pod);
+  }
+
+  void _enterPodcastFilter(Podcast podcast) {
     setState(() {
       _mode = _FeedMode.podcastFilter;
-      _filterPodcastId = episode.podcastId;
-      _filterPodcast = pod;
+      _filterPodcastId = podcast.id;
+      _filterPodcast = podcast;
+      _filter = _filter.copyWith(newOnly: false, podcasts: false);
     });
   }
 
-  void _onPodcastTileSelect(Podcast pod) {
-    setState(() {
-      _mode = _FeedMode.podcastFilter;
-      _filterPodcastId = pod.id;
-      _filterPodcast = pod;
-      _filter = const _FilterState();
-    });
-  }
+  void _onPodcastTileSelect(Podcast pod) => _enterPodcastFilter(pod);
 
   // ── Refresh ───────────────────────────────────────────────────────────────
 
@@ -803,6 +790,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPlusPressed: _enterDiscover,
                     onFilterToggle: _toggleFilterChips,
                     onLogoTap: () => _showAbout(context),
+                    onInfoPressed: () => launchUrl(
+                      Uri.parse('https://antpod.eu/guide'),
+                      mode: LaunchMode.externalApplication,
+                    ),
                   ),
                   Positioned.fill(
                     child: IgnorePointer(child: _AntWalker(key: _antWalkerKey)),
@@ -865,10 +856,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBody(AppDatabase db, ColorScheme cs, AppLocalizations l10n) {
     switch (_mode) {
       case _FeedMode.previewPodcast:
-        return _PreviewFeed(
-          result: _previewResult!,
+        return _PodcastFeed(
+          db: db, cs: cs, l10n: l10n,
+          feedId: _previewResult!.feedUrl,
+          imageUrl: _previewResult!.imageUrl,
+          title: _previewResult!.title,
+          author: _previewResult!.author,
+          description: _previewResult!.description,
+          shareUrl: ShareUtils.podcastResultUrl(_previewResult!),
           loading: _loadingPreview,
-          cs: cs, l10n: l10n,
+          isSubscribed: false,
+          filter: _filter,
+          filterChipsVisible: _filterChipsVisible,
+          onFilterToggle: _onFilterToggle,
           onSubscribe: () {
             final result = _previewResult!;
             _exitToFeed();
@@ -879,15 +879,21 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
       case _FeedMode.podcastFilter:
-        return _PodcastFilteredFeed(
-          db: db, cs: cs,
-          podcastId: _filterPodcastId!, podcast: _filterPodcast,
-          onCoverTap: _onCoverTap,
-          onUnsubscribe: _filterPodcast != null ? () => _unsubscribe(_filterPodcast!) : null,
+        return _PodcastFeed(
+          db: db, cs: cs, l10n: l10n,
+          feedId: _filterPodcastId!,
+          imageUrl: _filterPodcast?.imageUrl ?? '',
+          title: _filterPodcast?.title ?? '',
+          author: _filterPodcast?.author ?? '',
+          description: _filterPodcast?.description ?? '',
+          shareUrl: _filterPodcast != null ? ShareUtils.podcastUrl(_filterPodcast!) : '',
+          loading: false,
+          isSubscribed: true,
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
           onFilterToggle: _onFilterToggle,
-          l10n: l10n,
+          onCoverTap: _onCoverTap,
+          onUnsubscribe: _filterPodcast != null ? () => _unsubscribe(_filterPodcast!) : null,
         );
 
       case _FeedMode.discover:
@@ -940,6 +946,7 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onPlusPressed;
   final VoidCallback onFilterToggle;
   final VoidCallback onLogoTap;
+  final VoidCallback onInfoPressed;
 
   const _Toolbar({
     required this.mode, required this.searchOpen, required this.searchCtrl,
@@ -948,6 +955,7 @@ class _Toolbar extends StatelessWidget {
     required this.onBack, required this.onSearchChanged, required this.onClearSearch,
     required this.onSearchOpen, required this.onPlusPressed,
     required this.onFilterToggle, required this.onLogoTap,
+    required this.onInfoPressed,
   });
 
   @override
@@ -998,6 +1006,16 @@ class _Toolbar extends StatelessWidget {
             fontWeight: FontWeight.w800, fontSize: 20,
             color: cs.onSurface, letterSpacing: -0.5)),
         ),
+        Tooltip(
+          message: 'Guide',
+          child: GestureDetector(
+            onTap: onInfoPressed,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 16, 28, 16),
+              child: Icon(Icons.info, size: 18, color: cs.onSurfaceVariant),
+            ),
+          ),
+        ),
         const Spacer(),
         Stack(
           clipBehavior: Clip.none,
@@ -1006,6 +1024,7 @@ class _Toolbar extends StatelessWidget {
               icon: Icon(Icons.tune_rounded,
                   color: filterChipsVisible ? cs.primary : cs.onSurface),
               onPressed: onFilterToggle,
+              tooltip: 'Filter',
             ),
             if (filter.hasAny)
               Positioned(right: 8, top: 8, child: Container(
@@ -1016,11 +1035,12 @@ class _Toolbar extends StatelessWidget {
         ),
         IconButton(
           icon: Icon(Icons.search, color: cs.onSurface),
-          onPressed: onSearchOpen),
+          onPressed: onSearchOpen,
+          tooltip: 'Search'),
         IconButton(
           icon: Icon(Icons.add, color: cs.onSurface),
           onPressed: onPlusPressed,
-          tooltip: l10n.subscribeDialogTitle),
+          tooltip: 'Discover'),
       ],
     );
   }
@@ -1036,15 +1056,11 @@ class _FilterChipsRow extends StatelessWidget {
   final ColorScheme cs;
   final ValueChanged<String> onToggle;
   final bool showPodcastsChip;
-  final bool showNewChip;
-  final bool showDownloadedChip;
 
   const _FilterChipsRow({
     required this.filter, required this.l10n,
     required this.cs, required this.onToggle,
     this.showPodcastsChip = true,
-    this.showNewChip = true,
-    this.showDownloadedChip = true,
   });
 
   @override
@@ -1055,25 +1071,21 @@ class _FilterChipsRow extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         children: [
-          if (showNewChip) ...[
-            _Chip(label: l10n.filterNew,
-                active: filter.newOnly && !filter.podcasts,
-                cs: cs, icon: Icons.headphones,
-                onTap: () => onToggle('new')),
-            const SizedBox(width: 8),
-            _Chip(label: l10n.filterPlaying,
-                active: filter.inProgress && !filter.podcasts,
-                cs: cs, icon: Icons.play_circle_outline,
-                onTap: () => onToggle('inprogress')),
-            const SizedBox(width: 8),
-          ],
-          if (showDownloadedChip) ...[
-            _Chip(label: l10n.filterDownloaded,
-                active: filter.downloaded && !filter.podcasts,
-                cs: cs, icon: Icons.download_done,
-                onTap: () => onToggle('dl')),
-            const SizedBox(width: 8),
-          ],
+          _Chip(label: l10n.filterNew,
+              active: filter.newOnly && !filter.podcasts,
+              cs: cs, icon: Icons.headphones,
+              onTap: () => onToggle('new')),
+          const SizedBox(width: 8),
+          _Chip(label: l10n.filterPlaying,
+              active: filter.inProgress && !filter.podcasts,
+              cs: cs, icon: Icons.play_circle_outline,
+              onTap: () => onToggle('inprogress')),
+          const SizedBox(width: 8),
+          _Chip(label: l10n.filterDownloaded,
+              active: filter.downloaded && !filter.podcasts,
+              cs: cs, icon: Icons.download_done,
+              onTap: () => onToggle('dl')),
+          const SizedBox(width: 8),
           _Chip(label: l10n.filterListened,
               active: filter.history && !filter.podcasts,
               cs: cs, icon: Icons.check_circle_outline,
@@ -1562,27 +1574,33 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 // Podcast-filtered feed (with filter chips)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PodcastFilteredFeed extends StatelessWidget {
+class _PodcastFeed extends StatelessWidget {
   final AppDatabase db;
   final ColorScheme cs;
-  final String podcastId;
-  final Podcast? podcast;
-  final Future<void> Function(Episode, AppDatabase) onCoverTap;
-  final VoidCallback? onUnsubscribe;
+  final AppLocalizations l10n;
+  final String feedId;
+  final String imageUrl;
+  final String title;
+  final String author;
+  final String description;
+  final String shareUrl;
+  final bool loading;
+  final bool isSubscribed;
   final _FilterState filter;
   final bool filterChipsVisible;
   final ValueChanged<String> onFilterToggle;
-  final AppLocalizations l10n;
+  final Future<void> Function(Episode, AppDatabase)? onCoverTap;
+  final VoidCallback? onSubscribe;
+  final VoidCallback? onUnsubscribe;
 
-  const _PodcastFilteredFeed({
-    required this.db, required this.cs,
-    required this.podcastId, required this.podcast,
-    required this.onCoverTap,
-    required this.filter,
-    required this.filterChipsVisible,
+  const _PodcastFeed({
+    required this.db, required this.cs, required this.l10n,
+    required this.feedId, required this.imageUrl, required this.title,
+    required this.author, required this.description, required this.shareUrl,
+    required this.loading, required this.isSubscribed,
+    required this.filter, required this.filterChipsVisible,
     required this.onFilterToggle,
-    required this.l10n,
-    this.onUnsubscribe,
+    this.onCoverTap, this.onSubscribe, this.onUnsubscribe,
   });
 
   List<Episode> _applyFilters(List<Episode> raw) {
@@ -1598,23 +1616,21 @@ class _PodcastFilteredFeed extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = this.cs;
-
     return StreamBuilder<List<Episode>>(
-      stream: db.watchEpisodesForPodcast(podcastId),
+      stream: db.watchEpisodesForPodcast(feedId),
       builder: (context, snap) {
         final eps = _applyFilters(snap.data ?? []);
         return Column(
           children: [
-            if (podcast != null)
-              PodcastHeader(
-                imageUrl: podcast!.imageUrl,
-                title: podcast!.title,
-                author: podcast!.author,
-                description: podcast!.description,
-                shareUrl: ShareUtils.podcastUrl(podcast!),
-                onUnsubscribe: onUnsubscribe,
-              ),
+            PodcastHeader(
+              imageUrl: imageUrl,
+              title: title,
+              author: author,
+              description: description,
+              shareUrl: shareUrl,
+              onSubscribe: onSubscribe,
+              onUnsubscribe: onUnsubscribe,
+            ),
             ClipRect(
               child: AnimatedAlign(
                 duration: const Duration(milliseconds: 250),
@@ -1627,27 +1643,32 @@ class _PodcastFilteredFeed extends StatelessWidget {
                   child: _FilterChipsRow(
                     filter: filter, l10n: l10n, cs: cs,
                     onToggle: onFilterToggle,
+                    showPodcastsChip: false,
                   ),
                 ),
               ),
             ),
             Expanded(
-              child: eps.isEmpty
-                  ? Center(
-                      child: Text(l10n.emptySearchTitle,
-                          style: TextStyle(color: cs.onSurfaceVariant)))
-                  : ListView.separated(
-                      padding: const EdgeInsets.only(bottom: 88),
-                      itemCount: eps.length,
-                      separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          color: cs.outlineVariant.withValues(alpha: 0.5),
-                          indent: 88),
-                      itemBuilder: (_, i) => EpisodeTile(
-                        episode: eps[i],
-                        onCoverTap: () => onCoverTap(eps[i], db),
-                      ),
-                    ),
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : eps.isEmpty
+                      ? Center(child: Text(l10n.emptySearchTitle,
+                            style: TextStyle(color: cs.onSurfaceVariant)))
+                      : ListView.separated(
+                          padding: const EdgeInsets.only(bottom: 88),
+                          itemCount: eps.length,
+                          separatorBuilder: (_, __) => Divider(
+                              height: 1,
+                              color: cs.outlineVariant.withValues(alpha: 0.5),
+                              indent: 88),
+                          itemBuilder: (_, i) => EpisodeTile(
+                            episode: eps[i],
+                            onCoverTap: onCoverTap != null
+                                ? () => onCoverTap!(eps[i], db)
+                                : () {},
+                            isSubscribedContext: isSubscribed,
+                          ),
+                        ),
             ),
           ],
         );
@@ -1959,113 +1980,6 @@ class _DiscoverPodcastTile extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Preview feed (unsubscribed podcast) — DB-backed, uses EpisodeTile
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PreviewFeed extends StatefulWidget {
-  final PodcastResult result;
-  final bool loading;
-  final ColorScheme cs;
-  final AppLocalizations l10n;
-  final VoidCallback onSubscribe;
-
-  const _PreviewFeed({
-    required this.result, required this.loading,
-    required this.cs, required this.l10n,
-    required this.onSubscribe,
-  });
-
-  @override
-  State<_PreviewFeed> createState() => _PreviewFeedState();
-}
-
-class _PreviewFeedState extends State<_PreviewFeed> {
-  _FilterState _filter = const _FilterState(newOnly: false);
-
-  void _onToggle(String key) => setState(() {
-    switch (key) {
-      case 'history':
-        _filter = _filter.copyWith(history: !_filter.history, newOnly: false);
-      case 'dl':
-        _filter = _filter.copyWith(downloaded: !_filter.downloaded);
-      case 'az':
-        _filter = _filter.copyWith(
-          sort: _filter.sort == _SortMode.alphabetical
-              ? _SortMode.none : _SortMode.alphabetical);
-      case 'oldest':
-        _filter = _filter.copyWith(
-          sort: _filter.sort == _SortMode.oldest
-              ? _SortMode.none : _SortMode.oldest);
-      case 'random':
-        _filter = _filter.copyWith(
-          sort: _filter.sort == _SortMode.random
-              ? _SortMode.none : _SortMode.random);
-    }
-  });
-
-  List<Episode> _applyFilters(List<Episode> raw) {
-    var eps = raw;
-    if (_filter.history) eps = eps.where((e) => e.isFinished).toList();
-    if (_filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
-    return _sortEpisodes(eps, _filter.sort);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final db = context.read<AppDatabase>();
-    final cs = widget.cs;
-    final l10n = widget.l10n;
-
-    return Column(
-      children: [
-        PodcastHeader(
-          imageUrl: widget.result.imageUrl,
-          title: widget.result.title,
-          author: widget.result.author,
-          description: widget.result.description,
-          shareUrl: ShareUtils.podcastResultUrl(widget.result),
-          onSubscribe: widget.onSubscribe,
-        ),
-        _FilterChipsRow(
-          filter: _filter, l10n: l10n, cs: cs,
-          onToggle: _onToggle,
-          showPodcastsChip: false,
-          showNewChip: false,
-          showDownloadedChip: false,
-        ),
-        Expanded(
-          child: widget.loading
-              ? const Center(child: CircularProgressIndicator())
-              : StreamBuilder<List<Episode>>(
-                  stream: db.watchEpisodesForPodcast(widget.result.feedUrl),
-                  builder: (ctx, snap) {
-                    final eps = _applyFilters(snap.data ?? []);
-                    if (eps.isEmpty) {
-                      return Center(child: Text(l10n.emptyFeedTitle,
-                          style: TextStyle(color: cs.onSurfaceVariant)));
-                    }
-                    return ListView.separated(
-                      padding: const EdgeInsets.only(bottom: 88),
-                      itemCount: eps.length,
-                      separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          color: cs.outlineVariant.withValues(alpha: 0.5),
-                          indent: 88),
-                      itemBuilder: (_, i) => EpisodeTile(
-                        episode: eps[i],
-                        onCoverTap: () {},
-                        isSubscribedContext: false,
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
     );
   }
 }
