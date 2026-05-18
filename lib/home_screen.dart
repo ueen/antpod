@@ -805,17 +805,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   curve: Curves.easeOut,
                   alignment: Alignment.topCenter,
                   heightFactor: (_filterChipsVisible &&
-                          (_mode == _FeedMode.feed ||
-                              (_mode == _FeedMode.searchEpisodes &&
-                                  _searchQuery.isEmpty)))
+                          _mode == _FeedMode.feed)
                       ? 1.0
                       : 0.0,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
                     opacity: (_filterChipsVisible &&
-                            (_mode == _FeedMode.feed ||
-                                (_mode == _FeedMode.searchEpisodes &&
-                                    _searchQuery.isEmpty)))
+                            _mode == _FeedMode.feed)
                         ? 1.0
                         : 0.0,
                     child: _FilterChipsRow(
