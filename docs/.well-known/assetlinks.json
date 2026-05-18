@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "de.ueen.antpod",
+    "sha256_cert_fingerprints": [
+      "58:09:C3:25:3D:DA:0F:F5:A7:2B:78:30:5F:06:D7:67:85:05:09:8C:AF:74:DA:7E:43:40:10:7D:F3:D9:03:0F"
+    ]
+  }
+}]

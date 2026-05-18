@@ -625,9 +625,11 @@ class _ActionAreaState extends State<_ActionArea>
           trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
         ),
       );
-    } else {
-      final effectiveProgress = widget.ringProgress;
-      final showProgress = effectiveProgress != null && effectiveProgress >= 0.10;
+    } else if (isDownloading) {
+      // Active download only: smooth fill as progress increases.
+      // Isolated to this branch so non-download updates never trigger animation.
+      final effectiveProgress = widget.ringProgress!;
+      final showProgress = effectiveProgress >= 0.10;
       ringPainter = TweenAnimationBuilder<double>(
         tween: Tween<double>(begin: 0.0, end: showProgress ? effectiveProgress : 0.0),
         duration: const Duration(milliseconds: 900),
@@ -639,6 +641,16 @@ class _ActionAreaState extends State<_ActionArea>
             color: ringColor,
             trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
           ),
+        ),
+      );
+    } else {
+      // Not downloading, not downloaded, not draining: static empty ring, no animation.
+      ringPainter = CustomPaint(
+        size: const Size(44, 44),
+        painter: _RingPainter(
+          progress: null,
+          color: ringColor,
+          trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
         ),
       );
     }

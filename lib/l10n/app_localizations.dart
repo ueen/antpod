@@ -350,6 +350,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Export file'**
   String get exportFile;
+
+  /// No description provided for @showAllDownloads.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all downloads'**
+  String get showAllDownloads;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -550,7 +550,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onSearchChanged(String v) {
-    setState(() => _searchQuery = v);
+    setState(() {
+      _searchQuery = v;
+      // Typing deselects the Podcasts grid — search works on episodes only
+      if (v.isNotEmpty && _filter.podcasts) {
+        _filter = _filter.copyWith(podcasts: false, newOnly: false);
+      }
+    });
     if (_mode == _FeedMode.discover) _debouncedPISearch(v);
   }
 
@@ -809,14 +815,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   alignment: Alignment.topCenter,
                   heightFactor: (_filterChipsVisible &&
                           (_mode == _FeedMode.feed ||
-                              _mode == _FeedMode.searchEpisodes))
+                              (_mode == _FeedMode.searchEpisodes &&
+                                  _searchQuery.isEmpty)))
                       ? 1.0
                       : 0.0,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
                     opacity: (_filterChipsVisible &&
                             (_mode == _FeedMode.feed ||
-                                _mode == _FeedMode.searchEpisodes))
+                                (_mode == _FeedMode.searchEpisodes &&
+                                    _searchQuery.isEmpty)))
                         ? 1.0
                         : 0.0,
                     child: _FilterChipsRow(
@@ -922,6 +930,12 @@ class _HomeScreenState extends State<HomeScreen> {
           searchQuery: _mode == _FeedMode.searchEpisodes ? _searchQuery : '',
           onCoverTap: _onCoverTap, onRefresh: () => _refresh(db),
           onSearchOnline: _mode == _FeedMode.searchEpisodes ? _searchOnline : null,
+          onShowAllDownloads: _filter.downloaded
+              ? () => setState(() {
+                    _filter = const _FilterState(downloaded: true, newOnly: false);
+                    _saveFilterPrefs();
+                  })
+              : null,
         );
     }
   }
@@ -1299,6 +1313,7 @@ class _EpisodeFeed extends StatefulWidget {
   final Future<void> Function(Episode, AppDatabase) onCoverTap;
   final Future<void> Function() onRefresh;
   final VoidCallback? onSearchOnline;
+  final VoidCallback? onShowAllDownloads;
 
   const _EpisodeFeed({
     required this.db, required this.cs,
@@ -1306,6 +1321,7 @@ class _EpisodeFeed extends StatefulWidget {
     required this.onCoverTap, required this.onRefresh,
     this.searchQuery = '',
     this.onSearchOnline,
+    this.onShowAllDownloads,
   });
 
   @override
@@ -1313,14 +1329,13 @@ class _EpisodeFeed extends StatefulWidget {
 }
 
 class _EpisodeFeedState extends State<_EpisodeFeed> {
-  GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+  GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
   List<Episode> _displayed = [];
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
   bool _initialLoad = true;
   final _scrollCtrl = ScrollController();
   bool _showScrollTop = false;
-  // GlobalKeys per episode so state (_ready flag) survives AnimatedList slot shifts
   final _tileKeys = <String, GlobalKey<_LazyTileState>>{};
 
   GlobalKey<_LazyTileState> _tileKey(String id) =>
@@ -1339,14 +1354,21 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   @override
   void didUpdateWidget(_EpisodeFeed old) {
     super.didUpdateWidget(old);
-    final streamChanged = old.filter.history != widget.filter.history ||
-        old.filter.newOnly != widget.filter.newOnly ||
-        old.filter.downloaded != widget.filter.downloaded;
+    // Stream source changes when search is toggled on/off or DB-level filters change
+    final wasSearching = old.searchQuery.isNotEmpty;
+    final isSearching = widget.searchQuery.isNotEmpty;
+    final streamChanged = wasSearching != isSearching ||
+        (!isSearching && (
+          old.filter.history != widget.filter.history ||
+          old.filter.newOnly != widget.filter.newOnly ||
+          old.filter.downloaded != widget.filter.downloaded
+        ));
     if (streamChanged) {
       _sub?.cancel();
       _subscribe();
     } else if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
-      setState(() => _displayed = _applyFilters(_raw));
+      // Must go through _diffUpdate so SliverAnimatedList item count stays in sync
+      _diffUpdate(_applyFilters(_raw));
     }
   }
 
@@ -1358,6 +1380,8 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   }
 
   Stream<List<Episode>> get _stream {
+    // Search mode: ignore all DB-level filters — return everything, filter in-app
+    if (widget.searchQuery.isNotEmpty) return widget.db.watchAllFeedEpisodes(downloadedOnly: false);
     final dl = widget.filter.downloaded;
     if (widget.filter.history) return widget.db.watchFinishedEpisodes(downloadedOnly: dl);
     if (widget.filter.newOnly) return widget.db.watchUnfinishedEpisodes(downloadedOnly: dl);
@@ -1371,8 +1395,9 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   List<Episode> _applyFilters(List<Episode> raw) {
     var eps = raw;
     if (widget.searchQuery.isNotEmpty) {
+      // Search ignores all chip filters — pure string match only
       final q = widget.searchQuery.toLowerCase();
-      eps = eps.where((e) =>
+      return eps.where((e) =>
           e.title.toLowerCase().contains(q) ||
           e.podcastTitle.toLowerCase().contains(q)).toList();
     }
@@ -1399,7 +1424,6 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       return;
     }
 
-    // Count structural changes (insertions + removals)
     int changes = 0;
     for (final e in _displayed) {
       if (!next.any((n) => n.id == e.id)) changes++;
@@ -1408,11 +1432,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       if (!_displayed.any((e) => e.id == n.id)) changes++;
     }
 
-    // For large batch changes (e.g. filter switch) skip per-item animation —
-    // reset the AnimatedList key so Flutter rebuilds it fresh with no stale state.
+    // Large batch: reset key so Flutter rebuilds the sliver fresh
     if (changes > 8) {
       setState(() {
-        _listKey = GlobalKey<AnimatedListState>();
+        _listKey = GlobalKey<SliverAnimatedListState>();
         _displayed = List.of(next);
       });
       return;
@@ -1466,78 +1489,116 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   Widget build(BuildContext context) {
     if (_initialLoad) return const Center(child: CircularProgressIndicator());
 
-    final hasFooter = widget.searchQuery.isNotEmpty && widget.onSearchOnline != null;
+    final isSearching = widget.searchQuery.isNotEmpty;
+    final hasSearchFooter = isSearching && widget.onSearchOnline != null;
+    // Show "show all downloads" footer when the downloaded filter is on but other
+    // filters (new/history/in-progress) are hiding some downloaded episodes.
+    final hasDownloadFooter = !isSearching &&
+        widget.filter.downloaded &&
+        widget.onShowAllDownloads != null &&
+        (widget.filter.newOnly || widget.filter.history || widget.filter.inProgress);
+
     final isEmpty = _displayed.isEmpty;
 
     final child = isEmpty
         ? RefreshIndicator(
             key: const ValueKey('empty'),
             onRefresh: widget.onRefresh,
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 88),
-              children: [
-                SizedBox(
-                  height: 320,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.podcasts_outlined, size: 52, color: widget.cs.onSurfaceVariant),
-                        const SizedBox(height: 16),
-                        Text(
-                          widget.searchQuery.isNotEmpty || widget.filter.hasAny
-                              ? widget.l10n.emptySearchTitle
-                              : widget.l10n.emptyFeedTitle,
-                          style: TextStyle(fontSize: 16, color: widget.cs.onSurfaceVariant),
-                        ),
-                        if (widget.searchQuery.isEmpty && !widget.filter.hasAny) ...[
-                          const SizedBox(height: 6),
-                          Text(widget.l10n.emptyFeedSub,
-                              style: TextStyle(fontSize: 13, color: widget.cs.onSurfaceVariant)),
-                        ],
-                        if (widget.searchQuery.isNotEmpty && widget.onSearchOnline != null) ...[
-                          const SizedBox(height: 20),
-                          FilledButton.icon(
-                            onPressed: widget.onSearchOnline,
-                            icon: const Icon(Icons.search, size: 18),
-                            label: Text(widget.l10n.searchOnline),
+            child: CustomScrollView(
+              physics: const _SmoothScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 320,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.podcasts_outlined, size: 52,
+                              color: widget.cs.onSurfaceVariant),
+                          const SizedBox(height: 16),
+                          Text(
+                            isSearching || widget.filter.hasAny
+                                ? widget.l10n.emptySearchTitle
+                                : widget.l10n.emptyFeedTitle,
+                            style: TextStyle(
+                                fontSize: 16, color: widget.cs.onSurfaceVariant),
                           ),
+                          if (!isSearching && !widget.filter.hasAny) ...[
+                            const SizedBox(height: 6),
+                            Text(widget.l10n.emptyFeedSub,
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: widget.cs.onSurfaceVariant)),
+                          ],
+                          if (hasSearchFooter) ...[
+                            const SizedBox(height: 20),
+                            FilledButton.icon(
+                              onPressed: widget.onSearchOnline,
+                              icon: const Icon(Icons.search, size: 18),
+                              label: Text(widget.l10n.searchOnline),
+                            ),
+                          ],
+                          if (hasDownloadFooter) ...[
+                            const SizedBox(height: 20),
+                            OutlinedButton.icon(
+                              onPressed: widget.onShowAllDownloads,
+                              icon: const Icon(Icons.download_done, size: 18),
+                              label: Text(widget.l10n.showAllDownloads),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
+                const SliverToBoxAdapter(child: SizedBox(height: 88)),
               ],
             ),
           )
         : RefreshIndicator(
             key: const ValueKey('list'),
             onRefresh: widget.onRefresh,
-            child: AnimatedList(
-              key: _listKey,
+            // Footers are separate slivers — never mixed into the animated list's
+            // item count, so no RangeError when search/filter state changes.
+            child: CustomScrollView(
               controller: _scrollCtrl,
               physics: const _SmoothScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: 88),
-              initialItemCount: _displayed.length + (hasFooter ? 1 : 0),
-              itemBuilder: (ctx, i, anim) {
-                if (hasFooter && i == _displayed.length) {
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    child: OutlinedButton.icon(
-                      onPressed: widget.onSearchOnline,
-                      icon: const Icon(Icons.travel_explore, size: 18),
-                      label: Text(widget.l10n.searchOnline),
+              slivers: [
+                SliverAnimatedList(
+                  key: _listKey,
+                  initialItemCount: _displayed.length,
+                  itemBuilder: (ctx, i, anim) => _animatedTile(_displayed[i], anim),
+                ),
+                if (hasSearchFooter)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: OutlinedButton.icon(
+                        onPressed: widget.onSearchOnline,
+                        icon: const Icon(Icons.travel_explore, size: 18),
+                        label: Text(widget.l10n.searchOnline),
+                      ),
                     ),
-                  );
-                }
-                return _animatedTile(_displayed[i], anim);
-              },
+                  ),
+                if (hasDownloadFooter)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: OutlinedButton.icon(
+                        onPressed: widget.onShowAllDownloads,
+                        icon: const Icon(Icons.download_done, size: 18),
+                        label: Text(widget.l10n.showAllDownloads),
+                      ),
+                    ),
+                  ),
+                const SliverToBoxAdapter(child: SizedBox(height: 88)),
+              ],
             ),
           );
 
     final cs = Theme.of(context).colorScheme;
     final hasMiniPlayer = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
-    // 64px mini player + 16px gap when visible, 24px from bottom otherwise
     final fabBottom = _showScrollTop ? (hasMiniPlayer ? 88.0 : 24.0) : -56.0;
     return Stack(
       children: [

@@ -1,0 +1,5 @@
+• Progress ring only animates during download and on delete — no more spurious animation on list updates
+• Search hides filter chips and ignores all filters — pure title/podcast match
+• Typing in search deselects the Podcasts grid view
+• Downloaded filter shows a button to reveal all downloads when other filters hide some
+• Fixed missing translations in Spanish and French

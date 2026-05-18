@@ -135,4 +135,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get exportFile => 'Datei exportieren';
+
+  @override
+  String get showAllDownloads => 'Alle Downloads anzeigen';
 }

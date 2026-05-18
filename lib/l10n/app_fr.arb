@@ -42,5 +42,6 @@
   "unsubscribe": "Se désabonner",
   "filterRandom": "Aléatoire",
   "removeEpisode": "Supprimer l'épisode",
-  "exportFile": "Exporter le fichier"
+  "exportFile": "Exporter le fichier",
+  "showAllDownloads": "Afficher tous les téléchargements"
 }

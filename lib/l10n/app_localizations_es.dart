@@ -128,11 +128,14 @@ class AppLocalizationsEs extends AppLocalizations {
   String get unsubscribe => 'Cancelar suscripción';
 
   @override
-  String get filterRandom => 'Random';
+  String get filterRandom => 'Aleatorio';
 
   @override
-  String get removeEpisode => 'Remove episode';
+  String get removeEpisode => 'Eliminar episodio';
 
   @override
-  String get exportFile => 'Export file';
+  String get exportFile => 'Exportar archivo';
+
+  @override
+  String get showAllDownloads => 'Mostrar todas las descargas';
 }

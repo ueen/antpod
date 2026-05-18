@@ -68,6 +68,16 @@
     .step-row { display: flex; align-items: flex-start; margin-bottom: 0.7rem; }
     .step-row p { margin: 0; }
 
+    /* ── Icon chip ───────────────────────────────────────────────────────── */
+    .icon-chip {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      background: #F7EFE6; border: 1px solid #E8D9C8;
+      border-radius: 0.4rem; padding: 0.1em 0.45em;
+      font-size: 0.82rem; font-weight: 600; color: #5C3A1E;
+      white-space: nowrap; vertical-align: middle;
+    }
+    .icon-chip svg { flex-shrink: 0; }
+
     /* ── Nav / buttons ───────────────────────────────────────────────────── */
     .btn-back {
       display: inline-flex; align-items: center; gap: 0.4rem;
@@ -114,23 +124,39 @@
 
     <!-- Subscribe -->
     <h2>Subscribe</h2>
-    <p>First launch opens <strong>Discover</strong> automatically. Tap <strong>+</strong> any time to get back.</p>
+    <p>First launch opens <strong>Discover</strong> automatically. Tap
+      <span class="icon-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Discover
+      </span>
+      in the toolbar any time to get back.</p>
 
     <div class="step-row">
       <span class="step">1</span>
-      <p class="prose">Type a podcast name to search the PodcastIndex catalogue, or paste an RSS URL directly — AntPod detects it and shows a subscribe prompt.</p>
+      <p class="prose">Type a podcast name to search the PodcastIndex catalogue, or paste an RSS URL directly.</p>
     </div>
     <div class="step-row">
       <span class="step">2</span>
-      <p class="prose">Tap any result to preview the podcast and its full episode list before committing.</p>
+      <p class="prose">Tap any result to open the podcast and browse its full episode list. You can play and download episodes right away without subscribing.</p>
     </div>
     <div class="step-row">
       <span class="step">3</span>
-      <p class="prose">Hit <strong>Subscribe</strong>. The feed refreshes in the background and episodes appear immediately.</p>
+      <p class="prose">Tap
+        <span class="icon-chip">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          Subscribe
+        </span>
+        in the podcast header. The feed refreshes in the background and episodes appear immediately.</p>
     </div>
 
     <p>The <strong>Trending</strong> and <strong>Suggestions</strong> tabs surface new podcasts based on what's popular or what matches your existing subscriptions.</p>
-    <p>To unsubscribe, open the podcast → share icon → <strong>Unsubscribe</strong>.</p>
+
+    <p>To unsubscribe, open the podcast and tap the
+      <span class="icon-chip" style="color:#C0392B; border-color:#F5C6C0;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Unsubscribe
+      </span>
+      button (red minus circle) in the podcast header. A confirmation dialog appears before anything is removed.</p>
 
     <!-- Feed -->
     <h2>Feed</h2>
@@ -148,10 +174,32 @@
       </tbody>
     </table>
 
-    <p>Tap the <strong>tune icon</strong> (top-right) to collapse or expand the chip bar. A dot signals active filters.</p>
-    <p>Tap the <strong>search icon</strong> to filter by title or podcast name. No results? A button lets you search PodcastIndex without leaving the screen.</p>
-    <p>Tap any <strong>episode cover</strong> to jump to that podcast's episode list. The <strong>New</strong> filter is cleared automatically so you see all episodes. Tap the cover again to return — <strong>New</strong> reselects automatically.</p>
+    <p>Tap
+      <span class="icon-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="6" y1="18" x2="18" y2="18"/></svg>
+        Filter
+      </span>
+      in the toolbar to collapse or expand the chip bar. A dot signals active filters.</p>
+
+    <p>Tap
+      <span class="icon-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Search
+      </span>
+      in the toolbar to search by title or podcast name. No results? A button lets you search PodcastIndex without leaving the screen.</p>
+
+    <p>Tap any episode cover to jump to that podcast's episode list. Tap the cover again to return to the feed.</p>
+
     <p>Pull down to refresh all subscriptions.</p>
+
+    <p><strong>Swipe actions</strong> on any episode tile:</p>
+    <table class="guide-table">
+      <thead><tr><th>Swipe</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>→ Right</td><td>Mark as played / Mark as unplayed (toggles)</td></tr>
+        <tr><td>← Left</td><td>Download · Cancel download · Delete download (depending on state)</td></tr>
+      </tbody>
+    </table>
 
     <!-- Playback -->
     <h2>Playback</h2>
@@ -160,10 +208,10 @@
     <table class="guide-table">
       <thead><tr><th>Control</th><th></th></tr></thead>
       <tbody>
-        <tr><td>Progress bar</td><td>Drag to scrub anywhere in the episode</td></tr>
+        <tr><td>Chapters</td><td>Listed above the timeline when available; cover art updates per chapter</td></tr>
+        <tr><td>Timeline</td><td>Drag to scrub anywhere in the episode</td></tr>
         <tr><td>Skip back / forward</td><td>10 s and 30 s by default — long-press either button to set your own value</td></tr>
         <tr><td>Speed</td><td>Tap to cycle 1× → 1.5× → 2× → 0.8×</td></tr>
-        <tr><td>Chapters</td><td>Listed below the progress bar when available; cover art updates per chapter</td></tr>
         <tr><td>Share</td><td>Generates an <code>antpod.eu/open?…</code> link — anyone can tap it to open the same episode</td></tr>
       </tbody>
     </table>
@@ -172,13 +220,18 @@
 
     <!-- Downloads -->
     <h2>Downloads</h2>
-    <p>Tap the <strong>download icon</strong> on any episode to save it locally. A progress ring appears while downloading; tap again to cancel.</p>
+    <p>Tap the
+      <span class="icon-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </span>
+      icon on any episode to save it locally, or swipe left. A progress ring fills while downloading; tap the icon again to cancel.</p>
     <p>Once downloaded, playback uses the local file — no streaming. The file is <strong>deleted automatically</strong> when the episode finishes, or when you pause within the last minute.</p>
-    <p>To delete manually: tap the icon again → <strong>Delete download</strong>, or long-press the tile → context menu.</p>
+    <p>To delete manually: swipe left → <strong>Delete download</strong>, or long-press the tile → context menu.</p>
 
     <!-- Episode actions -->
     <h2>Episode actions</h2>
-    <p>Long-press any episode tile, or tap the action button on the tile, to open the context menu.</p>
+    <p>Long-press any episode tile to open the context menu.</p>
 
     <table class="guide-table">
       <thead><tr><th>Action</th><th></th></tr></thead>
@@ -188,7 +241,7 @@
         <tr><td>Download / Delete</td><td>Save to device or remove the local file</td></tr>
         <tr><td>Share episode</td><td>Deep link that opens the episode directly in AntPod</td></tr>
         <tr><td>Export file</td><td>Share the downloaded audio file to any app</td></tr>
-        <tr><td>Remove episode</td><td>Delete from feed — preview episodes only</td></tr>
+        <tr><td>Remove episode</td><td>Delete from feed — unsubscribed podcasts only</td></tr>
       </tbody>
     </table>
 
