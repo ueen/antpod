@@ -617,15 +617,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Cover tap → podcast filter (or preview for temp episodes) ───────────
 
   Future<void> _onCoverTap(Episode episode, AppDatabase db) async {
-    if (_filterPodcastId == episode.podcastId) {
-      setState(() {
-        _mode = _FeedMode.feed;
-        _filterPodcastId = null;
-        _filterPodcast = null;
-        _filter = _filter.copyWith(newOnly: true, history: false, podcasts: false);
-      });
-      return;
-    }
     final all = await db.getAllPodcasts();
     final pod = all.where((p) => p.id == episode.podcastId).firstOrNull;
     if (pod == null) {
