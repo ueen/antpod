@@ -347,22 +347,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── WiFi queue auto-download ──────────────────────────────────────────────
 
-  Future<void> _downloadMarkedEpisodes() async {
+  // Run once at startup: cancel stale flutter_downloader tasks (started in a
+  // previous session but never completed), delete partial files, and re-queue
+  // as markedForDownload so the dotted-bar state is shown correctly.
+  Future<void> _cleanupInterruptedDownloads() async {
     if (!mounted) return;
     final db = context.read<AppDatabase>();
-    // Always clean up interrupted downloads regardless of connectivity.
-    // Episodes with a stale taskId (started but not finished) are cancelled,
-    // the partial file deleted, and re-queued as markedForDownload so they
-    // show the correct dotted-bar state even on mobile data.
     final staleTaskIds = await db.resetIncompleteDownloads();
     for (final taskId in staleTaskIds) {
       await DownloadService.cancelAndCleanup(taskId);
     }
-    // Only auto-download when on WiFi/ethernet.
+  }
+
+  // Trigger WiFi downloads — called on startup (after cleanup) and on WiFi
+  // reconnect. Does NOT touch in-progress downloads from the current session.
+  Future<void> _downloadMarkedEpisodes() async {
+    if (!mounted) return;
     final connectivity = await Connectivity().checkConnectivity();
     if (!connectivity.contains(ConnectivityResult.wifi) &&
         !connectivity.contains(ConnectivityResult.ethernet)) { return; }
     if (!mounted) return;
+    final db = context.read<AppDatabase>();
     final downloads = context.read<DownloadProvider>();
     final marked = await db.getMarkedForDownloadEpisodes();
     if (marked.isEmpty) return;
@@ -724,7 +729,9 @@ class _HomeScreenState extends State<HomeScreen> {
         await db.insertEpisodes(eps);
       }
     }));
-    // Also trigger any queued WiFi downloads after a feed refresh
+    // Clean up interrupted downloads from previous sessions (once per startup),
+    // then trigger any queued WiFi downloads.
+    await _cleanupInterruptedDownloads();
     _downloadMarkedEpisodes();
   }
 
