@@ -278,6 +278,18 @@ class AppDatabase extends _$AppDatabase {
         const EpisodesCompanion(markedForDownload: Value(false)),
       );
 
+  /// Episodes whose download was interrupted (taskId set, not yet downloaded).
+  /// Clears the stale taskId and re-queues them for WiFi download so they are
+  /// retried automatically on the next WiFi connection.
+  Future<void> resetIncompleteDownloads() =>
+      (update(episodes)
+            ..where((e) =>
+                e.downloadTaskId.isNotNull() & e.isDownloaded.equals(false)))
+          .write(const EpisodesCompanion(
+            downloadTaskId: Value(null),
+            markedForDownload: Value(true),
+          ));
+
   Future<List<Episode>> getMarkedForDownloadEpisodes() =>
       (select(episodes)
             ..where((e) => e.markedForDownload.equals(true)))

@@ -339,8 +339,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _downloadMarkedEpisodes() async {
     if (!mounted) return;
+    // Guard: only run on WiFi/ethernet — never auto-download on mobile data.
+    final connectivity = await Connectivity().checkConnectivity();
+    if (!connectivity.contains(ConnectivityResult.wifi) &&
+        !connectivity.contains(ConnectivityResult.ethernet)) { return; }
+    if (!mounted) return;
     final db = context.read<AppDatabase>();
     final downloads = context.read<DownloadProvider>();
+    // Re-queue any episodes whose download was interrupted (taskId set but not
+    // finished). They are treated identically to manually queued episodes below.
+    await db.resetIncompleteDownloads();
     final marked = await db.getMarkedForDownloadEpisodes();
     if (marked.isEmpty) return;
     for (final ep in marked) {

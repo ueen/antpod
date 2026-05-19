@@ -230,11 +230,10 @@ class EpisodeTile extends StatelessWidget {
     final opacity = dimmed ? _kFinishedOpacity : 1.0;
 
     final dlProgress = downloads.progressForTask(episode.downloadTaskId);
-    // If a task ID exists but isn't tracked yet (download just finished, DB
-    // hasn't flipped isDownloaded yet), hold the ring at 1.0 to avoid a flash.
-    final ringProgress = episode.isDownloaded
-        ? 1.0
-        : (dlProgress ?? (episode.downloadTaskId != null ? 1.0 : null));
+    // Only show a ring when actively tracked. Interrupted downloads (taskId in DB
+    // but no live progress) correctly show no ring; the drain animation in
+    // _ActionAreaState covers the brief gap between 100 % progress and isDownloaded.
+    final ringProgress = episode.isDownloaded ? 1.0 : dlProgress;
 
     final activeTaskId = episode.downloadTaskId;
     final isDownloading = activeTaskId != null &&
@@ -828,12 +827,21 @@ class _ActionAreaState extends State<_ActionArea>
               ),
             ),
           ),
-          // Underline bar for downloaded; dotted bar for marked-for-download
-          AnimatedSize(
+          // Underline bar for downloaded; dotted bar for marked-for-download.
+          // AnimatedSwitcher handles fade + height for all three states.
+          AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+              child: SizeTransition(
+                sizeFactor: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                axisAlignment: -1.0,
+                child: child,
+              ),
+            ),
             child: widget.episode.isDownloaded
                 ? Container(
+                    key: const ValueKey('dl'),
                     margin: const EdgeInsets.only(top: 3),
                     width: 20, height: 2,
                     decoration: BoxDecoration(
@@ -843,6 +851,7 @@ class _ActionAreaState extends State<_ActionArea>
                   )
                 : widget.isMarked
                     ? Padding(
+                        key: const ValueKey('marked'),
                         padding: const EdgeInsets.only(top: 3),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -856,7 +865,7 @@ class _ActionAreaState extends State<_ActionArea>
                           )),
                         ),
                       )
-                    : const SizedBox.shrink(),
+                    : const SizedBox(key: ValueKey('empty')),
           ),
         ],
       ),
