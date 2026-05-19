@@ -107,25 +107,17 @@
       Every episode carried home tirelessly — a nimble scout hatched from the spirit of the grand old AntennaPod. No account. No tracking. Just your podcasts.
     </p>
 
-    <!-- Badges + APK link: inner column centres the link under the row -->
-    <div style="display:inline-flex; flex-direction:column; align-items:center; gap:0.5rem;">
+    <!-- Badges + APK link: column stretches full width, link centred under row -->
+    <div style="display:flex; flex-direction:column; align-items:center; gap:0.5rem; width:100%;">
 
-      <!-- Store badges row -->
-      <div style="display:flex; flex-wrap:nowrap; gap:0.75rem; align-items:center;">
-
-        <!-- Google Play (live) -->
-        <a href="https://play.google.com/store/apps/details?id=de.ueen.antpod"
-           style="display:inline-block; text-decoration:none; flex-shrink:0;">
-          <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
-               alt="Get it on Google Play"
-               style="display:block; height:min(80px,12vw); width:auto;" />
-        </a>
+      <!-- Store badges row — full width, each badge takes half -->
+      <div style="display:flex; gap:0.75rem; align-items:center; width:100%;">
 
         <!-- F-Droid (coming soon — greyed out, not a link) -->
-        <div style="position:relative; display:inline-block; opacity:0.38; cursor:default; flex-shrink:0;" title="Coming soon on F-Droid">
+        <div style="position:relative; flex:1; min-width:0; opacity:0.38; cursor:default;" title="Coming soon on F-Droid">
           <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
                alt="Get it on F-Droid"
-               style="display:block; height:min(80px,12vw); width:auto;" />
+               style="display:block; height:min(80px,12vw); width:100%; object-fit:contain; object-position:left center;" />
           <span style="
             position:absolute; bottom:4px; right:4px;
             background:rgba(0,0,0,0.55); color:#fff;
@@ -133,6 +125,14 @@
             padding:1px 4px; border-radius:3px; text-transform:uppercase;
             pointer-events:none;">Soon</span>
         </div>
+
+        <!-- Google Play (live) -->
+        <a href="https://play.google.com/store/apps/details?id=de.ueen.antpod"
+           style="flex:1; min-width:0; display:block; text-decoration:none;">
+          <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+               alt="Get it on Google Play"
+               style="display:block; height:min(80px,12vw); width:100%; object-fit:contain; object-position:left center;" />
+        </a>
 
       </div>
 
