@@ -110,9 +110,9 @@ class PodcastService {
   }
 
   // ── Trending ───────────────────────────────────────────────────────────────
-  // Uses a 7-day window so results reflect what's actually hot right now rather
-  // than month-old activity. Fetches 2× the requested count then takes the top-n
-  // by trendScore so we have room to filter without losing popular shows.
+  // PodcastIndex /podcasts/trending — 30-day window for consistent popularity
+  // (not viral spikes). Regionalized via `lang`: passing "de,en" returns
+  // primarily German podcasts with English ones filling the remainder.
 
   static Future<List<PodcastResult>> trending({
     int max = 10,
@@ -122,18 +122,18 @@ class PodcastService {
     final params = <String, String>{
       'max': '${max * 2}',
       'lang': lang,
-      'since': '-604800', // 7 days — captures genuinely current viral content
+      'since': '-2592000', // 30-day window
     };
     if (cat != null && cat.isNotEmpty) params['cat'] = cat;
 
-    final uri = Uri.parse('$_baseUrl/podcasts/trending').replace(queryParameters: params);
+    final uri =
+        Uri.parse('$_baseUrl/podcasts/trending').replace(queryParameters: params);
     final res = await http.get(uri, headers: _authHeaders());
     if (res.statusCode != 200) {
       throw Exception('API ${res.statusCode}: ${res.reasonPhrase}');
     }
-    final json = jsonDecode(res.body) as Map<String, dynamic>;
-    final feeds = json['feeds'] as List? ?? [];
-    // API returns results ranked by trendScore; just take the requested count
+    final feeds =
+        (jsonDecode(res.body) as Map<String, dynamic>)['feeds'] as List? ?? [];
     return feeds
         .take(max)
         .map((f) => PodcastResult.fromJson(f as Map<String, dynamic>))

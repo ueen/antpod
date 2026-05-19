@@ -486,19 +486,15 @@ class _DownloadSwipeBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDelete = episode.isDownloaded || isDownloading;
-    final bg = (isDelete || isMarked) ? cs.error : cs.primary;
-    final fg = (isDelete || isMarked) ? cs.onError : cs.onPrimary;
-    final icon = isDownloading
+    final isDelete = episode.isDownloaded || isDownloading || isMarked;
+    final bg = isDelete ? cs.error : cs.primary;
+    final fg = isDelete ? cs.onError : cs.onPrimary;
+    final icon = (isDownloading || isMarked)
         ? Icons.cancel_outlined
-        : (episode.isDownloaded
-            ? Icons.delete_outline
-            : (isMarked ? Icons.wifi_off_rounded : Icons.download));
-    final label = isDownloading
+        : (episode.isDownloaded ? Icons.delete_outline : Icons.download);
+    final label = (isDownloading || isMarked)
         ? l10n.cancel
-        : (episode.isDownloaded
-            ? l10n.deleteDownload
-            : (isMarked ? l10n.cancelWifiQueue : l10n.downloading));
+        : (episode.isDownloaded ? l10n.deleteDownload : l10n.downloading);
 
     return Container(
       alignment: Alignment.centerRight,
@@ -577,7 +573,7 @@ class _EpisodeMetadata extends StatelessWidget {
             else if (episode.markedForDownload)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.wifi, size: 12, color: cs.primary)),
+                child: Icon(Icons.download, size: 12, color: cs.primary)),
             Text(
               DateFormat('d. MMM yyyy',
                       Localizations.localeOf(context).toString())
@@ -832,7 +828,7 @@ class _ActionAreaState extends State<_ActionArea>
               ),
             ),
           ),
-          // Underline bar for downloaded; wifi dot for marked-for-download
+          // Underline bar for downloaded; dotted bar for marked-for-download
           AnimatedSize(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
@@ -847,8 +843,18 @@ class _ActionAreaState extends State<_ActionArea>
                   )
                 : widget.isMarked
                     ? Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Icon(Icons.wifi, size: 11, color: widget.cs.primary),
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: List.generate(4, (i) => Container(
+                            margin: EdgeInsets.only(left: i == 0 ? 0 : 1.5),
+                            width: 3.5, height: 2,
+                            decoration: BoxDecoration(
+                              color: widget.cs.primary,
+                              borderRadius: BorderRadius.circular(1),
+                            ),
+                          )),
+                        ),
                       )
                     : const SizedBox.shrink(),
           ),

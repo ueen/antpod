@@ -611,7 +611,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadDiscover() async {
     final db = context.read<AppDatabase>();
-    final langCode = Localizations.localeOf(context).languageCode;
+    final locale = Localizations.localeOf(context);
+    final langCode = locale.languageCode;
     final lang = langCode == 'en' ? 'en' : '$langCode,en';
     setState(() { _loadingTrending = true; _loadingRec = true; _trendingError = null; });
     try {
@@ -1551,9 +1552,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         widget.filter.downloaded &&
         widget.onShowAllDownloads != null &&
         (widget.filter.newOnly || widget.filter.history || widget.filter.inProgress);
-    // Show "show marked for download" footer when on downloaded filter and there
-    // are queued episodes not yet revealed.
+    // Show "show marked for download" footer only when the download footer isn't
+    // already showing — one footer at a time.
     final hasMarkedFooter = !isSearching &&
+        !hasDownloadFooter &&
         widget.filter.downloaded &&
         !_showMarked &&
         _markedCount > 0;
@@ -1611,7 +1613,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                             const SizedBox(height: 12),
                             OutlinedButton.icon(
                               onPressed: _revealMarked,
-                              icon: const Icon(Icons.wifi, size: 18),
+                              icon: const Icon(Icons.download, size: 18),
                               label: Text(widget.l10n.showMarkedForDownload),
                             ),
                           ],
@@ -1666,7 +1668,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                       child: OutlinedButton.icon(
                         onPressed: _revealMarked,
-                        icon: const Icon(Icons.wifi, size: 18),
+                        icon: const Icon(Icons.download, size: 18),
                         label: Text(widget.l10n.showMarkedForDownload),
                       ),
                     ),
