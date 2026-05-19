@@ -141,6 +141,16 @@ class _HomeScreenState extends State<HomeScreen> {
   _FeedMode _mode = _FeedMode.feed;
   _FilterState _filter = const _FilterState();
   bool _filterChipsVisible = true;
+
+  // Search mode has its own ephemeral filter state — never persisted.
+  _FilterState _searchFilter = const _FilterState(newOnly: false);
+  bool _searchFilterChipsVisible = false;
+
+  bool get _isSearchMode => _mode == _FeedMode.searchEpisodes;
+  _FilterState get _effectiveFilter => _isSearchMode ? _searchFilter : _filter;
+  bool get _effectiveChipsVisible =>
+      _isSearchMode ? _searchFilterChipsVisible : _filterChipsVisible;
+
   final _antWalkerKey = GlobalKey<_AntWalkerState>();
 
   String? _filterPodcastId;
@@ -339,20 +349,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _downloadMarkedEpisodes() async {
     if (!mounted) return;
-    // Guard: only run on WiFi/ethernet — never auto-download on mobile data.
-    final connectivity = await Connectivity().checkConnectivity();
-    if (!connectivity.contains(ConnectivityResult.wifi) &&
-        !connectivity.contains(ConnectivityResult.ethernet)) { return; }
-    if (!mounted) return;
     final db = context.read<AppDatabase>();
-    final downloads = context.read<DownloadProvider>();
-    // Re-queue interrupted downloads (taskId set but not finished).
-    // Cancel the stale flutter_downloader task and delete any partial file,
-    // then mark the episode for re-download on this WiFi session.
+    // Always clean up interrupted downloads regardless of connectivity.
+    // Episodes with a stale taskId (started but not finished) are cancelled,
+    // the partial file deleted, and re-queued as markedForDownload so they
+    // show the correct dotted-bar state even on mobile data.
     final staleTaskIds = await db.resetIncompleteDownloads();
     for (final taskId in staleTaskIds) {
       await DownloadService.cancelAndCleanup(taskId);
     }
+    // Only auto-download when on WiFi/ethernet.
+    final connectivity = await Connectivity().checkConnectivity();
+    if (!connectivity.contains(ConnectivityResult.wifi) &&
+        !connectivity.contains(ConnectivityResult.ethernet)) { return; }
+    if (!mounted) return;
+    final downloads = context.read<DownloadProvider>();
     final marked = await db.getMarkedForDownloadEpisodes();
     if (marked.isEmpty) return;
     for (final ep in marked) {
@@ -463,8 +474,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _toggleFilterChips() {
-    setState(() => _filterChipsVisible = !_filterChipsVisible);
-    _saveFilterPrefs();
+    if (_isSearchMode) {
+      setState(() => _searchFilterChipsVisible = !_searchFilterChipsVisible);
+    } else {
+      setState(() => _filterChipsVisible = !_filterChipsVisible);
+      _saveFilterPrefs();
+    }
   }
 
   void _showAbout(BuildContext context) {
@@ -716,6 +731,40 @@ class _HomeScreenState extends State<HomeScreen> {
   // ─── Filter chip handler ──────────────────────────────────────────────────
 
   void _onFilterToggle(String key) {
+    // Search mode: update ephemeral search filter only, never persist.
+    if (_isSearchMode) {
+      setState(() {
+        switch (key) {
+          case 'new':
+            _searchFilter = _searchFilter.copyWith(
+                newOnly: !_searchFilter.newOnly, history: false, podcasts: false);
+          case 'history':
+            _searchFilter = _searchFilter.copyWith(
+                history: !_searchFilter.history, newOnly: false,
+                downloaded: false, inProgress: false, podcasts: false);
+          case 'dl':
+            _searchFilter = _searchFilter.copyWith(
+                downloaded: !_searchFilter.downloaded, podcasts: false);
+          case 'az':
+            _searchFilter = _searchFilter.copyWith(
+                sort: _searchFilter.sort == _SortMode.alphabetical
+                    ? _SortMode.none : _SortMode.alphabetical, podcasts: false);
+          case 'oldest':
+            _searchFilter = _searchFilter.copyWith(
+                sort: _searchFilter.sort == _SortMode.oldest
+                    ? _SortMode.none : _SortMode.oldest, podcasts: false);
+          case 'random':
+            _searchFilter = _searchFilter.copyWith(
+                sort: _searchFilter.sort == _SortMode.random
+                    ? _SortMode.none : _SortMode.random, podcasts: false);
+          case 'inprogress':
+            _searchFilter = _searchFilter.copyWith(
+                inProgress: !_searchFilter.inProgress, podcasts: false);
+        }
+      });
+      return;
+    }
+
     // From podcast view, tapping Podcasts chip exits to the grid
     if (key == 'podcasts' && _mode == _FeedMode.podcastFilter) {
       setState(() {
@@ -820,8 +869,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   _Toolbar(
                     mode: _mode, searchOpen: searchOpen,
-                    searchCtrl: _searchCtrl, filter: _filter,
-                    filterChipsVisible: _filterChipsVisible,
+                    searchCtrl: _searchCtrl, filter: _effectiveFilter,
+                    filterChipsVisible: _effectiveChipsVisible,
                     l10n: l10n, cs: cs,
                     onBack: _mode == _FeedMode.previewPodcast ? _exitPreview : _exitToFeed,
                     onSearchChanged: _onSearchChanged,
@@ -831,6 +880,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     onSearchOpen: () => setState(() {
                       _mode = _FeedMode.searchEpisodes;
                       _searchQuery = ''; _searchCtrl.clear();
+                      _searchFilter = const _FilterState(newOnly: false);
+                      _searchFilterChipsVisible = false;
                     }),
                     onPlusPressed: _enterDiscover,
                     onFilterToggle: _toggleFilterChips,
@@ -852,21 +903,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeOut,
                   alignment: Alignment.topCenter,
-                  heightFactor: (_filterChipsVisible &&
+                  heightFactor: (_effectiveChipsVisible &&
                           (_mode == _FeedMode.feed ||
                            _mode == _FeedMode.searchEpisodes))
                       ? 1.0
                       : 0.0,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
-                    opacity: (_filterChipsVisible &&
+                    opacity: (_effectiveChipsVisible &&
                             (_mode == _FeedMode.feed ||
                              _mode == _FeedMode.searchEpisodes))
                         ? 1.0
                         : 0.0,
                     child: _FilterChipsRow(
-                      filter: _filter, l10n: l10n, cs: cs,
+                      filter: _effectiveFilter, l10n: l10n, cs: cs,
                       onToggle: _onFilterToggle,
+                      showPodcastsChip: !_isSearchMode,
                     ),
                   ),
                 ),
@@ -956,18 +1008,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
       case _FeedMode.feed:
       case _FeedMode.searchEpisodes:
-        if (_filter.podcasts) {
+        if (_filter.podcasts && !_isSearchMode) {
           return _PodcastGrid(
             db: db, cs: cs, l10n: l10n,
             onSelect: _onPodcastTileSelect,
           );
         }
         return _EpisodeFeed(
-          db: db, cs: cs, l10n: l10n, filter: _filter,
+          db: db, cs: cs, l10n: l10n, filter: _effectiveFilter,
           searchQuery: _mode == _FeedMode.searchEpisodes ? _searchQuery : '',
           onCoverTap: _onCoverTap, onRefresh: () => _refresh(db),
           onSearchOnline: _mode == _FeedMode.searchEpisodes ? _searchOnline : null,
-          onShowAllDownloads: _filter.downloaded
+          onShowAllDownloads: _effectiveFilter.downloaded && !_isSearchMode
               ? () => setState(() {
                     _filter = const _FilterState(downloaded: true, newOnly: false);
                     _saveFilterPrefs();
@@ -1470,11 +1522,21 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   List<Episode> _applyFilters(List<Episode> raw) {
     var eps = raw;
     if (widget.searchQuery.isNotEmpty) {
-      // Search ignores all chip filters — pure string match only
       final q = widget.searchQuery.toLowerCase();
-      return eps.where((e) =>
+      eps = eps.where((e) =>
           e.title.toLowerCase().contains(q) ||
           e.podcastTitle.toLowerCase().contains(q)).toList();
+      // Also apply any chip filters the user toggled while in search mode.
+      if (widget.filter.history) {
+        eps = eps.where((e) => e.isFinished).toList();
+      } else if (widget.filter.newOnly) {
+        eps = eps.where((e) => !e.isFinished).toList();
+      }
+      if (widget.filter.downloaded) {
+        eps = eps.where((e) => e.isDownloaded || e.markedForDownload).toList();
+      }
+      return _sortEpisodes(eps, widget.filter.sort,
+          inProgress: widget.filter.inProgress);
     }
     // When showing downloaded + marked: downloaded group first, marked group second,
     // each group sorted by the active sort mode.
