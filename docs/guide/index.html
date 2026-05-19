@@ -186,7 +186,14 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Search
       </span>
-      in the toolbar to search by title or podcast name. No results? A button lets you search PodcastIndex without leaving the screen.</p>
+      in the toolbar to search by title or podcast name across your whole feed. No results? A button lets you search PodcastIndex without leaving the screen.</p>
+
+    <p>While searching, tap the
+      <span class="icon-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="6" y1="18" x2="18" y2="18"/></svg>
+        Filter
+      </span>
+      icon to show filter chips — they work the same as in the main feed (e.g. add <strong>Downloaded</strong> to search only offline episodes). Search filters are completely separate from your home feed filters: they reset each time you open search and are never saved.</p>
 
     <p>Tap any episode cover to jump to that podcast's episode list. Use the back button to return to the feed.</p>
 
@@ -197,7 +204,7 @@
       <thead><tr><th>Swipe</th><th>Action</th></tr></thead>
       <tbody>
         <tr><td>→ Right</td><td>Mark as played / Mark as unplayed (toggles)</td></tr>
-        <tr><td>← Left</td><td>Download · Cancel download · Delete download (depending on state)</td></tr>
+        <tr><td>← Left</td><td>Download · Cancel download · Delete download · Cancel WiFi queue (depending on state)</td></tr>
       </tbody>
     </table>
 
@@ -228,6 +235,15 @@
       icon on any episode to save it locally, or swipe left. A progress ring fills while downloading; tap the icon again to cancel.</p>
     <p>Once downloaded, playback uses the local file — no streaming. The file is <strong>deleted automatically</strong> when the episode finishes, or when you pause within the last minute.</p>
     <p>To delete manually: swipe left → <strong>Delete download</strong>, or long-press the tile → context menu.</p>
+
+    <h2>WiFi download queue</h2>
+    <p>On mobile data, tapping the download icon shows a prompt — choose <strong>Download now</strong> (uses mobile data) or <strong>Save for WiFi</strong> to queue it. Queued episodes show a dotted bar under the play button and a
+      <span class="icon-chip">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </span>
+      icon next to the date.</p>
+    <p>AntPod downloads all queued episodes automatically as soon as WiFi is available — including at next launch. If a download is interrupted (e.g. WiFi drops mid-file), the episode returns to the queue automatically and retries next time. Marking an episode as played removes it from the queue.</p>
+    <p>To cancel a queued episode: swipe left → <strong>Cancel</strong>.</p>
 
     <!-- Episode actions -->
     <h2>Episode actions</h2>
