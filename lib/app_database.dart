@@ -232,16 +232,21 @@ class AppDatabase extends _$AppDatabase {
         playbackPositionSeconds: Value(posSeconds),
         isFinished: Value(finished),
         lastPlayed: Value(DateTime.now()),
+        // Clear the WiFi queue mark once the episode is finished
+        markedForDownload: finished ? const Value(false) : const Value.absent(),
       ),
     );
   }
 
   /// Explicitly mark episode as finished (e.g. after natural completion).
+  /// Also clears any pending WiFi download queue — no point downloading
+  /// something the user has already listened to.
   Future<void> markFinished(String id) =>
       (update(episodes)..where((e) => e.id.equals(id))).write(
         EpisodesCompanion(
           isFinished: const Value(true),
           lastPlayed: Value(DateTime.now()),
+          markedForDownload: const Value(false),
         ),
       );
 
