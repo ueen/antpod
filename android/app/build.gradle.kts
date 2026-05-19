@@ -44,6 +44,12 @@ android {
         }
     }
 
+    packaging {
+        jniLibs {
+            excludes += setOf("lib/armeabi-v7a/**", "lib/x86_64/**")
+        }
+    }
+
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName(
