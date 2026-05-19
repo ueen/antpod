@@ -738,6 +738,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _filter = _filter.copyWith(
               history: !_filter.history,
               newOnly: false,
+              downloaded: false,
+              inProgress: false,
               podcasts: false);
         case 'dl':
           _filter = _filter.copyWith(
@@ -844,20 +846,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
 
-              // Filter chips — toggle via tune icon, only in feed/search modes
+              // Filter chips — visible in feed and episode-search modes
               ClipRect(
                 child: AnimatedAlign(
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeOut,
                   alignment: Alignment.topCenter,
                   heightFactor: (_filterChipsVisible &&
-                          _mode == _FeedMode.feed)
+                          (_mode == _FeedMode.feed ||
+                           _mode == _FeedMode.searchEpisodes))
                       ? 1.0
                       : 0.0,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
                     opacity: (_filterChipsVisible &&
-                            _mode == _FeedMode.feed)
+                            (_mode == _FeedMode.feed ||
+                             _mode == _FeedMode.searchEpisodes))
                         ? 1.0
                         : 0.0,
                     child: _FilterChipsRow(
@@ -1034,6 +1038,23 @@ class _Toolbar extends StatelessWidget {
         ),
         if (searchCtrl.text.isNotEmpty)
           IconButton(icon: const Icon(Icons.clear, size: 20), onPressed: onClearSearch),
+        if (mode == _FeedMode.searchEpisodes)
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: Icon(Icons.tune_rounded,
+                    color: filterChipsVisible ? cs.primary : cs.onSurface),
+                onPressed: onFilterToggle,
+                tooltip: 'Filter',
+              ),
+              if (filter.hasAny)
+                Positioned(right: 8, top: 8, child: Container(
+                  width: 8, height: 8,
+                  decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
+                )),
+            ],
+          ),
       ],
     );
   }
