@@ -273,6 +273,17 @@ class AppDatabase extends _$AppDatabase {
         const EpisodesCompanion(markedForDownload: Value(true)),
       );
 
+  /// Re-queue a single episode after its download failed mid-session.
+  /// Clears the stale taskId and sets markedForDownload so the dotted bar
+  /// appears immediately without requiring an app restart.
+  Future<void> requeueEpisodeForDownload(String id) =>
+      (update(episodes)..where((e) => e.id.equals(id))).write(
+        const EpisodesCompanion(
+          downloadTaskId: Value(null),
+          markedForDownload: Value(true),
+        ),
+      );
+
   Future<void> clearMarkedForDownload(String id) =>
       (update(episodes)..where((e) => e.id.equals(id))).write(
         const EpisodesCompanion(markedForDownload: Value(false)),

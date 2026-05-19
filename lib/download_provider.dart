@@ -85,27 +85,44 @@ class DownloadProvider extends ChangeNotifier {
   // ── Mark complete in our DB ────────────────────────────────────────────────
 
   Future<void> _markComplete(String taskId) async {
-    // Verify the task actually completed (not failed/cancelled)
-    List<DownloadTask>? tasks;
+    List<DownloadTask>? completedTasks;
     try {
-      tasks = await FlutterDownloader.loadTasksWithRawQuery(
+      completedTasks = await FlutterDownloader.loadTasksWithRawQuery(
         query: "SELECT * FROM task WHERE task_id='$taskId' AND status=3",
       );
     } catch (_) {}
-    if (tasks == null || tasks.isEmpty) return;
 
-    final dir = await getApplicationDocumentsDirectory();
-    final saveDir = p.join(dir.path, 'episodes');
+    if (completedTasks != null && completedTasks.isNotEmpty) {
+      // Download completed successfully — update DB with the local file path.
+      final dir = await getApplicationDocumentsDirectory();
+      final saveDir = p.join(dir.path, 'episodes');
+      final episode = await (_db.select(_db.episodes)
+            ..where((e) => e.downloadTaskId.equals(taskId)))
+          .getSingleOrNull();
+      if (episode != null && !episode.isDownloaded) {
+        final fileName = '${episode.id.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
+        final fullPath = p.join(saveDir, fileName);
+        if (File(fullPath).existsSync()) {
+          await _db.updateEpisodeDownload(episode.id, true, fullPath, taskId);
+        }
+      }
+      return;
+    }
+
+    // Task is gone but not completed (failed, WiFi dropped, etc.).
+    // Re-queue immediately so the dotted-bar state is restored in this session
+    // rather than waiting until the next app restart.
     final episode = await (_db.select(_db.episodes)
           ..where((e) => e.downloadTaskId.equals(taskId)))
         .getSingleOrNull();
     if (episode != null && !episode.isDownloaded) {
-      final fileName =
-          '${episode.id.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
-      final fullPath = p.join(saveDir, fileName);
-      if (File(fullPath).existsSync()) {
-        await _db.updateEpisodeDownload(episode.id, true, fullPath, taskId);
-      }
+      await _db.requeueEpisodeForDownload(episode.id);
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        final fileName = '${episode.id.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
+        final file = File(p.join(dir.path, 'episodes', fileName));
+        if (file.existsSync()) await file.delete();
+      } catch (_) {}
     }
   }
 
