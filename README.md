@@ -9,7 +9,7 @@ Open-source podcast app for Android and iOS — built with Flutter, powered by [
 
 Inspired by [AntennaPod](https://antennapod.org) — the dinosaur of FOSS podcast apps — AntPod is the next generation: carries only what it needs and is really pleasant to use.
 
-[![Release](https://img.shields.io/github/v/release/ueen/antpod)](https://github.com/ueen/antpod/releases/latest) [![License](https://img.shields.io/github/license/ueen/antpod)](LICENSE) [![F-Droid](https://img.shields.io/f-droid/v/de.ueen.antpod)](https://f-droid.org/packages/de.ueen.antpod)
+[![Release](https://img.shields.io/github/v/release/ueen/antpod)](https://github.com/ueen/antpod/releases) [![License](https://img.shields.io/github/license/ueen/antpod)](LICENSE) [![F-Droid](https://img.shields.io/f-droid/v/de.ueen.antpod)](https://f-droid.org/packages/de.ueen.antpod)
 
 ---
 

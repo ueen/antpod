@@ -1447,9 +1447,11 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
   StreamSubscription<List<Episode>>? _markedSub;
+  StreamSubscription<List<Episode>>? _downloadedCountSub;
   bool _initialLoad = true;
   bool _showMarked = false;
   int _markedCount = 0;
+  int _totalDownloadedCount = 0;
   final _scrollCtrl = ScrollController();
   bool _showScrollTop = false;
   final _tileKeys = <String, GlobalKey<_LazyTileState>>{};
@@ -1463,6 +1465,9 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     _subscribe();
     _markedSub = widget.db.watchMarkedForDownloadEpisodes().listen(
       (eps) => setState(() => _markedCount = eps.length),
+    );
+    _downloadedCountSub = widget.db.watchAllFeedEpisodes(downloadedOnly: true).listen(
+      (eps) => setState(() => _totalDownloadedCount = eps.length),
     );
     _scrollCtrl.addListener(() {
       final show = _scrollCtrl.offset > 300;
@@ -1499,6 +1504,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   void dispose() {
     _sub?.cancel();
     _markedSub?.cancel();
+    _downloadedCountSub?.cancel();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -1669,10 +1675,13 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     final hasSearchFooter = isSearching && widget.onSearchOnline != null;
     // Show "show all downloads" footer when the downloaded filter is on but other
     // filters (new/history/in-progress) are hiding some downloaded episodes.
+    // Only show "show all downloads" when other active filters are hiding some
+    // downloaded episodes — i.e. the total downloaded count exceeds what's shown.
     final hasDownloadFooter = !isSearching &&
         widget.filter.downloaded &&
         widget.onShowAllDownloads != null &&
-        (widget.filter.newOnly || widget.filter.history || widget.filter.inProgress);
+        (widget.filter.newOnly || widget.filter.history || widget.filter.inProgress) &&
+        _totalDownloadedCount > _displayed.length;
     // Show "show marked for download" footer only when the download footer isn't
     // already showing — one footer at a time.
     final hasMarkedFooter = !isSearching &&
