@@ -346,9 +346,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     final db = context.read<AppDatabase>();
     final downloads = context.read<DownloadProvider>();
-    // Re-queue any episodes whose download was interrupted (taskId set but not
-    // finished). They are treated identically to manually queued episodes below.
-    await db.resetIncompleteDownloads();
+    // Re-queue interrupted downloads (taskId set but not finished).
+    // Cancel the stale flutter_downloader task and delete any partial file,
+    // then mark the episode for re-download on this WiFi session.
+    final staleTaskIds = await db.resetIncompleteDownloads();
+    for (final taskId in staleTaskIds) {
+      await DownloadService.cancelAndCleanup(taskId);
+    }
     final marked = await db.getMarkedForDownloadEpisodes();
     if (marked.isEmpty) return;
     for (final ep in marked) {
@@ -1508,7 +1512,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       if (!next.any((e) => e.id == _displayed[i].id)) {
         final removed = _displayed.removeAt(i);
         _tileKeys.remove(removed.id);
-        state.removeItem(i, (ctx, anim) => _animatedTile(removed, anim),
+        state.removeItem(i, (ctx, anim) => _exitTile(removed, anim),
             duration: const Duration(milliseconds: 250));
       }
     }
@@ -1540,6 +1544,25 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
           child: Column(
             children: [
               _LazyTile(key: _tileKey(ep.id), episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+              Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Exit-only builder: uses EpisodeTile directly so the removal animation
+  // never shows the one-frame skeleton that _LazyTile shows on first build.
+  Widget _exitTile(Episode ep, Animation<double> anim) {
+    return SizeTransition(
+      sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+      child: FadeTransition(
+        opacity: CurvedAnimation(parent: anim, curve: Curves.easeIn),
+        child: RepaintBoundary(
+          child: Column(
+            children: [
+              EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
               Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
             ],
           ),

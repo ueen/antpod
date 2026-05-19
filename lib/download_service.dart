@@ -74,6 +74,15 @@ class DownloadService {
     return taskId;
   }
 
+  // ── Cancel interrupted download and remove partial file ───────────────────
+
+  static Future<void> cancelAndCleanup(String taskId) async {
+    try {
+      // shouldDeleteContent removes the partial file from disk.
+      await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: true);
+    } catch (_) {}
+  }
+
   // ── Background callback (runs in bg isolate) ──────────────────────────────
 
   @pragma('vm:entry-point')

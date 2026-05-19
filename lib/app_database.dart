@@ -279,16 +279,23 @@ class AppDatabase extends _$AppDatabase {
       );
 
   /// Episodes whose download was interrupted (taskId set, not yet downloaded).
-  /// Clears the stale taskId and re-queues them for WiFi download so they are
-  /// retried automatically on the next WiFi connection.
-  Future<void> resetIncompleteDownloads() =>
-      (update(episodes)
-            ..where((e) =>
-                e.downloadTaskId.isNotNull() & e.isDownloaded.equals(false)))
-          .write(const EpisodesCompanion(
-            downloadTaskId: Value(null),
-            markedForDownload: Value(true),
-          ));
+  /// Clears the stale taskId, re-queues them for WiFi download, and returns
+  /// the stale task IDs so the caller can cancel them in flutter_downloader.
+  Future<List<String>> resetIncompleteDownloads() async {
+    final stale = await (select(episodes)
+          ..where((e) =>
+              e.downloadTaskId.isNotNull() & e.isDownloaded.equals(false)))
+        .get();
+    if (stale.isEmpty) return [];
+    await (update(episodes)
+          ..where((e) =>
+              e.downloadTaskId.isNotNull() & e.isDownloaded.equals(false)))
+        .write(const EpisodesCompanion(
+          downloadTaskId: Value(null),
+          markedForDownload: Value(true),
+        ));
+    return stale.map((e) => e.downloadTaskId).whereType<String>().toList();
+  }
 
   Future<List<Episode>> getMarkedForDownloadEpisodes() =>
       (select(episodes)
