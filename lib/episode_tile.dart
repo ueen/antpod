@@ -1,6 +1,7 @@
 // lib/episode_tile.dart
 import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,122 @@ import 'download_service.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
 import 'share_utils.dart';
+
+// ─── WiFi download helper ─────────────────────────────────────────────────────
+
+/// Check connectivity and either download immediately (WiFi/ethernet) or show
+/// a bottom sheet asking the user whether to download now or queue for WiFi.
+Future<void> triggerDownload({
+  required BuildContext context,
+  required Episode episode,
+  required AppDatabase db,
+  required DownloadProvider downloads,
+}) async {
+  final result = await Connectivity().checkConnectivity();
+  final isWifi = result.contains(ConnectivityResult.wifi) ||
+      result.contains(ConnectivityResult.ethernet);
+
+  if (!context.mounted) return;
+
+  if (isWifi) {
+    final taskId = await DownloadService.downloadEpisode(
+      episodeId: episode.id, audioUrl: episode.audioUrl,
+      episodeTitle: episode.title, db: db,
+    );
+    if (taskId != null && context.mounted) downloads.trackDownload(taskId);
+    return;
+  }
+
+  // Mobile data — ask the user
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => _WifiDownloadSheet(
+      onDownloadNow: () async {
+        Navigator.pop(ctx);
+        final taskId = await DownloadService.downloadEpisode(
+          episodeId: episode.id, audioUrl: episode.audioUrl,
+          episodeTitle: episode.title, db: db,
+        );
+        if (taskId != null) downloads.trackDownload(taskId);
+      },
+      onSaveForWifi: () {
+        Navigator.pop(ctx);
+        db.markForDownload(episode.id);
+      },
+      onCancel: () => Navigator.pop(ctx),
+    ),
+  );
+}
+
+// ─── WiFi download bottom sheet ───────────────────────────────────────────────
+
+class _WifiDownloadSheet extends StatelessWidget {
+  final VoidCallback onDownloadNow;
+  final VoidCallback onSaveForWifi;
+  final VoidCallback onCancel;
+
+  const _WifiDownloadSheet({
+    required this.onDownloadNow,
+    required this.onSaveForWifi,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          24, 16, 24, MediaQuery.of(context).padding.bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36, height: 4, margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+                color: cs.outlineVariant,
+                borderRadius: BorderRadius.circular(2)),
+          ),
+          Icon(Icons.wifi_off_rounded, size: 40, color: cs.onSurfaceVariant),
+          const SizedBox(height: 10),
+          Text(l10n.noWifi,
+              style: TextStyle(
+                  fontSize: 17, fontWeight: FontWeight.w700,
+                  color: cs.onSurface)),
+          const SizedBox(height: 4),
+          Text(l10n.onMobileData,
+              style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: onSaveForWifi,
+              child: Text(l10n.saveForWifi),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: onDownloadNow,
+              child: Text(l10n.downloadNow),
+            ),
+          ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: onCancel,
+            child: Text(l10n.cancel),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 const _kFinishedOpacity = 0.45;
 
@@ -38,6 +155,7 @@ class EpisodeTile extends StatelessWidget {
   void _showContextMenu(BuildContext context, AppDatabase db, AppLocalizations l10n,
       {required bool isDownloading, required DownloadProvider downloads}) {
     final cs = Theme.of(context).colorScheme;
+    final isMarked = episode.markedForDownload;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -58,15 +176,15 @@ class EpisodeTile extends StatelessWidget {
                     duration: const Duration(seconds: 2)));
               }
             : null,
-        onDownload: (!episode.isDownloaded && !isDownloading)
+        onDownload: (!episode.isDownloaded && !isDownloading && !isMarked)
             ? () async {
                 Navigator.pop(context);
-                final taskId = await DownloadService.downloadEpisode(
-                  episodeId: episode.id, audioUrl: episode.audioUrl,
-                  episodeTitle: episode.title, db: db,
-                );
-                if (taskId != null) downloads.trackDownload(taskId);
+                await triggerDownload(
+                  context: context, episode: episode, db: db, downloads: downloads);
               }
+            : null,
+        onCancelWifiQueue: isMarked
+            ? () { Navigator.pop(context); db.clearMarkedForDownload(episode.id); }
             : null,
         onShare: () {
           Navigator.pop(context);
@@ -122,10 +240,13 @@ class EpisodeTile extends StatelessWidget {
     final isDownloading = activeTaskId != null &&
         downloads.progressForTask(activeTaskId) != null;
 
+    final isMarked = episode.markedForDownload;
+
     return _StickySwipeable(
       startBackground: _PlayedSwipeBackground(episode: episode, cs: cs, l10n: l10n),
       endBackground: _DownloadSwipeBackground(
-          episode: episode, cs: cs, l10n: l10n, isDownloading: isDownloading),
+          episode: episode, cs: cs, l10n: l10n,
+          isDownloading: isDownloading, isMarked: isMarked),
       onSwipeStart: () async {
         if (episode.isFinished) {
           await db.markUnfinished(episode.id);
@@ -138,12 +259,11 @@ class EpisodeTile extends StatelessWidget {
           await downloads.cancelDownload(activeTaskId, episode.id);
         } else if (episode.isDownloaded) {
           await db.deleteLocalFile(episode.id);
+        } else if (isMarked) {
+          await db.clearMarkedForDownload(episode.id);
         } else {
-          final taskId = await DownloadService.downloadEpisode(
-            episodeId: episode.id, audioUrl: episode.audioUrl,
-            episodeTitle: episode.title, db: db,
-          );
-          if (taskId != null) downloads.trackDownload(taskId);
+          await triggerDownload(
+            context: context, episode: episode, db: db, downloads: downloads);
         }
       },
       child: GestureDetector(
@@ -203,6 +323,7 @@ class EpisodeTile extends StatelessWidget {
                   isPlaying: isPlaying,
                   isLoading: isLoading,
                   ringProgress: ringProgress,
+                  isMarked: isMarked,
                   dimmed: dimmed,
                   cs: cs,
                   onPlayTap: () {
@@ -357,22 +478,27 @@ class _DownloadSwipeBackground extends StatelessWidget {
   final ColorScheme cs;
   final AppLocalizations l10n;
   final bool isDownloading;
+  final bool isMarked;
   const _DownloadSwipeBackground({
     required this.episode, required this.cs, required this.l10n,
-    required this.isDownloading,
+    required this.isDownloading, required this.isMarked,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDelete = episode.isDownloaded || isDownloading;
-    final bg = isDelete ? cs.error : cs.primary;
-    final fg = isDelete ? cs.onError : cs.onPrimary;
+    final bg = (isDelete || isMarked) ? cs.error : cs.primary;
+    final fg = (isDelete || isMarked) ? cs.onError : cs.onPrimary;
     final icon = isDownloading
         ? Icons.cancel_outlined
-        : (episode.isDownloaded ? Icons.delete_outline : Icons.download);
+        : (episode.isDownloaded
+            ? Icons.delete_outline
+            : (isMarked ? Icons.wifi_off_rounded : Icons.download));
     final label = isDownloading
         ? l10n.cancel
-        : (episode.isDownloaded ? l10n.deleteDownload : l10n.downloading);
+        : (episode.isDownloaded
+            ? l10n.deleteDownload
+            : (isMarked ? l10n.cancelWifiQueue : l10n.downloading));
 
     return Container(
       alignment: Alignment.centerRight,
@@ -447,7 +573,11 @@ class _EpisodeMetadata extends StatelessWidget {
             else if (episode.isDownloaded)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.download_done, size: 12, color: cs.primary)),
+                child: Icon(Icons.download_done, size: 12, color: cs.primary))
+            else if (episode.markedForDownload)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(Icons.wifi, size: 12, color: cs.primary)),
             Text(
               DateFormat('d. MMM yyyy',
                       Localizations.localeOf(context).toString())
@@ -486,15 +616,15 @@ class _EpisodeMetadata extends StatelessWidget {
 
 class _ActionArea extends StatefulWidget {
   final Episode episode;
-  final bool isCurrent, isPlaying, isLoading, dimmed;
+  final bool isCurrent, isPlaying, isLoading, dimmed, isMarked;
   final double? ringProgress;
   final ColorScheme cs;
   final VoidCallback onPlayTap;
 
   const _ActionArea({
     required this.episode, required this.isCurrent, required this.isPlaying,
-    required this.isLoading, required this.ringProgress, required this.dimmed,
-    required this.cs, required this.onPlayTap,
+    required this.isLoading, required this.ringProgress, required this.isMarked,
+    required this.dimmed, required this.cs, required this.onPlayTap,
   });
 
   @override
@@ -702,16 +832,25 @@ class _ActionAreaState extends State<_ActionArea>
               ),
             ),
           ),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 380),
+          // Underline bar for downloaded; wifi dot for marked-for-download
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
-            margin: EdgeInsets.only(top: widget.episode.isDownloaded ? 3 : 0),
-            width: widget.episode.isDownloaded ? 20 : 0,
-            height: widget.episode.isDownloaded ? 2 : 0,
-            decoration: BoxDecoration(
-              color: widget.cs.primary,
-              borderRadius: BorderRadius.circular(1),
-            ),
+            child: widget.episode.isDownloaded
+                ? Container(
+                    margin: const EdgeInsets.only(top: 3),
+                    width: 20, height: 2,
+                    decoration: BoxDecoration(
+                      color: widget.cs.primary,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  )
+                : widget.isMarked
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Icon(Icons.wifi, size: 11, color: widget.cs.primary),
+                      )
+                    : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -728,6 +867,7 @@ class _EpisodeContextMenu extends StatelessWidget {
   final VoidCallback? onMarkPlayed;
   final VoidCallback? onMarkUnplayed;
   final VoidCallback? onDownload;
+  final VoidCallback? onCancelWifiQueue;
   final VoidCallback onShare;
   final VoidCallback? onExportFile;
   final VoidCallback? onDeleteDownload;
@@ -737,6 +877,7 @@ class _EpisodeContextMenu extends StatelessWidget {
     required this.episode, required this.cs, required this.l10n,
     required this.onShare,
     this.onMarkPlayed, this.onMarkUnplayed, this.onDownload,
+    this.onCancelWifiQueue,
     this.onExportFile, this.onDeleteDownload, this.onRemoveEpisode,
   });
 
@@ -774,6 +915,8 @@ class _EpisodeContextMenu extends StatelessWidget {
             _MenuItem(icon: Icons.mark_email_unread_outlined, label: l10n.markUnplayed, cs: cs, onTap: onMarkUnplayed!),
           if (onDownload != null)
             _MenuItem(icon: Icons.download_outlined, label: l10n.downloading, cs: cs, onTap: onDownload!),
+          if (onCancelWifiQueue != null)
+            _MenuItem(icon: Icons.wifi_off_rounded, label: l10n.cancelWifiQueue, cs: cs, color: cs.error, onTap: onCancelWifiQueue!),
           _MenuItem(icon: Icons.share_outlined, label: l10n.shareEpisode, cs: cs, onTap: onShare),
           if (onExportFile != null)
             _MenuItem(icon: Icons.save_alt_outlined, label: l10n.exportFile, cs: cs, onTap: onExportFile!),

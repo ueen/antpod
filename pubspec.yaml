@@ -51,6 +51,9 @@ dependencies:
   # Persistence
   shared_preferences: ^2.3.3
 
+  # Network connectivity detection (WiFi vs mobile data)
+  connectivity_plus: ^6.1.4
+
   # Utilities
   cached_network_image: ^3.4.1
   flutter_svg: ^2.0.10+1

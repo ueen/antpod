@@ -43,5 +43,11 @@
   "filterRandom": "Aleatorio",
   "removeEpisode": "Eliminar episodio",
   "exportFile": "Exportar archivo",
-  "showAllDownloads": "Mostrar todas las descargas"
+  "showAllDownloads": "Mostrar todas las descargas",
+  "downloadNow": "Descargar ahora",
+  "saveForWifi": "Guardar para WiFi",
+  "cancelWifiQueue": "Cancelar cola WiFi",
+  "showMarkedForDownload": "Mostrar marcados para descarga",
+  "noWifi": "Sin WiFi",
+  "onMobileData": "Estás usando datos móviles"
 }

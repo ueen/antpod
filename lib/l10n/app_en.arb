@@ -43,5 +43,11 @@
   "filterRandom": "Random",
   "removeEpisode": "Remove episode",
   "exportFile": "Export file",
-  "showAllDownloads": "Show all downloads"
+  "showAllDownloads": "Show all downloads",
+  "downloadNow": "Download now",
+  "saveForWifi": "Save for WiFi",
+  "cancelWifiQueue": "Cancel WiFi queue",
+  "showMarkedForDownload": "Show marked for download",
+  "noWifi": "No WiFi",
+  "onMobileData": "You're on mobile data"
 }

@@ -43,5 +43,11 @@
   "filterRandom": "Zufällig",
   "removeEpisode": "Episode entfernen",
   "exportFile": "Datei exportieren",
-  "showAllDownloads": "Alle Downloads anzeigen"
+  "showAllDownloads": "Alle Downloads anzeigen",
+  "downloadNow": "Jetzt herunterladen",
+  "saveForWifi": "Im WLAN herunterladen",
+  "cancelWifiQueue": "WLAN-Download abbrechen",
+  "showMarkedForDownload": "Für WLAN vorgemerkte anzeigen",
+  "noWifi": "Kein WLAN",
+  "onMobileData": "Du bist im Mobilfunknetz"
 }

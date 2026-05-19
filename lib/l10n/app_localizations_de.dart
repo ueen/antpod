@@ -138,4 +138,10 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get showAllDownloads => 'Alle Downloads anzeigen';
+  @override String get downloadNow => 'Jetzt herunterladen';
+  @override String get saveForWifi => 'Im WLAN herunterladen';
+  @override String get cancelWifiQueue => 'WLAN-Download abbrechen';
+  @override String get showMarkedForDownload => 'Für WLAN vorgemerkte anzeigen';
+  @override String get noWifi => 'Kein WLAN';
+  @override String get onMobileData => 'Du bist im Mobilfunknetz';
 }

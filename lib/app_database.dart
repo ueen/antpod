@@ -1,11 +1,12 @@
 // lib/app_database.dart
 //
-// Schema version: 5
+// Schema version: 6
 //   v1 → v2: Episodes.isSubscribed added
 //   v2 → v3: Episodes.isFinished added (true = fully listened)
 //            Episodes.lastPositionMs added (millisecond precision resume point)
 //   v3 → v4: Episodes.chaptersUrl added
 //   v4 → v5: Episodes.lastPlayed added (timestamp of most recent playback)
+//   v5 → v6: Episodes.markedForDownload added (queued for WiFi download)
 //
 // Regenerate after schema changes:
 //   dart run build_runner build --delete-conflicting-outputs
@@ -71,6 +72,10 @@ class Episodes extends Table {
   /// Null if the episode has never been played.
   DateTimeColumn get lastPlayed => dateTime().nullable()();
 
+  /// true = queued to download the next time WiFi is available.
+  BoolColumn get markedForDownload =>
+      boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -82,7 +87,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'antpod'));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -101,6 +106,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 5) {
         await m.database.customStatement(
             'ALTER TABLE episodes ADD COLUMN last_played INTEGER');
+      }
+      if (from < 6) {
+        await m.database.customStatement(
+            'ALTER TABLE episodes ADD COLUMN marked_for_download INTEGER NOT NULL DEFAULT 0');
       }
     },
   );
@@ -254,8 +263,43 @@ class AppDatabase extends _$AppDatabase {
           isDownloaded: Value(downloaded),
           localPath: Value(path),
           downloadTaskId: Value(taskId),
+          // Clear the WiFi queue mark once an actual download starts/completes
+          markedForDownload: const Value(false),
         ),
       );
+
+  Future<void> markForDownload(String id) =>
+      (update(episodes)..where((e) => e.id.equals(id))).write(
+        const EpisodesCompanion(markedForDownload: Value(true)),
+      );
+
+  Future<void> clearMarkedForDownload(String id) =>
+      (update(episodes)..where((e) => e.id.equals(id))).write(
+        const EpisodesCompanion(markedForDownload: Value(false)),
+      );
+
+  Future<List<Episode>> getMarkedForDownloadEpisodes() =>
+      (select(episodes)
+            ..where((e) => e.markedForDownload.equals(true)))
+          .get();
+
+  Stream<List<Episode>> watchMarkedForDownloadEpisodes() =>
+      (select(episodes)
+            ..where((e) => e.markedForDownload.equals(true)))
+          .watch();
+
+  /// Episodes that are downloaded OR queued for WiFi download.
+  /// Used when the user taps "Show marked for download" in the downloaded filter.
+  Stream<List<Episode>> watchDownloadedOrMarkedEpisodes() {
+    return (select(episodes)
+          ..where((e) =>
+              (e.isDownloaded.equals(true) | e.markedForDownload.equals(true)) &
+              (e.isSubscribed.equals(true) |
+               e.isDownloaded.equals(true) |
+               e.lastPositionMs.isBiggerThanValue(0)))
+          ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
+        .watch();
+  }
 
   Future<void> deleteLocalFile(String id) async {
     final ep = await (select(episodes)..where((e) => e.id.equals(id)))

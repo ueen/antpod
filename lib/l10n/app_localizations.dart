@@ -356,6 +356,13 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show all downloads'**
   String get showAllDownloads;
+
+  String get downloadNow;
+  String get saveForWifi;
+  String get cancelWifiQueue;
+  String get showMarkedForDownload;
+  String get noWifi;
+  String get onMobileData;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

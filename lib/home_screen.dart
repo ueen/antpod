@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -14,6 +15,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
 
 import 'app_database.dart';
+import 'download_provider.dart';
+import 'download_service.dart';
 import 'episode_tile.dart';
 import 'l10n/app_localizations.dart';
 import 'mini_player.dart';
@@ -160,6 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
   _FeedMode _previewFrom = _FeedMode.discover;
 
   StreamSubscription<Uri>? _linkSub;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Uri? _pendingDeepLink;
 
   @override
@@ -170,6 +174,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // Store initial link; process it only after the widget is fully initialized
     links.getInitialLink().then((uri) { if (uri != null) _pendingDeepLink = uri; });
     _linkSub = links.uriLinkStream.listen((uri) => _handleDeepLink(uri));
+
+    // Auto-download queued episodes when WiFi becomes available
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      if (results.contains(ConnectivityResult.wifi) ||
+          results.contains(ConnectivityResult.ethernet)) {
+        _downloadMarkedEpisodes();
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadFilterPrefs();
@@ -318,8 +330,27 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _linkSub?.cancel();
+    _connectivitySub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  // ── WiFi queue auto-download ──────────────────────────────────────────────
+
+  Future<void> _downloadMarkedEpisodes() async {
+    if (!mounted) return;
+    final db = context.read<AppDatabase>();
+    final downloads = context.read<DownloadProvider>();
+    final marked = await db.getMarkedForDownloadEpisodes();
+    if (marked.isEmpty) return;
+    for (final ep in marked) {
+      await db.clearMarkedForDownload(ep.id);
+      final taskId = await DownloadService.downloadEpisode(
+        episodeId: ep.id, audioUrl: ep.audioUrl,
+        episodeTitle: ep.title, db: db,
+      );
+      if (taskId != null) downloads.trackDownload(taskId);
+    }
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -665,6 +696,8 @@ class _HomeScreenState extends State<HomeScreen> {
         await db.insertEpisodes(eps);
       }
     }));
+    // Also trigger any queued WiFi downloads after a feed refresh
+    _downloadMarkedEpisodes();
   }
 
   // ─── Filter chip handler ──────────────────────────────────────────────────
@@ -1320,7 +1353,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   List<Episode> _displayed = [];
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
+  StreamSubscription<List<Episode>>? _markedSub;
   bool _initialLoad = true;
+  bool _showMarked = false;
+  int _markedCount = 0;
   final _scrollCtrl = ScrollController();
   bool _showScrollTop = false;
   final _tileKeys = <String, GlobalKey<_LazyTileState>>{};
@@ -1332,6 +1368,9 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   void initState() {
     super.initState();
     _subscribe();
+    _markedSub = widget.db.watchMarkedForDownloadEpisodes().listen(
+      (eps) => setState(() => _markedCount = eps.length),
+    );
     _scrollCtrl.addListener(() {
       final show = _scrollCtrl.offset > 300;
       if (show != _showScrollTop) setState(() => _showScrollTop = show);
@@ -1341,6 +1380,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   @override
   void didUpdateWidget(_EpisodeFeed old) {
     super.didUpdateWidget(old);
+    // Reset "show marked" when the downloaded filter is turned off
+    if (!widget.filter.downloaded && _showMarked) {
+      _showMarked = false;
+    }
     // Stream source changes when search is toggled on/off or DB-level filters change
     final wasSearching = old.searchQuery.isNotEmpty;
     final isSearching = widget.searchQuery.isNotEmpty;
@@ -1362,6 +1405,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   @override
   void dispose() {
     _sub?.cancel();
+    _markedSub?.cancel();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -1369,6 +1413,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   Stream<List<Episode>> get _stream {
     // Search mode: ignore all DB-level filters — return everything, filter in-app
     if (widget.searchQuery.isNotEmpty) return widget.db.watchAllFeedEpisodes(downloadedOnly: false);
+    // Show downloaded + marked episodes when user tapped "Show marked for download"
+    if (_showMarked && widget.filter.downloaded) {
+      return widget.db.watchDownloadedOrMarkedEpisodes();
+    }
     final dl = widget.filter.downloaded;
     if (widget.filter.history) return widget.db.watchFinishedEpisodes(downloadedOnly: dl);
     if (widget.filter.newOnly) return widget.db.watchUnfinishedEpisodes(downloadedOnly: dl);
@@ -1379,6 +1427,12 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     _sub = _stream.listen(_onData);
   }
 
+  void _revealMarked() {
+    setState(() => _showMarked = true);
+    _sub?.cancel();
+    _subscribe();
+  }
+
   List<Episode> _applyFilters(List<Episode> raw) {
     var eps = raw;
     if (widget.searchQuery.isNotEmpty) {
@@ -1387,6 +1441,19 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       return eps.where((e) =>
           e.title.toLowerCase().contains(q) ||
           e.podcastTitle.toLowerCase().contains(q)).toList();
+    }
+    // When showing downloaded + marked: downloaded group first, marked group second,
+    // each group sorted by the active sort mode.
+    if (_showMarked && widget.filter.downloaded) {
+      final downloaded = _sortEpisodes(
+        eps.where((e) => e.isDownloaded).toList(),
+        widget.filter.sort, inProgress: widget.filter.inProgress,
+      );
+      final marked = _sortEpisodes(
+        eps.where((e) => !e.isDownloaded && e.markedForDownload).toList(),
+        widget.filter.sort, inProgress: widget.filter.inProgress,
+      );
+      return [...downloaded, ...marked];
     }
     return _sortEpisodes(eps, widget.filter.sort, inProgress: widget.filter.inProgress);
   }
@@ -1484,6 +1551,12 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         widget.filter.downloaded &&
         widget.onShowAllDownloads != null &&
         (widget.filter.newOnly || widget.filter.history || widget.filter.inProgress);
+    // Show "show marked for download" footer when on downloaded filter and there
+    // are queued episodes not yet revealed.
+    final hasMarkedFooter = !isSearching &&
+        widget.filter.downloaded &&
+        !_showMarked &&
+        _markedCount > 0;
 
     final isEmpty = _displayed.isEmpty;
 
@@ -1534,6 +1607,14 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                               label: Text(widget.l10n.showAllDownloads),
                             ),
                           ],
+                          if (hasMarkedFooter) ...[
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _revealMarked,
+                              icon: const Icon(Icons.wifi, size: 18),
+                              label: Text(widget.l10n.showMarkedForDownload),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1576,6 +1657,17 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                         onPressed: widget.onShowAllDownloads,
                         icon: const Icon(Icons.download_done, size: 18),
                         label: Text(widget.l10n.showAllDownloads),
+                      ),
+                    ),
+                  ),
+                if (hasMarkedFooter)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: OutlinedButton.icon(
+                        onPressed: _revealMarked,
+                        icon: const Icon(Icons.wifi, size: 18),
+                        label: Text(widget.l10n.showMarkedForDownload),
                       ),
                     ),
                   ),
