@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AntPod</title>
-  <meta name="description" content="Open this podcast or episode in AntPod." />
+  <meta name="description" id="meta-desc" content="Open this podcast or episode in AntPod." />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
@@ -89,13 +89,11 @@
       flex: 1; min-width: 0;
       display: flex; flex-direction: column; gap: 0.3rem;
     }
-    /* Tall hit area; visual bar and thumb are centred inside via top:50% */
     .cp-track {
       position: relative;
       height: 20px;
       cursor: pointer;
     }
-    /* Visual bar via pseudo-element — no extra div needed */
     .cp-track::before {
       content: '';
       position: absolute; left: 0; right: 0;
@@ -213,17 +211,16 @@
       <div class="body">
         <div class="badge" id="badge">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Episode
+          <span id="badge-label"></span>
         </div>
         <div class="podcast-name" id="podcast-name"></div>
-        <h1 class="ep-title" id="ep-title">Loading…</h1>
+        <h1 class="ep-title" id="ep-title"></h1>
 
         <!-- Custom audio player (episode only) -->
         <div class="player" id="player">
           <audio id="audio-el" preload="metadata"></audio>
           <div class="cp">
             <button class="cp-btn" id="play-btn" onclick="togglePlay()" aria-label="Play">
-              <!-- play icon (swapped to pause by JS) -->
               <svg id="icon-play" width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="6 3 20 12 6 21 6 3"/></svg>
               <svg id="icon-pause" width="18" height="18" viewBox="0 0 24 24" fill="white" style="display:none;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
             </button>
@@ -242,8 +239,9 @@
 
         <!-- Not installed hint -->
         <div class="not-installed" id="not-installed">
-          AntPod doesn't seem to be installed.
-          <a href="https://github.com/ueen/antpod/releases/latest">Download it here</a> — it's free and open source.
+          <span id="not-installed-msg"></span>
+          <a id="not-installed-link" href="https://github.com/ueen/antpod/releases"></a>
+          <span id="not-installed-suffix"></span>
         </div>
 
         <!-- Open in AntPod -->
@@ -252,7 +250,7 @@
             <circle cx="12" cy="12" r="10"/>
             <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
           </svg>
-          Open in AntPod
+          <span id="btn-open-label"></span>
         </button>
 
         <hr class="divider" />
@@ -263,7 +261,7 @@
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
           </svg>
-          Use a different app
+          <span id="btn-other-label"></span>
         </a>
 
         <!-- Feed URL -->
@@ -278,12 +276,92 @@
   <footer>
     <a href="/">AntPod</a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/ueen/antpod" class="muted">Open source</a>
+    <a href="https://github.com/ueen/antpod" class="muted" id="footer-oss"></a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/ueen/antpod/releases/latest" class="muted">Download</a>
+    <a href="https://github.com/ueen/antpod/releases" class="muted" id="footer-dl"></a>
   </footer>
 
   <script>
+    // ── i18n ──────────────────────────────────────────────────────────────────
+    const i18n = {
+      en: {
+        metaDesc:       'Open this podcast or episode in AntPod.',
+        episode:        'Episode',
+        loading:        'Loading…',
+        failedToLoad:   'Failed to load',
+        notInstalledMsg:'AntPod doesn’t seem to be installed. ',
+        downloadLink:   'Download it here',
+        notInstalledSfx:' — it’s free and open source.',
+        openInAntpod:   'Open in AntPod',
+        useDifferentApp:'Use a different app',
+        openSource:     'Open source',
+        download:       'Download',
+      },
+      de: {
+        metaDesc:       'Diesen Podcast oder diese Episode in AntPod öffnen.',
+        episode:        'Episode',
+        loading:        'Lädt…',
+        failedToLoad:   'Laden fehlgeschlagen',
+        notInstalledMsg:'AntPod scheint nicht installiert zu sein. ',
+        downloadLink:   'Hier herunterladen',
+        notInstalledSfx:' — kostenlos und Open Source.',
+        openInAntpod:   'In AntPod öffnen',
+        useDifferentApp:'Andere App verwenden',
+        openSource:     'Open Source',
+        download:       'Herunterladen',
+      },
+      es: {
+        metaDesc:       'Abre este podcast o episodio en AntPod.',
+        episode:        'Episodio',
+        loading:        'Cargando…',
+        failedToLoad:   'Error al cargar',
+        notInstalledMsg:'AntPod no parece estar instalado. ',
+        downloadLink:   'Descárgalo aquí',
+        notInstalledSfx:' — es gratuito y de código abierto.',
+        openInAntpod:   'Abrir en AntPod',
+        useDifferentApp:'Usar otra aplicación',
+        openSource:     'Código abierto',
+        download:       'Descargar',
+      },
+      fr: {
+        metaDesc:       'Ouvrez ce podcast ou cet épisode dans AntPod.',
+        episode:        'Épisode',
+        loading:        'Chargement…',
+        failedToLoad:   'Échec du chargement',
+        notInstalledMsg:'AntPod ne semble pas être installé. ',
+        downloadLink:   'Téléchargez-le ici',
+        notInstalledSfx:' — c’est gratuit et open source.',
+        openInAntpod:   'Ouvrir dans AntPod',
+        useDifferentApp:'Utiliser une autre application',
+        openSource:     'Open source',
+        download:       'Télécharger',
+      },
+    };
+
+    function detectLang() {
+      const supported = ['de', 'es', 'fr'];
+      for (const l of (navigator.languages || [navigator.language || 'en'])) {
+        const code = l.split('-')[0].toLowerCase();
+        if (supported.includes(code)) return code;
+      }
+      return 'en';
+    }
+
+    const lang = detectLang();
+    const t = i18n[lang];
+    document.documentElement.lang = lang;
+    document.getElementById('meta-desc').content          = t.metaDesc;
+    document.getElementById('badge-label').textContent    = t.episode;
+    document.getElementById('ep-title').textContent       = t.loading;
+    document.getElementById('not-installed-msg').textContent  = t.notInstalledMsg;
+    document.getElementById('not-installed-link').textContent = t.downloadLink;
+    document.getElementById('not-installed-suffix').textContent = t.notInstalledSfx;
+    document.getElementById('btn-open-label').textContent  = t.openInAntpod;
+    document.getElementById('btn-other-label').textContent = t.useDifferentApp;
+    document.getElementById('footer-oss').textContent      = t.openSource;
+    document.getElementById('footer-dl').textContent       = t.download;
+
+    // ── URL params ────────────────────────────────────────────────────────────
     const p = new URLSearchParams(location.search);
     const feed    = p.get('feed')    || '';
     const guid    = p.get('guid')    || '';
@@ -292,10 +370,10 @@
     const cover   = p.get('cover')   || '';
     const audio   = p.get('audio')   || '';
     const podId   = p.get('id')      || '';
-    const showId    = p.get('showId')    || '';  // PodcastIndex feed ID
-    const episodeId = p.get('episodeId') || '';  // PodcastIndex episode ID
+    const showId    = p.get('showId')    || '';
+    const episodeId = p.get('episodeId') || '';
 
-    // ── PodcastIndex API fetch (used when only showId/episodeId is given) ─────
+    // ── PodcastIndex API fetch ────────────────────────────────────────────────
     async function piHeaders() {
       const key = 'WVABNRFZXMR56UKS7488', secret = 'Yrb2fXKRtwFRkzcj4XNZBKmBhVbg8Uz5ZvMj5Prd';
       const ts = Math.floor(Date.now() / 1000).toString();
@@ -320,7 +398,7 @@
           render(f.url || '', '', f.title || '', '', f.image || '', '', String(f.id || ''));
         }
       } catch (e) {
-        document.getElementById('ep-title').textContent = 'Failed to load';
+        document.getElementById('ep-title').textContent = t.failedToLoad;
       }
     }
 
@@ -328,7 +406,7 @@
       const isEpisode = !!rGuid;
 
       // Page title
-      document.title = (rTitle || (isEpisode ? 'Episode' : 'Podcast')) +
+      document.title = (rTitle || (isEpisode ? t.episode : 'Podcast')) +
         (rPodcast ? ' · ' + rPodcast : '') + ' — AntPod';
 
       // Cover
@@ -340,7 +418,7 @@
       // Badge + labels
       if (isEpisode) document.getElementById('badge').style.display = 'inline-flex';
       if (rPodcast)  document.getElementById('podcast-name').textContent = rPodcast;
-      document.getElementById('ep-title').textContent = rTitle || (isEpisode ? 'Episode' : 'Podcast');
+      document.getElementById('ep-title').textContent = rTitle || (isEpisode ? t.episode : 'Podcast');
 
       // Audio player
       const audioEl = document.getElementById('audio-el');
