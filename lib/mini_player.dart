@@ -201,8 +201,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               constraints: const BoxConstraints(),
                             ),
                     ),
-                    _iconBtn(cs, _skipForwardIcon(forwardSec),
-                        () => context.read<PlayerProvider>().skipForward()),
+                    _iconBtn(cs, _skipRewindIcon(forwardSec),
+                        () => context.read<PlayerProvider>().skipForward(),
+                        flipX: true),
                   ],
                 ),
               ),
@@ -217,10 +218,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   Widget _iconBtn(ColorScheme cs, IconData icon, VoidCallback onTap,
-      {double size = 22}) {
+      {double size = 22, bool flipX = false}) {
+    Widget ico = Icon(icon, color: cs.onInverseSurface, size: size);
+    if (flipX) ico = Transform.flip(flipX: true, child: ico);
     return IconButton(
       onPressed: onTap,
-      icon: Icon(icon, color: cs.onInverseSurface, size: size),
+      icon: ico,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
     );
@@ -257,12 +260,6 @@ IconData _skipRewindIcon(int s) {
   return Icons.replay;
 }
 
-IconData _skipForwardIcon(int s) {
-  if (s == 5)  return Icons.forward_5;
-  if (s == 10) return Icons.forward_10;
-  if (s == 30) return Icons.forward_30;
-  return Icons.refresh;
-}
 
 Future<void> showPlayerSheet(BuildContext context,
     {VoidCallback? onPodcastTap}) async {
@@ -504,7 +501,10 @@ class _PlayerSheet extends StatelessWidget {
                   onTap: player.skipForward,
                   child: SizedBox(
                     width: 44, height: 44,
-                    child: Icon(_skipForwardIcon(player.forwardSeconds), size: 28, color: cs.secondary),
+                    child: Transform.flip(
+                      flipX: true,
+                      child: Icon(_skipRewindIcon(player.forwardSeconds), size: 28, color: cs.secondary),
+                    ),
                   ),
                 ),
 
