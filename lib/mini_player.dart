@@ -201,9 +201,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               constraints: const BoxConstraints(),
                             ),
                     ),
-                    _iconBtn(cs, _skipRewindIcon(forwardSec),
+                    _iconBtn(cs,
+                        _skipForwardIconDirect(forwardSec) ?? _skipRewindIcon(forwardSec),
                         () => context.read<PlayerProvider>().skipForward(),
-                        flipX: true),
+                        flipX: _skipForwardIconDirect(forwardSec) == null),
                   ],
                 ),
               ),
@@ -258,6 +259,15 @@ IconData _skipRewindIcon(int s) {
   if (s == 10) return Icons.replay_10;
   if (s == 30) return Icons.replay_30;
   return Icons.replay;
+}
+
+// Returns a dedicated forward icon (with number) if one exists, null otherwise.
+// When null, callers should mirror the rewind icon with Transform.flip.
+IconData? _skipForwardIconDirect(int s) {
+  if (s == 5)  return Icons.forward_5;
+  if (s == 10) return Icons.forward_10;
+  if (s == 30) return Icons.forward_30;
+  return null;
 }
 
 
@@ -501,10 +511,12 @@ class _PlayerSheet extends StatelessWidget {
                   onTap: player.skipForward,
                   child: SizedBox(
                     width: 44, height: 44,
-                    child: Transform.flip(
-                      flipX: true,
-                      child: Icon(_skipRewindIcon(player.forwardSeconds), size: 28, color: cs.secondary),
-                    ),
+                    child: _skipForwardIconDirect(player.forwardSeconds) != null
+                        ? Icon(_skipForwardIconDirect(player.forwardSeconds)!, size: 28, color: cs.secondary)
+                        : Transform.flip(
+                            flipX: true,
+                            child: Icon(_skipRewindIcon(player.forwardSeconds), size: 28, color: cs.secondary),
+                          ),
                   ),
                 ),
 
