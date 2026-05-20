@@ -1779,7 +1779,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         child: RepaintBoundary(
           child: Column(
             children: [
-              _LazyTile(key: ValueKey(ep.id), episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+              EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
               Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
             ],
           ),
@@ -1788,8 +1788,6 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     );
   }
 
-  // Exit-only builder: uses EpisodeTile directly so the removal animation
-  // never shows the one-frame skeleton that _LazyTile shows on first build.
   Widget _exitTile(Episode ep, Animation<double> anim) {
     return SizeTransition(
       sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
@@ -2765,71 +2763,5 @@ class _AntPainter extends CustomPainter {
   bool shouldRepaint(_AntPainter old) => old.legPhase != legPhase || old.color != color;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Lazy tile — skeleton on first frame, real EpisodeTile on second
-// ─────────────────────────────────────────────────────────────────────────────
 
-class _SkeletonTile extends StatelessWidget {
-  const _SkeletonTile();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final shimmer = cs.onSurface.withValues(alpha: 0.08);
-    return SizedBox(
-      height: 72,
-      child: Row(
-        children: [
-          const SizedBox(width: 16),
-          Container(width: 56, height: 56, decoration: BoxDecoration(
-            color: shimmer, borderRadius: BorderRadius.circular(6))),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(height: 13, width: double.infinity, decoration: BoxDecoration(
-                  color: shimmer, borderRadius: BorderRadius.circular(4))),
-                const SizedBox(height: 6),
-                Container(height: 11, width: 160, decoration: BoxDecoration(
-                  color: shimmer, borderRadius: BorderRadius.circular(4))),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-        ],
-      ),
-    );
-  }
-}
-
-class _LazyTile extends StatefulWidget {
-  final Episode episode;
-  final VoidCallback onCoverTap;
-
-  const _LazyTile({super.key, required this.episode, required this.onCoverTap});
-
-  @override
-  State<_LazyTile> createState() => _LazyTileState();
-}
-
-class _LazyTileState extends State<_LazyTile> {
-  bool _ready = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Defer the expensive EpisodeTile build by one frame so the scroll frame
-    // stays lightweight (just a skeleton placeholder).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _ready = true);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      _ready ? EpisodeTile(episode: widget.episode, onCoverTap: widget.onCoverTap)
-             : const _SkeletonTile();
-}
 

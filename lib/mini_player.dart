@@ -153,7 +153,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                         imageUrl: imageUrl,
                         width: 44, height: 44, fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => Container(
-                          color: cs.onInverseSurface,
+                          color: cs.inversePrimary,
                           child: const Icon(Icons.podcasts_rounded),
                         ),
                       ),
@@ -168,7 +168,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                             title,
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                color: cs.onInverseSurface,
+                                color: cs.inversePrimary,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13),
                           ),
@@ -176,7 +176,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                             podcastTitle,
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                color: cs.onInverseSurface.withValues(alpha: 0.6),
+                                color: cs.inversePrimary.withValues(alpha: 0.6),
                                 fontSize: 11),
                           ),
                         ],
@@ -190,13 +190,13 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           ? Padding(
                               padding: const EdgeInsets.all(8),
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: cs.onInverseSurface),
+                                  strokeWidth: 2, color: cs.inversePrimary),
                             )
                           : IconButton(
                               onPressed: () => context.read<PlayerProvider>().togglePlayPause(),
                               icon: Icon(
                                 isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                color: cs.onInverseSurface, size: 28),
+                                color: cs.inversePrimary, size: 28),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),
@@ -220,7 +220,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
   Widget _iconBtn(ColorScheme cs, IconData icon, VoidCallback onTap,
       {double size = 22, bool flipX = false}) {
-    Widget ico = Icon(icon, color: cs.onInverseSurface, size: size);
+    Widget ico = Icon(icon, color: cs.inversePrimary, size: size);
     if (flipX) ico = Transform.flip(flipX: true, child: ico);
     return IconButton(
       onPressed: onTap,
