@@ -255,18 +255,18 @@ class _MiniProgress extends StatelessWidget {
 // Shared skip-icon helpers (used by mini player and bottom sheet)
 
 IconData _skipRewindIcon(int s) {
-  if (s == 5)  return Icons.replay_5;
-  if (s == 10) return Icons.replay_10;
-  if (s == 30) return Icons.replay_30;
-  return Icons.replay;
+  if (s == 5)  return Icons.replay_5_rounded;
+  if (s == 10) return Icons.replay_10_rounded;
+  if (s == 30) return Icons.replay_30_rounded;
+  return Icons.replay_rounded;
 }
 
 // Returns a dedicated forward icon (with number) if one exists, null otherwise.
 // When null, callers should mirror the rewind icon with Transform.flip.
 IconData? _skipForwardIconDirect(int s) {
-  if (s == 5)  return Icons.forward_5;
-  if (s == 10) return Icons.forward_10;
-  if (s == 30) return Icons.forward_30;
+  if (s == 5)  return Icons.forward_5_rounded;
+  if (s == 10) return Icons.forward_10_rounded;
+  if (s == 30) return Icons.forward_30_rounded;
   return null;
 }
 
