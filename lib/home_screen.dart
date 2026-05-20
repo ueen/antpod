@@ -1258,7 +1258,7 @@ class _Toolbar extends StatelessWidget {
   Widget _defaultRow() {
     return Row(
       children: [
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
         GestureDetector(
           onTap: onLogoTap,
           child: ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
@@ -1275,7 +1275,7 @@ class _Toolbar extends StatelessWidget {
           child: GestureDetector(
             onTap: onInfoPressed,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 16, 28, 16),
+              padding: const EdgeInsets.fromLTRB(6, 16, 20, 16),
               child: Icon(Icons.info_rounded, size: 18, color: cs.onSurfaceVariant),
             ),
           ),
