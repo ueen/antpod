@@ -95,7 +95,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                       width: 60, height: 60, fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Container(
                           color: cs.surfaceContainerHighest,
-                          child: const Icon(Icons.podcasts, size: 28)),
+                          child: const Icon(Icons.podcasts_rounded, size: 28)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -123,7 +123,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                     padding: const EdgeInsets.only(left: 6, right: 12),
                     child: GestureDetector(
                       onTap: _share,
-                      child: Icon(Icons.share_outlined,
+                      child: Icon(Icons.share_rounded,
                           color: cs.onSurfaceVariant, size: 24),
                     ),
                   ),
@@ -140,10 +140,10 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 220),
                           child: _subscribePressed
-                              ? Icon(Icons.check_circle,
+                              ? Icon(Icons.check_circle_rounded,
                                   key: const ValueKey('check'),
                                   color: Colors.green, size: 32)
-                              : Icon(Icons.add_circle_outline,
+                              : Icon(Icons.add_circle_outline_rounded,
                                   key: const ValueKey('add'),
                                   color: cs.primary, size: 32),
                         ),
@@ -154,7 +154,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                       padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
                         onTap: () => _confirmUnsubscribe(context, l10n),
-                        child: Icon(Icons.remove_circle_outline,
+                        child: Icon(Icons.remove_circle_outline_rounded,
                             color: cs.error, size: 32),
                       ),
                     ),
@@ -176,7 +176,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
               child: AnimatedRotation(
                 turns: _expanded ? 0.5 : 0,
                 duration: const Duration(milliseconds: 220),
-                child: Icon(Icons.keyboard_arrow_down,
+                child: Icon(Icons.keyboard_arrow_down_rounded,
                     color: cs.onSurfaceVariant, size: 20),
               ),
             ),

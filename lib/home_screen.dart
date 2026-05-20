@@ -1857,7 +1857,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.podcasts_outlined, size: 52,
+                          Icon(Icons.podcasts_rounded, size: 52,
                               color: widget.cs.onSurfaceVariant),
                           const SizedBox(height: 16),
                           Text(
@@ -1938,7 +1938,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                       child: OutlinedButton.icon(
                         onPressed: widget.onShowAllDownloads,
-                        icon: const Icon(Icons.download_done, size: 18),
+                        icon: const Icon(Icons.download_done_rounded, size: 18),
                         label: Text(widget.l10n.showAllDownloads),
                       ),
                     ),
@@ -1949,7 +1949,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                       child: OutlinedButton.icon(
                         onPressed: _revealMarked,
-                        icon: const Icon(Icons.download, size: 18),
+                        icon: const Icon(Icons.download_rounded, size: 18),
                         label: Text(widget.l10n.showMarkedForDownload),
                       ),
                     ),
@@ -1984,7 +1984,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))],
               ),
-              child: Icon(Icons.north, color: cs.onPrimaryContainer, size: 22),
+              child: Icon(Icons.arrow_upward_rounded, color: cs.onPrimaryContainer, size: 22),
             ),
           ),
         ),
@@ -2186,7 +2186,7 @@ class _DiscoverListState extends State<_DiscoverList>
           autofocus: true,
           decoration: const InputDecoration(
             hintText: 'https://...',
-            prefixIcon: Icon(Icons.rss_feed),
+            prefixIcon: Icon(Icons.rss_feed_rounded),
           ),
           keyboardType: TextInputType.url,
           onSubmitted: (url) {
@@ -2282,7 +2282,7 @@ class _DiscoverListState extends State<_DiscoverList>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.rss_feed, size: 44, color: cs.primary),
+                Icon(Icons.rss_feed_rounded, size: 44, color: cs.primary),
                 const SizedBox(height: 14),
                 Text(l10n.subscribeToRss,
                     style: TextStyle(fontWeight: FontWeight.w600,
@@ -2327,7 +2327,7 @@ class _DiscoverListState extends State<_DiscoverList>
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Icon(Icons.rss_feed, color: cs.primary, size: 22),
+                Icon(Icons.rss_feed_rounded, color: cs.primary, size: 22),
                 const SizedBox(width: 12),
                 Text(l10n.addByRssUrl,
                     style: TextStyle(fontWeight: FontWeight.w600,
