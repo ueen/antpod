@@ -493,7 +493,9 @@ class _PlayerSheet extends StatelessWidget {
                       ? Padding(
                           padding: const EdgeInsets.all(16),
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: cs.onPrimary),
+                              strokeWidth: 2,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? cs.primary : Colors.white),
                         )
                       : IconButton(
                           onPressed: player.togglePlayPause,
