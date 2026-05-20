@@ -8,8 +8,9 @@
   <meta property="og:title" content="Open in AntPod" />
   <meta property="og:description" content="Open this podcast or episode in AntPod." />
   <meta property="og:image" content="https://antpod.eu/og-image.png" />
+  <meta property="og:url" content="https://antpod.eu/open" />
   <meta property="og:type" content="website" />
-  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://antpod.eu/og-image.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -295,9 +296,9 @@
         episode:        'Episode',
         loading:        'Loading…',
         failedToLoad:   'Failed to load',
-        notInstalledMsg:'AntPod doesn’t seem to be installed. ',
+        notInstalledMsg:'AntPod doesn’t seem to be installed. ',
         downloadLink:   'Download it here',
-        notInstalledSfx:' — it’s free and open source.',
+        notInstalledSfx:' — it’s free and open source.',
         openInAntpod:   'Open in AntPod',
         useDifferentApp:'Use a different app',
         openSource:     'Open source',
@@ -308,9 +309,9 @@
         episode:        'Episode',
         loading:        'Lädt…',
         failedToLoad:   'Laden fehlgeschlagen',
-        notInstalledMsg:'AntPod scheint nicht installiert zu sein. ',
+        notInstalledMsg:'AntPod scheint nicht installiert zu sein. ',
         downloadLink:   'Hier herunterladen',
-        notInstalledSfx:' — kostenlos und Open Source.',
+        notInstalledSfx:' — kostenlos und Open Source.',
         openInAntpod:   'In AntPod öffnen',
         useDifferentApp:'Andere App verwenden',
         openSource:     'Open Source',
@@ -321,9 +322,9 @@
         episode:        'Episodio',
         loading:        'Cargando…',
         failedToLoad:   'Error al cargar',
-        notInstalledMsg:'AntPod no parece estar instalado. ',
+        notInstalledMsg:'AntPod no parece estar instalado. ',
         downloadLink:   'Descárgalo aquí',
-        notInstalledSfx:' — es gratuito y de código abierto.',
+        notInstalledSfx:' — es gratuito y de código abierto.',
         openInAntpod:   'Abrir en AntPod',
         useDifferentApp:'Usar otra aplicación',
         openSource:     'Código abierto',
@@ -334,9 +335,9 @@
         episode:        'Épisode',
         loading:        'Chargement…',
         failedToLoad:   'Échec du chargement',
-        notInstalledMsg:'AntPod ne semble pas être installé. ',
+        notInstalledMsg:'AntPod ne semble pas être installé. ',
         downloadLink:   'Téléchargez-le ici',
-        notInstalledSfx:' — c’est gratuit et open source.',
+        notInstalledSfx:' — c’est gratuit et open source.',
         openInAntpod:   'Ouvrir dans AntPod',
         useDifferentApp:'Utiliser une autre application',
         openSource:     'Open source',
@@ -356,33 +357,26 @@
     const lang = detectLang();
     const t = i18n[lang];
     document.documentElement.lang = lang;
-    document.getElementById('meta-desc').content          = t.metaDesc;
-    document.getElementById('badge-label').textContent    = t.episode;
-    document.getElementById('ep-title').textContent       = t.loading;
+    document.getElementById('meta-desc').content              = t.metaDesc;
+    document.getElementById('badge-label').textContent        = t.episode;
+    document.getElementById('ep-title').textContent           = t.loading;
     document.getElementById('not-installed-msg').textContent  = t.notInstalledMsg;
     document.getElementById('not-installed-link').textContent = t.downloadLink;
     document.getElementById('not-installed-suffix').textContent = t.notInstalledSfx;
-    document.getElementById('btn-open-label').textContent  = t.openInAntpod;
-    document.getElementById('btn-other-label').textContent = t.useDifferentApp;
-    document.getElementById('footer-oss').textContent      = t.openSource;
-    document.getElementById('footer-dl').textContent       = t.download;
+    document.getElementById('btn-open-label').textContent     = t.openInAntpod;
+    document.getElementById('btn-other-label').textContent    = t.useDifferentApp;
+    document.getElementById('footer-oss').textContent         = t.openSource;
+    document.getElementById('footer-dl').textContent          = t.download;
 
     // ── URL params ────────────────────────────────────────────────────────────
-    const p = new URLSearchParams(location.search);
-    const feed    = p.get('feed')    || '';
-    const guid    = p.get('guid')    || '';
-    const title   = p.get('title')   || '';
-    const podcast = p.get('podcast') || '';
-    const cover   = p.get('cover')   || '';
-    const audio   = p.get('audio')   || '';
-    const podId   = p.get('id')      || '';
-    const showId    = p.get('showId')    || '';
-    const episodeId = p.get('episodeId') || '';
+    const p    = new URLSearchParams(location.search);
+    const feed = p.get('feed') || '';
+    const guid = p.get('guid') || '';
 
-    // ── PodcastIndex API fetch ────────────────────────────────────────────────
+    // ── PodcastIndex API ──────────────────────────────────────────────────────
     async function piHeaders() {
       const key = 'WVABNRFZXMR56UKS7488', secret = 'Yrb2fXKRtwFRkzcj4XNZBKmBhVbg8Uz5ZvMj5Prd';
-      const ts = Math.floor(Date.now() / 1000).toString();
+      const ts  = Math.floor(Date.now() / 1000).toString();
       const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(key + secret + ts));
       const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
       return { 'User-Agent': 'AntPod/1.0', 'X-Auth-Key': key, 'X-Auth-Date': ts, 'Authorization': hash };
@@ -391,75 +385,61 @@
     async function fetchFromPI() {
       try {
         const headers = await piHeaders();
-        if (episodeId) {
-          const r = await fetch('https://api.podcastindex.org/api/1.0/episodes/byid?id=' + episodeId, { headers });
-          const d = await r.json();
+        if (guid) {
+          const r = await fetch(
+            'https://api.podcastindex.org/api/1.0/episodes/byguid?guid=' +
+            encodeURIComponent(guid) + '&feedurl=' + encodeURIComponent(feed), { headers });
+          const d  = await r.json();
           const ep = d.episode || {};
-          render(ep.feedUrl || '', String(ep.id || ''), ep.title || '', ep.feedTitle || '',
-                 ep.image || ep.feedImage || '', ep.enclosureUrl || '', String(ep.feedId || ''));
+          render(ep.feedUrl || feed, ep.title || '', ep.feedTitle || '',
+                 ep.image || ep.feedImage || '', ep.enclosureUrl || '');
         } else {
-          const r = await fetch('https://api.podcastindex.org/api/1.0/podcasts/byfeedid?id=' + showId, { headers });
+          const r = await fetch(
+            'https://api.podcastindex.org/api/1.0/podcasts/byfeedurl?url=' +
+            encodeURIComponent(feed), { headers });
           const d = await r.json();
           const f = d.feed || {};
-          render(f.url || '', '', f.title || '', '', f.image || '', '', String(f.id || ''));
+          render(f.url || feed, f.title || '', '', f.image || '', '');
         }
       } catch (e) {
         document.getElementById('ep-title').textContent = t.failedToLoad;
       }
     }
 
-    function render(rFeed, rGuid, rTitle, rPodcast, rCover, rAudio, rPodId) {
-      const isEpisode = !!rGuid;
+    function render(rFeed, rTitle, rPodcast, rCover, rAudio) {
+      const isEpisode = !!guid;
 
-      // Page title
       document.title = (rTitle || (isEpisode ? t.episode : 'Podcast')) +
         (rPodcast ? ' · ' + rPodcast : '') + ' — AntPod';
 
-      // Cover
       if (rCover) {
         const img = document.getElementById('cover-img');
         img.src = rCover; img.alt = rTitle;
       }
 
-      // Badge + labels
       if (isEpisode) document.getElementById('badge').style.display = 'inline-flex';
       if (rPodcast)  document.getElementById('podcast-name').textContent = rPodcast;
       document.getElementById('ep-title').textContent = rTitle || (isEpisode ? t.episode : 'Podcast');
 
-      // Audio player
-      const audioEl = document.getElementById('audio-el');
       if (rAudio) {
         document.getElementById('player').style.display = 'block';
+        const audioEl = document.getElementById('audio-el');
         audioEl.src = rAudio;
         wirePlayer(audioEl);
       }
 
-      // pod.link
       if (rFeed) {
         function toBase64Url(str) {
-          return btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+          return btoa(unescape(encodeURIComponent(str)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
         }
-        document.getElementById('btn-podlink').href = 'https://pod.link/' + toBase64Url(rFeed);
-      }
-
-      // Feed URL row
-      if (rFeed) {
+        document.getElementById('btn-podlink').href =
+          'https://pod.link/' + toBase64Url(rFeed);
         document.getElementById('feed-url-text').innerHTML =
           '<a href="' + encodeURI(rFeed) + '" target="_blank" rel="noopener">' +
           rFeed.replace(/^https?:\/\//, '') + '</a>';
         document.getElementById('feed-row').style.display = 'flex';
       }
-
-      // Rewrite open-in-app button to use fetched params
-      const q = new URLSearchParams();
-      if (rFeed)    q.set('feed',    rFeed);
-      if (rGuid)    q.set('guid',    rGuid);
-      if (rTitle)   q.set('title',   rTitle);
-      if (rPodcast) q.set('podcast', rPodcast);
-      if (rCover)   q.set('cover',   rCover);
-      if (rAudio)   q.set('audio',   rAudio);
-      if (rPodId)   q.set('id',      rPodId);
-      window._openQuery = '?' + q.toString();
     }
 
     // ── Audio player wiring ───────────────────────────────────────────────────
@@ -491,8 +471,8 @@
       let seeking = false;
       function seekFromEvent(e) {
         const rect = track.getBoundingClientRect();
-        const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-        const pct = Math.max(0, Math.min(1, x / rect.width));
+        const x    = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const pct  = Math.max(0, Math.min(1, x / rect.width));
         if (audioEl.duration) audioEl.currentTime = pct * audioEl.duration;
         setProgress(pct * 100);
       }
@@ -504,13 +484,13 @@
       window.addEventListener('touchend',  () => seeking = false);
     }
 
-    // ── Init ──────────────────────────────────────────────────────────────────
+    // ── Init ─────────────────────────────────────────────────────────────────
     window._openQuery = location.search;
 
-    if (showId || episodeId) {
+    if (feed) {
       fetchFromPI();
     } else {
-      render(feed, guid, title, podcast, cover, audio, podId);
+      document.getElementById('ep-title').textContent = t.failedToLoad;
     }
 
     function togglePlay() {

@@ -224,48 +224,35 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _handleDeepLink(Uri uri) async {
     final feed = uri.queryParameters['feed'];
     if (feed == null || feed.isEmpty || !mounted) return;
-    // Capture context-dependent objects before any await gaps
     final db = context.read<AppDatabase>();
     final player = context.read<PlayerProvider>();
     final guid = uri.queryParameters['guid'];
 
-    // Episode deep link — open podcast first, load into player, then show sheet
+    // Episode deep link — fetch RSS to get full episode data, then play
     if (guid != null && guid.isNotEmpty) {
-      final audio = uri.queryParameters['audio'] ?? '';
-      if (audio.isEmpty) return;
       var episode = await db.getEpisode(guid);
       if (episode == null) {
-        await db.insertTempEpisode(EpisodesCompanion(
-          id: Value(guid),
-          podcastId: Value(feed),
-          podcastTitle: Value(uri.queryParameters['podcast'] ?? ''),
-          podcastImageUrl: Value(uri.queryParameters['cover'] ?? ''),
-          title: Value(uri.queryParameters['title'] ?? ''),
-          description: const Value(''),
-          audioUrl: Value(audio),
-          durationSeconds: Value(int.tryParse(uri.queryParameters['duration'] ?? '') ?? 0),
-          publishDate: Value(DateTime.now()),
-          isSubscribed: const Value(false),
-        ));
-        episode = await db.getEpisode(guid);
+        final data = await PodcastService.loadFeed(feed);
+        if (!mounted) return;
+        final companion = data?.episodes
+            .where((e) => e.id.value == guid)
+            .firstOrNull;
+        if (companion != null) {
+          await db.insertTempEpisode(companion.copyWith(isSubscribed: const Value(false)));
+          episode = await db.getEpisode(guid);
+        }
       }
       if (episode == null || !mounted) return;
 
-      // Navigate to podcast context so it's visible behind the player sheet
       final all = await db.getAllPodcasts();
       if (!mounted) return;
       final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
       if (subscribed != null) {
         _enterPodcastFilter(subscribed);
       } else {
-        // Run in background — loads full feed (including show notes) and updates db
         _openPreview(PodcastResult(
-          id: uri.queryParameters['id'] ?? feed,
-          title: uri.queryParameters['title'] ?? '',
-          author: '',
-          description: '',
-          imageUrl: uri.queryParameters['cover'] ?? '',
-          feedUrl: feed,
+          id: feed, title: episode.podcastTitle, author: '',
+          description: '', imageUrl: episode.podcastImageUrl, feedUrl: feed,
         ));
       }
 
@@ -283,12 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _enterPodcastFilter(subscribed);
     } else {
       _openPreview(PodcastResult(
-        id: uri.queryParameters['id'] ?? feed,
-        title: uri.queryParameters['title'] ?? '',
-        author: '',
-        description: '',
-        imageUrl: uri.queryParameters['cover'] ?? '',
-        feedUrl: feed,
+        id: feed, title: '', author: '', description: '', imageUrl: '', feedUrl: feed,
       ));
     }
   }
@@ -1758,6 +1740,8 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       return;
     }
 
+    final hadAnimation = removed + added > 0;
+
     for (int i = _displayed.length - 1; i >= 0; i--) {
       if (!nextIds.contains(_displayed[i].id)) {
         final ep = _displayed.removeAt(i);
@@ -1772,14 +1756,19 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         state.insertItem(i, duration: const Duration(milliseconds: 250));
       }
     }
-    setState(() {
-      final byId = {for (final e in next) e.id: e};
-      for (int i = 0; i < _displayed.length; i++) {
-        _displayed[i] = byId[_displayed[i].id] ?? _displayed[i];
-      }
-      _displayed.sort((a, b) =>
-          (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
-    });
+
+    // Update episode data outside setState when animations are running — avoids
+    // a layout rebuild that blips items below the animating-out tile.
+    // SliverAnimatedList rebuilds itself each animation frame and picks up the
+    // updated _displayed data without a second concurrent setState.
+    final byId = {for (final e in next) e.id: e};
+    for (int i = 0; i < _displayed.length; i++) {
+      _displayed[i] = byId[_displayed[i].id] ?? _displayed[i];
+    }
+    _displayed.sort((a, b) =>
+        (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
+
+    if (!hadAnimation) setState(() {});
   }
 
   Widget _animatedTile(Episode ep, Animation<double> anim) {
