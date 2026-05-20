@@ -1275,7 +1275,7 @@ class _Toolbar extends StatelessWidget {
           child: GestureDetector(
             onTap: onInfoPressed,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(6, 16, 20, 16),
+              padding: const EdgeInsets.fromLTRB(12, 16, 28, 16),
               child: Icon(Icons.info_rounded, size: 18, color: cs.onSurfaceVariant),
             ),
           ),
