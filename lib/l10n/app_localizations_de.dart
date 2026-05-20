@@ -68,6 +68,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get filterListened => 'Gehört';
 
   @override
+  String get filterPodcast => 'Podcast';
+
+  @override
   String get filterPodcasts => 'Podcasts';
 
   @override
@@ -138,10 +141,22 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get showAllDownloads => 'Alle Downloads anzeigen';
-  @override String get downloadNow => 'Jetzt herunterladen';
-  @override String get saveForWifi => 'Im WLAN herunterladen';
-  @override String get cancelWifiQueue => 'WLAN-Download abbrechen';
-  @override String get showMarkedForDownload => 'Für WLAN vorgemerkte anzeigen';
-  @override String get noWifi => 'Kein WLAN';
-  @override String get onMobileData => 'Du bist im Mobilfunknetz';
+
+  @override
+  String get downloadNow => 'Jetzt herunterladen';
+
+  @override
+  String get saveForWifi => 'Im WLAN herunterladen';
+
+  @override
+  String get cancelWifiQueue => 'WLAN-Download abbrechen';
+
+  @override
+  String get showMarkedForDownload => 'Für WLAN vorgemerkte anzeigen';
+
+  @override
+  String get noWifi => 'Kein WLAN';
+
+  @override
+  String get onMobileData => 'Du bist im Mobilfunknetz';
 }

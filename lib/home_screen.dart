@@ -60,6 +60,7 @@ class _SmoothScrollPhysics extends ClampingScrollPhysics {
 
 enum _SortMode { none, alphabetical, oldest, random }
 
+
 List<Episode> _sortEpisodes(List<Episode> eps, _SortMode sort, {bool inProgress = false}) {
   List<Episode> result;
   switch (sort) {
@@ -156,12 +157,19 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _filterPodcastId;
   Podcast? _filterPodcast;
 
+  // Set when search is opened from a podcast feed; null when opened from home.
+  String? _searchPodcastId;
+
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  Timer? _piSearchTimer;
 
   List<PodcastResult> _trending = [];
   List<PodcastResult> _recommended = [];
-  List<PodcastResult> _piSearchResults = [];
+  List<_UnifiedResult> _unifiedSearchResults = [];
+  int _searchOffset = 0;
+  bool _searchHasMore = true;
+  bool _loadingMoreSearch = false;
   bool _loadingTrending = false;
   bool _loadingRec = false;
   bool _searchingPI = false;
@@ -339,6 +347,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _piSearchTimer?.cancel();
     _linkSub?.cancel();
     _connectivitySub?.cancel();
     _searchCtrl.dispose();
@@ -388,7 +397,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _mode = _FeedMode.discover;
       _searchQuery = '';
       _searchCtrl.clear();
-      _piSearchResults = [];
+      
+      _unifiedSearchResults = [];
     });
     // Only reload if we have no data yet
     if (_trending.isEmpty && _recommended.isEmpty) _loadDiscover();
@@ -398,7 +408,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final q = _searchQuery;
     setState(() {
       _mode = _FeedMode.discover;
-      _piSearchResults = [];
+      
+      _unifiedSearchResults = [];
     });
     if (q.isNotEmpty) {
       _debouncedPISearch(q);
@@ -412,9 +423,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _mode = _FeedMode.feed;
       _filterPodcastId = null;
       _filterPodcast = null;
+      _searchPodcastId = null;
       _searchQuery = '';
       _searchCtrl.clear();
-      _piSearchResults = [];
+      _unifiedSearchResults = [];
       _filter = _filter.copyWith(newOnly: true, history: false, podcasts: false);
     });
   }
@@ -620,23 +632,110 @@ class _HomeScreenState extends State<HomeScreen> {
         _filter = _filter.copyWith(podcasts: false, newOnly: false);
       }
     });
-    if (_mode == _FeedMode.discover) _debouncedPISearch(v);
+    if (_mode == _FeedMode.discover) {
+      // Debounce API calls — fire only after 400 ms of silence
+      _piSearchTimer?.cancel();
+      _piSearchTimer = Timer(const Duration(milliseconds: 400), () => _debouncedPISearch(v));
+    }
   }
 
   // ── PodcastIndex search ───────────────────────────────────────────────────
 
+  // Merge PodcastIndex + Apple results; PodcastIndex wins on duplicate feed URLs.
+  List<PodcastResult> _mergeSearchResults(
+      List<PodcastResult> pi, List<PodcastResult> apple) {
+    final merged = <String, PodcastResult>{};
+    for (final p in pi) {
+      if (p.feedUrl.isNotEmpty) merged[p.feedUrl] = p;
+    }
+    for (final p in apple) {
+      if (p.feedUrl.isNotEmpty) merged.putIfAbsent(p.feedUrl, () => p);
+    }
+    return merged.values.toList();
+  }
+
+  // Interleave API-ordered podcasts and episodes 1-for-1.
+  // Both sources are already ranked by relevance by their respective APIs.
+  List<_UnifiedResult> _buildUnified(
+      List<PodcastResult> podcasts, List<Episode> episodes) {
+    final result = <_UnifiedResult>[];
+    final pi = podcasts.iterator;
+    final ei = episodes.iterator;
+    bool hasP = pi.moveNext();
+    bool hasE = ei.moveNext();
+    while (hasP || hasE) {
+      if (hasP) { result.add(_UnifiedResult(podcast: pi.current)); hasP = pi.moveNext(); }
+      if (hasE) { result.add(_UnifiedResult(episode: ei.current)); hasE = ei.moveNext(); }
+    }
+    return result;
+  }
+
+  String get _searchCountry {
+    final locale = Localizations.localeOf(context);
+    return (locale.countryCode ?? locale.languageCode).toLowerCase();
+  }
+
   Future<void> _debouncedPISearch(String q) async {
-    if (q.trim().length < 2) { setState(() => _piSearchResults = []); return; }
-    final lower = q.trim().toLowerCase();
-    if (lower.startsWith('http://') || lower.startsWith('https://')) {
-      setState(() { _piSearchResults = []; _searchingPI = false; });
+    final trimmed = q.trim();
+    if (trimmed.length < 2) {
+      setState(() {  _unifiedSearchResults = []; });
       return;
     }
-    setState(() => _searchingPI = true);
-    final results = await PodcastService.search(q.trim());
-    if (mounted && _searchQuery == q) {
-      setState(() { _piSearchResults = results; _searchingPI = false; });
+    final lower = trimmed.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+      setState(() {  _unifiedSearchResults = []; _searchingPI = false; });
+      return;
     }
+    setState(() { _searchingPI = true; _searchOffset = 0; _searchHasMore = true; });
+    final country = _searchCountry;
+    final db = context.read<AppDatabase>();
+    final fetched = await Future.wait([
+      PodcastService.search(trimmed),
+      PodcastService.appleSearch(trimmed, country: country),
+      PodcastService.appleEpisodeSearch(trimmed, country: country),
+    ]);
+    if (!mounted || _searchQuery != q) return;
+    final podcasts = _mergeSearchResults(
+        fetched[0] as List<PodcastResult>, fetched[1] as List<PodcastResult>);
+    final apiEpisodes = fetched[2] as List<Episode>;
+    // Persist API episodes so player/download infra can access them
+    final companions = apiEpisodes.map((e) => EpisodesCompanion(
+      id: Value(e.id), podcastId: Value(e.podcastId),
+      podcastTitle: Value(e.podcastTitle), podcastImageUrl: Value(e.podcastImageUrl),
+      title: Value(e.title), description: Value(e.description),
+      audioUrl: Value(e.audioUrl), durationSeconds: Value(e.durationSeconds),
+      publishDate: Value(e.publishDate), isSubscribed: const Value(false),
+    )).toList();
+    await db.insertTempEpisodes(companions);
+    if (!mounted || _searchQuery != q) return;
+    setState(() {
+      _unifiedSearchResults = _buildUnified(podcasts, apiEpisodes);
+      _searchHasMore = fetched[0].length == 20;
+      _searchingPI = false;
+    });
+  }
+
+  Future<void> _loadMorePISearch() async {
+    if (_loadingMoreSearch || !_searchHasMore) return;
+    final q = _searchQuery;
+    if (q.trim().length < 2) return;
+    setState(() { _loadingMoreSearch = true; _searchOffset += 20; });
+    final more = await PodcastService.search(q.trim(), offset: _searchOffset);
+    if (!mounted || _searchQuery != q) return;
+    if (more.isEmpty) {
+      setState(() { _searchHasMore = false; _loadingMoreSearch = false; });
+      return;
+    }
+    final existing = {for (final r in _unifiedSearchResults) if (r.podcast != null) r.podcast!.feedUrl};
+    final newPods = more
+        .where((p) => p.feedUrl.isNotEmpty && !existing.contains(p.feedUrl))
+        .map((p) => _UnifiedResult(podcast: p))
+        .toList();
+    setState(() {
+      _unifiedSearchResults = [..._unifiedSearchResults, ...newPods];
+      _searchHasMore = more.length == 20;
+      _loadingMoreSearch = false;
+    });
   }
 
   // ── Discover data ─────────────────────────────────────────────────────────
@@ -644,22 +743,43 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadDiscover() async {
     final db = context.read<AppDatabase>();
     final locale = Localizations.localeOf(context);
-    final langCode = locale.languageCode;
-    final lang = langCode == 'en' ? 'en' : '$langCode,en';
+    final country = (locale.countryCode ?? locale.languageCode).toLowerCase();
+    final lang = locale.languageCode == 'en' ? 'en' : '${locale.languageCode},en';
     setState(() { _loadingTrending = true; _loadingRec = true; _trendingError = null; });
-    try {
-      final t = await PodcastService.trending(max: 10, lang: lang);
-      if (mounted) setState(() { _trending = t; _loadingTrending = false; });
-    } catch (e) {
-      if (mounted) setState(() { _trendingError = e.toString(); _loadingTrending = false; });
+
+    // Fetch charts + subscriptions in parallel, reuse chart result for both tabs.
+    final parallel = await Future.wait([
+      PodcastService.appleCharts(country, limit: 20),
+      db.getAllPodcasts(),
+    ]);
+    if (!mounted) return;
+    var charts = parallel[0] as List<PodcastResult>;
+    final subs = parallel[1] as List<Podcast>;
+
+    if (charts.isEmpty) {
+      // Apple Charts unavailable — fall back to PI trending.
+      try {
+        charts = await PodcastService.trending(max: 20, lang: lang);
+      } catch (e) {
+        if (mounted) setState(() { _trendingError = e.toString(); _loadingTrending = false; _loadingRec = false; });
+        return;
+      }
     }
-    try {
-      final subs = await db.getAllPodcasts();
-      final r = await PodcastService.recommendations(subscribed: subs, max: 10, lang: lang);
-      if (mounted) setState(() { _recommended = r; _loadingRec = false; });
-    } catch (_) {
-      if (mounted) setState(() { _loadingRec = false; });
-    }
+    if (!mounted) return;
+
+    final subscribedUrls = subs.map((p) => p.feedUrl).toSet();
+    // Suggestions = same chart, subscribed podcasts filtered out.
+    final suggestions = charts
+        .where((p) => !subscribedUrls.contains(p.feedUrl))
+        .take(15)
+        .toList();
+
+    setState(() {
+      _trending = charts;
+      _recommended = suggestions;
+      _loadingTrending = false;
+      _loadingRec = false;
+    });
   }
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
@@ -714,23 +834,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _refresh(AppDatabase db) async {
     await db.cleanupStaleTempEpisodes();
     final pods = await db.getAllPodcasts();
-    // Load all feeds in parallel instead of sequentially
-    await Future.wait(pods.map((pod) async {
+    // Fetch all feeds in parallel, then write once — one DB write = one stream event.
+    final results = await Future.wait(pods.map((pod) async {
       final data = await PodcastService.loadFeed(pod.feedUrl);
-      if (data != null) {
-        final eps = data.episodes.map((e) => EpisodesCompanion(
-          id: e.id, podcastId: Value(pod.id),
-          podcastTitle: e.podcastTitle, podcastImageUrl: e.podcastImageUrl,
-          title: e.title, description: e.description, audioUrl: e.audioUrl,
-          durationSeconds: e.durationSeconds, publishDate: e.publishDate,
-          chaptersUrl: e.chaptersUrl,
-          isSubscribed: const Value(true),
-        )).toList();
-        await db.insertEpisodes(eps);
-      }
+      if (data == null) return <EpisodesCompanion>[];
+      return data.episodes.map((e) => EpisodesCompanion(
+        id: e.id, podcastId: Value(pod.id),
+        podcastTitle: e.podcastTitle, podcastImageUrl: e.podcastImageUrl,
+        title: e.title, description: e.description, audioUrl: e.audioUrl,
+        durationSeconds: e.durationSeconds, publishDate: e.publishDate,
+        chaptersUrl: e.chaptersUrl,
+        isSubscribed: const Value(true),
+      )).toList();
     }));
-    // Clean up interrupted downloads from previous sessions (once per startup),
-    // then trigger any queued WiFi downloads.
+    final all = results.expand((e) => e).toList();
+    if (all.isNotEmpty) await db.insertEpisodes(all);
     await _cleanupInterruptedDownloads();
     _downloadMarkedEpisodes();
   }
@@ -767,6 +885,9 @@ class _HomeScreenState extends State<HomeScreen> {
           case 'inprogress':
             _searchFilter = _searchFilter.copyWith(
                 inProgress: !_searchFilter.inProgress, podcasts: false);
+          case 'podcasts':
+            _searchFilter = _searchFilter.copyWith(
+                podcasts: !_searchFilter.podcasts);
         }
       });
       return;
@@ -882,14 +1003,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     onBack: _mode == _FeedMode.previewPodcast ? _exitPreview : _exitToFeed,
                     onSearchChanged: _onSearchChanged,
                     onClearSearch: () => setState(() {
-                      _searchQuery = ''; _searchCtrl.clear(); _piSearchResults = [];
+                      _searchQuery = ''; _searchCtrl.clear(); 
                     }),
-                    onSearchOpen: () => setState(() {
-                      _mode = _FeedMode.searchEpisodes;
-                      _searchQuery = ''; _searchCtrl.clear();
-                      _searchFilter = const _FilterState(newOnly: false);
-                      _searchFilterChipsVisible = false;
-                    }),
+                    onSearchOpen: () {
+                      final fromPodcast = _mode == _FeedMode.podcastFilter;
+                      setState(() {
+                        _mode = _FeedMode.searchEpisodes;
+                        _searchQuery = ''; _searchCtrl.clear();
+                        if (fromPodcast) {
+                          _searchPodcastId = _filterPodcastId;
+                          _searchFilter = const _FilterState(newOnly: false, podcasts: true);
+                          _searchFilterChipsVisible = true;
+                        } else {
+                          _searchPodcastId = null;
+                          _searchFilter = const _FilterState(newOnly: false);
+                          _searchFilterChipsVisible = false;
+                        }
+                      });
+                    },
                     onPlusPressed: _enterDiscover,
                     onFilterToggle: _toggleFilterChips,
                     onLogoTap: () => _showAbout(context),
@@ -925,7 +1056,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: _FilterChipsRow(
                       filter: _effectiveFilter, l10n: l10n, cs: cs,
                       onToggle: _onFilterToggle,
-                      showPodcastsChip: !_isSearchMode,
+                      showPodcastsChip: !_isSearchMode || _searchPodcastId != null,
+                      podcastsFirst: _searchPodcastId != null,
                     ),
                   ),
                 ),
@@ -1004,13 +1136,17 @@ class _HomeScreenState extends State<HomeScreen> {
         return _DiscoverList(
           searchQuery: _searchQuery,
           trending: _trending, recommended: _recommended,
-          piSearchResults: _piSearchResults,
+          unifiedSearchResults: _unifiedSearchResults,
           loadingTrending: _loadingTrending, loadingRec: _loadingRec,
           searchingPI: _searchingPI,
+          searchHasMore: _searchHasMore,
+          loadingMoreSearch: _loadingMoreSearch,
           trendingError: _trendingError,
           cs: cs, l10n: l10n,
           onPreview: _openPodcastResult,
           onRefresh: _loadDiscover,
+          onLoadMore: _loadMorePISearch,
+          onCoverTap: _openPodcastResult,
         );
 
       case _FeedMode.feed:
@@ -1024,6 +1160,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return _EpisodeFeed(
           db: db, cs: cs, l10n: l10n, filter: _effectiveFilter,
           searchQuery: _mode == _FeedMode.searchEpisodes ? _searchQuery : '',
+          podcastIdFilter: _isSearchMode ? _searchPodcastId : null,
           onCoverTap: _onCoverTap, onRefresh: () => _refresh(db),
           onSearchOnline: _mode == _FeedMode.searchEpisodes ? _searchOnline : null,
           onShowAllDownloads: _effectiveFilter.downloaded && !_isSearchMode
@@ -1082,7 +1219,7 @@ class _Toolbar extends StatelessWidget {
   Widget _searchRow() {
     return Row(
       children: [
-        IconButton(icon: const Icon(Icons.arrow_back), onPressed: onBack),
+        IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: onBack),
         Expanded(
           child: TextField(
             controller: searchCtrl, autofocus: true,
@@ -1096,7 +1233,7 @@ class _Toolbar extends StatelessWidget {
           ),
         ),
         if (searchCtrl.text.isNotEmpty)
-          IconButton(icon: const Icon(Icons.clear, size: 20), onPressed: onClearSearch),
+          IconButton(icon: const Icon(Icons.clear_rounded, size: 20), onPressed: onClearSearch),
         if (mode == _FeedMode.searchEpisodes)
           Stack(
             clipBehavior: Clip.none,
@@ -1139,7 +1276,7 @@ class _Toolbar extends StatelessWidget {
             onTap: onInfoPressed,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 16, 28, 16),
-              child: Icon(Icons.info, size: 18, color: cs.onSurfaceVariant),
+              child: Icon(Icons.info_rounded, size: 18, color: cs.onSurfaceVariant),
             ),
           ),
         ),
@@ -1161,11 +1298,11 @@ class _Toolbar extends StatelessWidget {
           ],
         ),
         IconButton(
-          icon: Icon(Icons.search, color: cs.onSurface),
+          icon: Icon(Icons.search_rounded, color: cs.onSurface),
           onPressed: onSearchOpen,
           tooltip: 'Search'),
         IconButton(
-          icon: Icon(Icons.add, color: cs.onSurface),
+          icon: Icon(Icons.add_rounded, color: cs.onSurface),
           onPressed: onPlusPressed,
           tooltip: 'Discover'),
       ],
@@ -1183,46 +1320,55 @@ class _FilterChipsRow extends StatelessWidget {
   final ColorScheme cs;
   final ValueChanged<String> onToggle;
   final bool showPodcastsChip;
+  final bool podcastsFirst;
 
   const _FilterChipsRow({
     required this.filter, required this.l10n,
     required this.cs, required this.onToggle,
     this.showPodcastsChip = true,
+    this.podcastsFirst = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final podcastsChip = _Chip(
+      label: podcastsFirst ? l10n.filterPodcast : l10n.filterPodcasts,
+      active: filter.podcasts, cs: cs,
+      icon: Icons.library_music_rounded,
+      onTap: () => onToggle('podcasts'),
+    );
     return SizedBox(
       height: 48,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         children: [
+          if (showPodcastsChip && podcastsFirst) ...[
+            podcastsChip,
+            const SizedBox(width: 8),
+          ],
           _Chip(label: l10n.filterNew,
               active: filter.newOnly && !filter.podcasts,
-              cs: cs, icon: Icons.headphones,
+              cs: cs, icon: Icons.headphones_rounded,
               onTap: () => onToggle('new')),
           const SizedBox(width: 8),
           _Chip(label: l10n.filterPlaying,
               active: filter.inProgress && !filter.podcasts,
-              cs: cs, icon: Icons.play_circle_outline,
+              cs: cs, icon: Icons.play_circle_rounded,
               onTap: () => onToggle('inprogress')),
           const SizedBox(width: 8),
           _Chip(label: l10n.filterDownloaded,
               active: filter.downloaded && !filter.podcasts,
-              cs: cs, icon: Icons.download_done,
+              cs: cs, icon: Icons.download_done_rounded,
               onTap: () => onToggle('dl')),
           const SizedBox(width: 8),
           _Chip(label: l10n.filterListened,
               active: filter.history && !filter.podcasts,
               cs: cs, icon: Icons.check_circle_outline,
               onTap: () => onToggle('history')),
-          if (showPodcastsChip) ...[
+          if (showPodcastsChip && !podcastsFirst) ...[
             const SizedBox(width: 8),
-            _Chip(label: l10n.filterPodcasts,
-                active: filter.podcasts, cs: cs,
-                icon: Icons.library_music_outlined,
-                onTap: () => onToggle('podcasts')),
+            podcastsChip,
           ],
           const SizedBox(width: 8),
           _Chip(label: l10n.filterAlphabetical,
@@ -1290,7 +1436,7 @@ class _Chip extends StatelessWidget {
                 color: active ? cs.onPrimary : cs.onSurfaceVariant)),
               if (active) ...[
                 const SizedBox(width: 6),
-                Icon(Icons.close, size: 14, color: cs.onPrimary),
+                Icon(Icons.close_rounded, size: 14, color: cs.onPrimary),
               ],
             ],
           ),
@@ -1327,7 +1473,7 @@ class _PodcastGrid extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.podcasts_outlined, size: 52, color: cs.onSurfaceVariant),
+                Icon(Icons.podcasts_rounded, size: 52, color: cs.onSurfaceVariant),
                 const SizedBox(height: 16),
                 Text(l10n.emptyPodcastsTitle,
                     style: TextStyle(
@@ -1386,10 +1532,10 @@ class _PodcastGridTile extends StatelessWidget {
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(
                     color: cs.surfaceContainerHighest,
-                    child: const Icon(Icons.podcasts, size: 36)),
+                    child: const Icon(Icons.podcasts_rounded, size: 36)),
                 errorWidget: (_, __, ___) => Container(
                     color: cs.surfaceContainerHighest,
-                    child: const Icon(Icons.podcasts, size: 36)),
+                    child: const Icon(Icons.podcasts_rounded, size: 36)),
               ),
             ),
           ),
@@ -1427,6 +1573,7 @@ class _EpisodeFeed extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback? onSearchOnline;
   final VoidCallback? onShowAllDownloads;
+  final String? podcastIdFilter;
 
   const _EpisodeFeed({
     required this.db, required this.cs,
@@ -1435,6 +1582,7 @@ class _EpisodeFeed extends StatefulWidget {
     this.searchQuery = '',
     this.onSearchOnline,
     this.onShowAllDownloads,
+    this.podcastIdFilter,
   });
 
   @override
@@ -1454,11 +1602,6 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   int _totalDownloadedCount = 0;
   final _scrollCtrl = ScrollController();
   bool _showScrollTop = false;
-  final _tileKeys = <String, GlobalKey<_LazyTileState>>{};
-
-  GlobalKey<_LazyTileState> _tileKey(String id) =>
-      _tileKeys.putIfAbsent(id, () => GlobalKey<_LazyTileState>());
-
   @override
   void initState() {
     super.initState();
@@ -1482,11 +1625,15 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     if (!widget.filter.downloaded && _showMarked) {
       _showMarked = false;
     }
-    // Stream source changes when search is toggled on/off or DB-level filters change
+    // Stream source changes when search is toggled on/off, podcast filter changes,
+    // or DB-level filters change
     final wasSearching = old.searchQuery.isNotEmpty;
     final isSearching = widget.searchQuery.isNotEmpty;
+    final wasPodcastScoped = old.filter.podcasts && old.podcastIdFilter != null;
+    final isPodcastScoped = widget.filter.podcasts && widget.podcastIdFilter != null;
     final streamChanged = wasSearching != isSearching ||
-        (!isSearching && (
+        wasPodcastScoped != isPodcastScoped ||
+        (!isSearching && !isPodcastScoped && (
           old.filter.history != widget.filter.history ||
           old.filter.newOnly != widget.filter.newOnly ||
           old.filter.downloaded != widget.filter.downloaded
@@ -1510,8 +1657,11 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   }
 
   Stream<List<Episode>> get _stream {
-    // Search mode: ignore all DB-level filters — return everything, filter in-app
-    if (widget.searchQuery.isNotEmpty) return widget.db.watchAllFeedEpisodes(downloadedOnly: false);
+    // Search mode or podcast-scoped search: fetch all, filter in-app
+    final isPodcastScoped = widget.filter.podcasts && widget.podcastIdFilter != null;
+    if (widget.searchQuery.isNotEmpty || isPodcastScoped) {
+      return widget.db.watchAllFeedEpisodes(downloadedOnly: false);
+    }
     // Show downloaded + marked episodes when user tapped "Show marked for download"
     if (_showMarked && widget.filter.downloaded) {
       return widget.db.watchDownloadedOrMarkedEpisodes();
@@ -1534,12 +1684,20 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 
   List<Episode> _applyFilters(List<Episode> raw) {
     var eps = raw;
-    if (widget.searchQuery.isNotEmpty) {
-      final q = widget.searchQuery.toLowerCase();
-      eps = eps.where((e) =>
-          e.title.toLowerCase().contains(q) ||
-          e.podcastTitle.toLowerCase().contains(q)).toList();
-      // Also apply any chip filters the user toggled while in search mode.
+    final isPodcastScoped = widget.filter.podcasts && widget.podcastIdFilter != null;
+    if (widget.searchQuery.isNotEmpty || isPodcastScoped) {
+      // Narrow to the specific podcast when opened from a podcast feed.
+      if (isPodcastScoped) {
+        eps = eps.where((e) => e.podcastId == widget.podcastIdFilter).toList();
+      }
+      // Narrow by text query.
+      if (widget.searchQuery.isNotEmpty) {
+        final q = widget.searchQuery.toLowerCase();
+        eps = eps.where((e) =>
+            e.title.toLowerCase().contains(q) ||
+            e.podcastTitle.toLowerCase().contains(q)).toList();
+      }
+      // Apply chip filters.
       if (widget.filter.history) {
         eps = eps.where((e) => e.isFinished).toList();
       } else if (widget.filter.newOnly) {
@@ -1587,16 +1745,12 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       return;
     }
 
-    int changes = 0;
-    for (final e in _displayed) {
-      if (!next.any((n) => n.id == e.id)) changes++;
-    }
-    for (final n in next) {
-      if (!_displayed.any((e) => e.id == n.id)) changes++;
-    }
+    final nextIds = {for (final e in next) e.id};
+    final displayedIds = {for (final e in _displayed) e.id};
+    final removed = _displayed.where((e) => !nextIds.contains(e.id)).length;
+    final added = next.where((e) => !displayedIds.contains(e.id)).length;
 
-    // Large batch: reset key so Flutter rebuilds the sliver fresh
-    if (changes > 8) {
+    if (removed + added > 8) {
       setState(() {
         _listKey = GlobalKey<SliverAnimatedListState>();
         _displayed = List.of(next);
@@ -1605,29 +1759,26 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     }
 
     for (int i = _displayed.length - 1; i >= 0; i--) {
-      if (!next.any((e) => e.id == _displayed[i].id)) {
-        final removed = _displayed.removeAt(i);
-        _tileKeys.remove(removed.id);
-        state.removeItem(i, (ctx, anim) => _exitTile(removed, anim),
+      if (!nextIds.contains(_displayed[i].id)) {
+        final ep = _displayed.removeAt(i);
+        state.removeItem(i, (ctx, anim) => _exitTile(ep, anim),
             duration: const Duration(milliseconds: 250));
       }
     }
+    final nextPos = {for (int i = 0; i < next.length; i++) next[i].id: i};
     for (int i = 0; i < next.length; i++) {
-      if (!_displayed.any((e) => e.id == next[i].id)) {
+      if (!displayedIds.contains(next[i].id)) {
         _displayed.insert(i, next[i]);
         state.insertItem(i, duration: const Duration(milliseconds: 250));
       }
     }
     setState(() {
+      final byId = {for (final e in next) e.id: e};
       for (int i = 0; i < _displayed.length; i++) {
-        _displayed[i] = next.firstWhere(
-            (e) => e.id == _displayed[i].id, orElse: () => _displayed[i]);
+        _displayed[i] = byId[_displayed[i].id] ?? _displayed[i];
       }
-      _displayed.sort((a, b) {
-        final ai = next.indexWhere((e) => e.id == a.id);
-        final bi = next.indexWhere((e) => e.id == b.id);
-        return ai.compareTo(bi);
-      });
+      _displayed.sort((a, b) =>
+          (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
     });
   }
 
@@ -1639,7 +1790,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         child: RepaintBoundary(
           child: Column(
             children: [
-              _LazyTile(key: _tileKey(ep.id), episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+              _LazyTile(key: ValueKey(ep.id), episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
               Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
             ],
           ),
@@ -1727,7 +1878,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                             const SizedBox(height: 20),
                             FilledButton.icon(
                               onPressed: widget.onSearchOnline,
-                              icon: const Icon(Icons.search, size: 18),
+                              icon: const Icon(Icons.search_rounded, size: 18),
                               label: Text(widget.l10n.searchOnline),
                             ),
                           ],
@@ -1735,7 +1886,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                             const SizedBox(height: 20),
                             OutlinedButton.icon(
                               onPressed: widget.onShowAllDownloads,
-                              icon: const Icon(Icons.download_done, size: 18),
+                              icon: const Icon(Icons.download_done_rounded, size: 18),
                               label: Text(widget.l10n.showAllDownloads),
                             ),
                           ],
@@ -1743,7 +1894,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                             const SizedBox(height: 12),
                             OutlinedButton.icon(
                               onPressed: _revealMarked,
-                              icon: const Icon(Icons.download, size: 18),
+                              icon: const Icon(Icons.download_rounded, size: 18),
                               label: Text(widget.l10n.showMarkedForDownload),
                             ),
                           ],
@@ -1953,25 +2104,40 @@ class _PodcastFeed extends StatelessWidget {
 // Discover list
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Unified search result (podcast or episode, pre-scored for interleaving)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _UnifiedResult {
+  final PodcastResult? podcast;
+  final Episode? episode;
+  const _UnifiedResult({this.podcast, this.episode});
+}
+
 class _DiscoverList extends StatefulWidget {
   final String searchQuery;
   final List<PodcastResult> trending;
   final List<PodcastResult> recommended;
-  final List<PodcastResult> piSearchResults;
+  final List<_UnifiedResult> unifiedSearchResults;
   final bool loadingTrending, loadingRec, searchingPI;
+  final bool searchHasMore, loadingMoreSearch;
   final String? trendingError;
   final ColorScheme cs;
   final AppLocalizations l10n;
   final void Function(PodcastResult) onPreview;
   final Future<void> Function() onRefresh;
+  final Future<void> Function() onLoadMore;
+  final void Function(PodcastResult) onCoverTap;
 
   const _DiscoverList({
     required this.searchQuery, required this.trending, required this.recommended,
-    required this.piSearchResults, required this.loadingTrending,
-    required this.loadingRec, required this.searchingPI,
+    required this.unifiedSearchResults,
+    required this.loadingTrending, required this.loadingRec, required this.searchingPI,
+    required this.searchHasMore, required this.loadingMoreSearch,
     this.trendingError,
     required this.cs, required this.l10n,
     required this.onPreview, required this.onRefresh,
+    required this.onLoadMore, required this.onCoverTap,
   });
 
   @override
@@ -1981,16 +2147,26 @@ class _DiscoverList extends StatefulWidget {
 class _DiscoverListState extends State<_DiscoverList>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
+  final _searchScrollCtrl = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
+    _searchScrollCtrl.addListener(_onSearchScroll);
+  }
+
+  void _onSearchScroll() {
+    if (_searchScrollCtrl.position.pixels >=
+        _searchScrollCtrl.position.maxScrollExtent - 300) {
+      widget.onLoadMore();
+    }
   }
 
   @override
   void dispose() {
     _tabCtrl.dispose();
+    _searchScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -2042,15 +2218,54 @@ class _DiscoverListState extends State<_DiscoverList>
     );
   }
 
-  Widget _podcastList(List<PodcastResult> results) => ListView.builder(
+  Widget _podcastList(List<PodcastResult> results, {bool showRank = true}) =>
+      ListView.builder(
         padding: const EdgeInsets.only(bottom: 88),
         itemCount: results.length,
         itemBuilder: (_, i) => _DiscoverPodcastTile(
-          result: results[i], rank: i + 1,
+          result: results[i], rank: i + 1, showRank: showRank,
           cs: widget.cs, l10n: widget.l10n,
           onPreview: widget.onPreview,
         ),
       );
+
+  Widget _unifiedList(List<_UnifiedResult> results) {
+    final itemCount = results.length + (widget.loadingMoreSearch ? 1 : 0);
+    return ListView.builder(
+      controller: _searchScrollCtrl,
+      padding: const EdgeInsets.only(bottom: 88),
+      itemCount: itemCount,
+      itemBuilder: (_, i) {
+        if (i >= results.length) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final r = results[i];
+        if (r.podcast != null) {
+          return _DiscoverPodcastTile(
+            result: r.podcast!, rank: i + 1, showRank: false,
+            cs: widget.cs, l10n: widget.l10n,
+            onPreview: widget.onPreview,
+          );
+        }
+        final ep = r.episode!;
+        return Column(children: [
+          EpisodeTile(
+            episode: ep,
+            isSubscribedContext: false,
+            onCoverTap: () => widget.onCoverTap(PodcastResult(
+              id: ep.podcastId, title: ep.podcastTitle, author: '',
+              description: '', imageUrl: ep.podcastImageUrl, feedUrl: ep.podcastId,
+            )),
+          ),
+          Divider(height: 1,
+              color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
+        ]);
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2083,7 +2298,7 @@ class _DiscoverListState extends State<_DiscoverList>
                     id: url, title: '', author: '', description: '',
                     imageUrl: '', feedUrl: url,
                   )),
-                  icon: const Icon(Icons.add, size: 18),
+                  icon: const Icon(Icons.add_rounded, size: 18),
                   label: Text(l10n.openFeed),
                 ),
               ],
@@ -2096,10 +2311,10 @@ class _DiscoverListState extends State<_DiscoverList>
         duration: const Duration(milliseconds: 220),
         child: widget.searchingPI
             ? const Center(child: CircularProgressIndicator())
-            : widget.piSearchResults.isEmpty
+            : widget.unifiedSearchResults.isEmpty
                 ? Center(child: Text(l10n.searchNoResults,
                       style: TextStyle(color: cs.onSurfaceVariant)))
-                : _podcastList(widget.piSearchResults),
+                : _unifiedList(widget.unifiedSearchResults),
       );
     }
 
@@ -2118,7 +2333,7 @@ class _DiscoverListState extends State<_DiscoverList>
                     style: TextStyle(fontWeight: FontWeight.w600,
                         fontSize: 14, color: cs.onSurface)),
                 const Spacer(),
-                Icon(Icons.chevron_right, color: cs.onSurfaceVariant, size: 20),
+                Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant, size: 20),
               ],
             ),
           ),
@@ -2148,7 +2363,7 @@ class _DiscoverListState extends State<_DiscoverList>
                             Padding(
                               padding: const EdgeInsets.all(24),
                               child: Column(children: [
-                                Icon(Icons.wifi_off_outlined,
+                                Icon(Icons.wifi_off_rounded,
                                     size: 40, color: cs.onSurfaceVariant),
                                 const SizedBox(height: 12),
                                 Text('Could not load trending podcasts',
@@ -2192,13 +2407,14 @@ class _DiscoverListState extends State<_DiscoverList>
 class _DiscoverPodcastTile extends StatelessWidget {
   final PodcastResult result;
   final int rank;
+  final bool showRank;
   final ColorScheme cs;
   final AppLocalizations l10n;
   final void Function(PodcastResult) onPreview;
 
   const _DiscoverPodcastTile({
     required this.result, required this.rank, required this.cs,
-    required this.l10n, required this.onPreview,
+    required this.l10n, required this.onPreview, this.showRank = true,
   });
 
   @override
@@ -2212,21 +2428,23 @@ class _DiscoverPodcastTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            SizedBox(
-              width: 28,
-              child: Text('$rank',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w700, color: cs.primary)),
-            ),
-            const SizedBox(width: 8),
+            if (showRank) ...[
+              SizedBox(
+                width: 28,
+                child: Text('$rank',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700, color: cs.primary)),
+              ),
+              const SizedBox(width: 8),
+            ],
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: CachedNetworkImage(
                 imageUrl: r.imageUrl, width: 56, height: 56, fit: BoxFit.cover,
                 errorWidget: (_, __, ___) => Container(
                   width: 56, height: 56, color: cs.surfaceContainerHighest,
-                  child: const Icon(Icons.podcasts, size: 28)),
+                  child: const Icon(Icons.podcasts_rounded, size: 28)),
               ),
             ),
             const SizedBox(width: 12),
@@ -2562,9 +2780,45 @@ class _AntPainter extends CustomPainter {
 // Lazy tile — skeleton on first frame, real EpisodeTile on second
 // ─────────────────────────────────────────────────────────────────────────────
 
+class _SkeletonTile extends StatelessWidget {
+  const _SkeletonTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final shimmer = cs.onSurface.withValues(alpha: 0.08);
+    return SizedBox(
+      height: 72,
+      child: Row(
+        children: [
+          const SizedBox(width: 16),
+          Container(width: 56, height: 56, decoration: BoxDecoration(
+            color: shimmer, borderRadius: BorderRadius.circular(6))),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(height: 13, width: double.infinity, decoration: BoxDecoration(
+                  color: shimmer, borderRadius: BorderRadius.circular(4))),
+                const SizedBox(height: 6),
+                Container(height: 11, width: 160, decoration: BoxDecoration(
+                  color: shimmer, borderRadius: BorderRadius.circular(4))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
+    );
+  }
+}
+
 class _LazyTile extends StatefulWidget {
   final Episode episode;
   final VoidCallback onCoverTap;
+
   const _LazyTile({super.key, required this.episode, required this.onCoverTap});
 
   @override
@@ -2577,55 +2831,16 @@ class _LazyTileState extends State<_LazyTile> {
   @override
   void initState() {
     super.initState();
+    // Defer the expensive EpisodeTile build by one frame so the scroll frame
+    // stays lightweight (just a skeleton placeholder).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _ready = true);
     });
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (!_ready) return _SkeletonTile(cs: Theme.of(context).colorScheme);
-    return EpisodeTile(episode: widget.episode, onCoverTap: widget.onCoverTap);
-  }
+  Widget build(BuildContext context) =>
+      _ready ? EpisodeTile(episode: widget.episode, onCoverTap: widget.onCoverTap)
+             : const _SkeletonTile();
 }
 
-class _SkeletonTile extends StatelessWidget {
-  final ColorScheme cs;
-  const _SkeletonTile({required this.cs});
-
-  @override
-  Widget build(BuildContext context) {
-    final fill = cs.surfaceContainerHighest;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: SizedBox(
-        height: 68,
-        child: Row(
-          children: [
-            Container(
-              width: 60, height: 60,
-              decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(8)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(height: 13, decoration: BoxDecoration(
-                      color: fill, borderRadius: BorderRadius.circular(3))),
-                  const SizedBox(height: 7),
-                  Container(height: 11, width: 150, decoration: BoxDecoration(
-                      color: fill, borderRadius: BorderRadius.circular(3))),
-                ],
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(width: 44, height: 44,
-                decoration: BoxDecoration(color: fill, shape: BoxShape.circle)),
-          ],
-        ),
-      ),
-    );
-  }
-}

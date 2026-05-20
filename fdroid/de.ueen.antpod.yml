@@ -12,11 +12,13 @@ Description: |-
     The anthill for your podcasts — every episode carried home to the hill
     tirelessly. A nimble scout hatched from the spirit of the grand old AntennaPod.
 
-    Browse and subscribe to any podcast via the PodcastIndex catalogue. Your episode
-    feed spans all subscriptions and can be filtered by podcast, downloaded, or
-    played status. Audio keeps playing in the background with lock screen and
-    notification controls. Save episodes for offline listening, discover trending
-    and recommended shows, and enjoy full Material You theming on Android 12+.
+    Browse and subscribe to any podcast. Discover search pulls from both the Apple
+    Podcasts catalogue and PodcastIndex — results include podcasts and individual
+    episodes side by side. Your feed spans all subscriptions and can be filtered by
+    podcast, downloaded, or played status. Audio keeps playing in the background with
+    lock screen and notification controls. Save episodes for offline listening, browse
+    Apple Charts and personalised recommendations, and enjoy full Material You
+    theming on Android 12+.
 
     No ads. No tracking. No accounts. Just podcasts.
 
@@ -24,6 +26,19 @@ RepoType: git
 Repo: https://github.com/ueen/antpod
 
 Builds:
+  - versionName: 0.9.7
+    versionCode: 15
+    commit: v0.9.7
+    subdir: .
+    submodules: true
+    sudo:
+      - apt-get update
+      - apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+    init: flutter pub get
+    build: flutter build apk --release
+    output: build/app/outputs/flutter-apk/app-release.apk
+    ndk: 27.0.12077973
+
   - versionName: 0.8.4
     versionCode: 3
     commit: v0.8.4

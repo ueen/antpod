@@ -60,6 +60,19 @@ class PodcastResult {
     this.categories = const [],
   });
 
+  factory PodcastResult.fromAppleJson(Map<String, dynamic> j) {
+    final genre = j['primaryGenreName'] as String?;
+    return PodcastResult(
+      id: j['collectionId']?.toString() ?? '',
+      title: j['collectionName'] ?? '',
+      author: j['artistName'] ?? '',
+      description: '',
+      imageUrl: j['artworkUrl600'] ?? j['artworkUrl100'] ?? '',
+      feedUrl: j['feedUrl'] ?? '',
+      categories: genre != null ? [genre] : [],
+    );
+  }
+
   factory PodcastResult.fromJson(Map<String, dynamic> j) {
     // categories: Map<String,String> {"1":"Arts","2":"Music"} oder null
     final cats = <String>[];
@@ -93,16 +106,122 @@ class PodcastResult {
 class PodcastService {
   // ── Suche ──────────────────────────────────────────────────────────────────
 
-  static Future<List<PodcastResult>> search(String query) async {
+  static Future<List<PodcastResult>> search(String query, {int offset = 0}) async {
     try {
       final uri = Uri.parse('$_baseUrl/search/byterm')
-          .replace(queryParameters: {'q': query, 'max': '20'});
+          .replace(queryParameters: {'q': query, 'max': '20', 'offset': '$offset'});
       final res = await http.get(uri, headers: _authHeaders());
       if (res.statusCode != 200) return [];
       final json = jsonDecode(res.body) as Map<String, dynamic>;
       final feeds = json['feeds'] as List? ?? [];
       return feeds
           .map((f) => PodcastResult.fromJson(f as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<Episode>> appleEpisodeSearch(String query, {String country = 'us'}) async {
+    try {
+      final uri = Uri.parse('https://itunes.apple.com/search').replace(
+        queryParameters: {'term': query, 'media': 'podcast', 'entity': 'podcastEpisode',
+                          'limit': '10', 'country': country},
+      );
+      final res = await http.get(uri);
+      if (res.statusCode != 200) return [];
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      final results = json['results'] as List? ?? [];
+      final episodes = <Episode>[];
+      for (final r in results) {
+        final audioUrl = r['previewUrl'] as String? ?? '';
+        final feedUrl  = r['feedUrl']    as String? ?? '';
+        if (audioUrl.isEmpty || feedUrl.isEmpty) continue;
+        final millis = r['trackTimeMillis'] as int? ?? 0;
+        DateTime publishDate;
+        try {
+          publishDate = DateTime.parse(r['releaseDate'] as String? ?? '');
+        } catch (_) {
+          publishDate = DateTime.now();
+        }
+        episodes.add(Episode(
+          id:                    '${r['trackId']}',
+          podcastId:             feedUrl,
+          podcastTitle:          r['collectionName'] ?? '',
+          podcastImageUrl:       r['artworkUrl600'] ?? r['artworkUrl160'] ?? '',
+          title:                 r['trackName'] ?? '',
+          description:           r['description'] ?? r['shortDescription'] ?? '',
+          audioUrl:              audioUrl,
+          durationSeconds:       millis ~/ 1000,
+          publishDate:           publishDate,
+          isDownloaded:          false,
+          localPath:             null,
+          downloadTaskId:        null,
+          lastPositionMs:        0,
+          playbackPositionSeconds: 0,
+          isFinished:            false,
+          isSubscribed:          false,
+          chaptersUrl:           null,
+          lastPlayed:            null,
+          markedForDownload:     false,
+        ));
+      }
+      return episodes;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Apple Charts top podcasts for a country, resolved to feedUrl via iTunes lookup.
+  static Future<List<PodcastResult>> appleCharts(String country, {int limit = 20}) async {
+    try {
+      // Use the canonical URL directly (the marketing tools URL issues a 301 redirect)
+      final chartsUri = Uri.parse(
+        'https://rss.marketingtools.apple.com/api/v2/${country.toLowerCase()}/podcasts/top/$limit/podcasts.json',
+      );
+      final chartsRes = await http.get(chartsUri);
+      if (chartsRes.statusCode != 200) return [];
+      final feed = (jsonDecode(chartsRes.body) as Map<String, dynamic>)['feed']
+          as Map<String, dynamic>?;
+      final results = feed?['results'] as List? ?? [];
+      if (results.isEmpty) return [];
+      final ids = results.map((r) => r['id'].toString()).join(',');
+      final lookupUri = Uri.parse('https://itunes.apple.com/lookup')
+          .replace(queryParameters: {'id': ids, 'entity': 'podcast'});
+      final lookupRes = await http.get(lookupUri);
+      if (lookupRes.statusCode != 200) return [];
+      final lookupResults =
+          (jsonDecode(lookupRes.body) as Map<String, dynamic>)['results'] as List? ?? [];
+      // Preserve chart order: build a map from id → lookup result, then re-order.
+      final byId = <String, Map<String, dynamic>>{};
+      for (final r in lookupResults) {
+        final id = r['collectionId']?.toString() ?? '';
+        if (id.isNotEmpty) byId[id] = r as Map<String, dynamic>;
+      }
+      return results
+          .map((r) => byId[r['id'].toString()])
+          .whereType<Map<String, dynamic>>()
+          .map(PodcastResult.fromAppleJson)
+          .where((p) => p.feedUrl.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<PodcastResult>> appleSearch(String query, {String country = 'us'}) async {
+    try {
+      final uri = Uri.parse('https://itunes.apple.com/search').replace(
+        queryParameters: {'term': query, 'media': 'podcast', 'entity': 'podcast',
+                          'limit': '20', 'country': country},
+      );
+      final res = await http.get(uri);
+      if (res.statusCode != 200) return [];
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      final results = json['results'] as List? ?? [];
+      return results
+          .map((r) => PodcastResult.fromAppleJson(r as Map<String, dynamic>))
+          .where((p) => p.feedUrl.isNotEmpty)
           .toList();
     } catch (_) {
       return [];
@@ -119,10 +238,11 @@ class PodcastService {
     String lang = 'en',
     String? cat,
   }) async {
+    final since = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 2592000;
     final params = <String, String>{
       'max': '${max * 2}',
       'lang': lang,
-      'since': '-2592000', // 30-day window
+      'since': '$since', // 30-day window
     };
     if (cat != null && cat.isNotEmpty) params['cat'] = cat;
 

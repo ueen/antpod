@@ -154,7 +154,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                         width: 44, height: 44, fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => Container(
                           color: cs.onInverseSurface,
-                          child: const Icon(Icons.podcasts),
+                          child: const Icon(Icons.podcasts_rounded),
                         ),
                       ),
                     ),
@@ -195,7 +195,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           : IconButton(
                               onPressed: () => context.read<PlayerProvider>().togglePlayPause(),
                               icon: Icon(
-                                isPlaying ? Icons.pause : Icons.play_arrow,
+                                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                 color: cs.onInverseSurface, size: 28),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
@@ -251,14 +251,17 @@ class _MiniProgress extends StatelessWidget {
 // Shared skip-icon helpers (used by mini player and bottom sheet)
 
 IconData _skipRewindIcon(int s) {
-  if (s <= 5) return Icons.replay_5;
-  if (s <= 10) return Icons.replay_10;
-  return Icons.replay_30;
+  if (s == 5)  return Icons.replay_5;
+  if (s == 10) return Icons.replay_10;
+  if (s == 30) return Icons.replay_30;
+  return Icons.replay;
 }
 
 IconData _skipForwardIcon(int s) {
-  if (s <= 10) return Icons.forward_10;
-  return Icons.forward_30;
+  if (s == 5)  return Icons.forward_5;
+  if (s == 10) return Icons.forward_10;
+  if (s == 30) return Icons.forward_30;
+  return Icons.refresh;
 }
 
 Future<void> showPlayerSheet(BuildContext context,
@@ -488,7 +491,7 @@ class _PlayerSheet extends StatelessWidget {
                       : IconButton(
                           onPressed: player.togglePlayPause,
                           icon: Icon(
-                            player.isPlaying ? Icons.pause : Icons.play_arrow,
+                            player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                             color: cs.onPrimary, size: 34,
                           ),
                         ),
@@ -508,7 +511,7 @@ class _PlayerSheet extends StatelessWidget {
                 // Share
                 IconButton(
                   onPressed: () => _share(context, ep),
-                  icon: Icon(Icons.share_outlined,
+                  icon: Icon(Icons.share_rounded,
                       size: 22, color: cs.secondary),
                   tooltip: l10n.shareEpisode,
                   padding: EdgeInsets.zero,

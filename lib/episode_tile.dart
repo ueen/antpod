@@ -222,23 +222,19 @@ class EpisodeTile extends StatelessWidget {
     final isLoading = context.select<PlayerProvider, bool>(
         (p) => p.currentEpisode?.id == episode.id && p.isLoading && episode.localPath == null);
 
-    final downloads = context.watch<DownloadProvider>();
+    // select() instead of watch(): only rebuilds when THIS episode's download progress changes,
+    // not on every progress tick from any other episode's download.
+    final dlProgress = context.select<DownloadProvider, double?>(
+        (d) => d.progressForTask(episode.downloadTaskId));
     final db = context.read<AppDatabase>();
     final l10n = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
     final dimmed = episode.isFinished && !isCurrent;
     final opacity = dimmed ? _kFinishedOpacity : 1.0;
 
-    final dlProgress = downloads.progressForTask(episode.downloadTaskId);
-    // Only show a ring when actively tracked. Interrupted downloads (taskId in DB
-    // but no live progress) correctly show no ring; the drain animation in
-    // _ActionAreaState covers the brief gap between 100 % progress and isDownloaded.
     final ringProgress = episode.isDownloaded ? 1.0 : dlProgress;
-
     final activeTaskId = episode.downloadTaskId;
-    final isDownloading = activeTaskId != null &&
-        downloads.progressForTask(activeTaskId) != null;
-
+    final isDownloading = activeTaskId != null && dlProgress != null;
     final isMarked = episode.markedForDownload;
 
     return _StickySwipeable(
@@ -254,6 +250,7 @@ class EpisodeTile extends StatelessWidget {
         }
       },
       onSwipeEnd: () async {
+        final downloads = context.read<DownloadProvider>();
         if (isDownloading) {
           await downloads.cancelDownload(activeTaskId, episode.id);
         } else if (episode.isDownloaded) {
@@ -267,7 +264,7 @@ class EpisodeTile extends StatelessWidget {
       },
       child: GestureDetector(
         onLongPress: () => _showContextMenu(context, db, l10n,
-            isDownloading: isDownloading, downloads: downloads),
+            isDownloading: isDownloading, downloads: context.read<DownloadProvider>()),
         child: InkWell(
           onTap: () => context.read<PlayerProvider>().play(episode),
           child: AnimatedContainer(
@@ -489,8 +486,8 @@ class _DownloadSwipeBackground extends StatelessWidget {
     final bg = isDelete ? cs.error : cs.primary;
     final fg = isDelete ? cs.onError : cs.onPrimary;
     final icon = (isDownloading || isMarked)
-        ? Icons.cancel_outlined
-        : (episode.isDownloaded ? Icons.delete_outline : Icons.download);
+        ? Icons.cancel_rounded
+        : (episode.isDownloaded ? Icons.delete_rounded : Icons.download_rounded);
     final label = (isDownloading || isMarked)
         ? l10n.cancel
         : (episode.isDownloaded ? l10n.deleteDownload : l10n.downloading);
@@ -519,7 +516,7 @@ class _CoverPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: 60, height: 60, color: cs.surfaceContainerHighest,
-    child: const Icon(Icons.podcasts, size: 28));
+    child: const Icon(Icons.podcasts_rounded, size: 28));
 }
 
 // ─── Episode metadata ─────────────────────────────────────────────────────────
@@ -563,16 +560,16 @@ class _EpisodeMetadata extends StatelessWidget {
             if (episode.isFinished)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.check_circle, size: 12,
+                child: Icon(Icons.check_circle_rounded, size: 12,
                     color: cs.onSurfaceVariant))
             else if (episode.isDownloaded)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.download_done, size: 12, color: cs.primary))
+                child: Icon(Icons.download_done_rounded, size: 12, color: cs.primary))
             else if (episode.markedForDownload)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.download, size: 12, color: cs.primary)),
+                child: Icon(Icons.download_rounded, size: 12, color: cs.primary)),
             Text(
               DateFormat('d. MMM yyyy',
                       Localizations.localeOf(context).toString())
@@ -819,7 +816,7 @@ class _ActionAreaState extends State<_ActionArea>
                           strokeWidth: 2, color: widget.cs.primary))
                   else
                     Icon(
-                      widget.isPlaying ? Icons.pause : Icons.play_arrow,
+                      widget.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                       size: 22,
                       color: widget.isCurrent ? widget.cs.primary : widget.cs.onSurface,
                     ),
@@ -929,16 +926,16 @@ class _EpisodeContextMenu extends StatelessWidget {
           if (onMarkUnplayed != null)
             _MenuItem(icon: Icons.mark_email_unread_outlined, label: l10n.markUnplayed, cs: cs, onTap: onMarkUnplayed!),
           if (onDownload != null)
-            _MenuItem(icon: Icons.download_outlined, label: l10n.downloading, cs: cs, onTap: onDownload!),
+            _MenuItem(icon: Icons.download_rounded, label: l10n.downloading, cs: cs, onTap: onDownload!),
           if (onCancelWifiQueue != null)
             _MenuItem(icon: Icons.wifi_off_rounded, label: l10n.cancelWifiQueue, cs: cs, color: cs.error, onTap: onCancelWifiQueue!),
-          _MenuItem(icon: Icons.share_outlined, label: l10n.shareEpisode, cs: cs, onTap: onShare),
+          _MenuItem(icon: Icons.share_rounded, label: l10n.shareEpisode, cs: cs, onTap: onShare),
           if (onExportFile != null)
             _MenuItem(icon: Icons.save_alt_outlined, label: l10n.exportFile, cs: cs, onTap: onExportFile!),
           if (onDeleteDownload != null)
-            _MenuItem(icon: Icons.delete_outline, label: l10n.deleteDownload, cs: cs, color: cs.error, onTap: onDeleteDownload!),
+            _MenuItem(icon: Icons.delete_rounded, label: l10n.deleteDownload, cs: cs, color: cs.error, onTap: onDeleteDownload!),
           if (onRemoveEpisode != null)
-            _MenuItem(icon: Icons.remove_circle_outline, label: l10n.removeEpisode, cs: cs, color: cs.error, onTap: onRemoveEpisode!),
+            _MenuItem(icon: Icons.remove_circle_rounded, label: l10n.removeEpisode, cs: cs, color: cs.error, onTap: onRemoveEpisode!),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
         ],
       ),

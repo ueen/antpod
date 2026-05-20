@@ -213,6 +213,12 @@ abstract class AppLocalizations {
   /// **'Listened'**
   String get filterListened;
 
+  /// No description provided for @filterPodcast.
+  ///
+  /// In en, this message translates to:
+  /// **'Podcast'**
+  String get filterPodcast;
+
   /// No description provided for @filterPodcasts.
   ///
   /// In en, this message translates to:
@@ -357,11 +363,40 @@ abstract class AppLocalizations {
   /// **'Show all downloads'**
   String get showAllDownloads;
 
+  /// No description provided for @downloadNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Download now'**
   String get downloadNow;
+
+  /// No description provided for @saveForWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'Save for WiFi'**
   String get saveForWifi;
+
+  /// No description provided for @cancelWifiQueue.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel WiFi queue'**
   String get cancelWifiQueue;
+
+  /// No description provided for @showMarkedForDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Show marked for download'**
   String get showMarkedForDownload;
+
+  /// No description provided for @noWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'No WiFi'**
   String get noWifi;
+
+  /// No description provided for @onMobileData.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re on mobile data'**
   String get onMobileData;
 }
 

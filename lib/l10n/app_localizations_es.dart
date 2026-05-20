@@ -68,6 +68,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get filterListened => 'Escuchados';
 
   @override
+  String get filterPodcast => 'Podcast';
+
+  @override
   String get filterPodcasts => 'Podcasts';
 
   @override
@@ -138,10 +141,22 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get showAllDownloads => 'Mostrar todas las descargas';
-  @override String get downloadNow => 'Descargar ahora';
-  @override String get saveForWifi => 'Guardar para WiFi';
-  @override String get cancelWifiQueue => 'Cancelar cola WiFi';
-  @override String get showMarkedForDownload => 'Mostrar marcados para descarga';
-  @override String get noWifi => 'Sin WiFi';
-  @override String get onMobileData => 'Estás usando datos móviles';
+
+  @override
+  String get downloadNow => 'Descargar ahora';
+
+  @override
+  String get saveForWifi => 'Guardar para WiFi';
+
+  @override
+  String get cancelWifiQueue => 'Cancelar cola WiFi';
+
+  @override
+  String get showMarkedForDownload => 'Mostrar marcados para descarga';
+
+  @override
+  String get noWifi => 'Sin WiFi';
+
+  @override
+  String get onMobileData => 'Estás usando datos móviles';
 }
