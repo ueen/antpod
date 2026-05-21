@@ -1632,6 +1632,7 @@ class _EpisodeFeed extends StatefulWidget {
 class _EpisodeFeedState extends State<_EpisodeFeed> {
   final GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
   List<Episode> _displayed = [];
+  Timer? _diffDebounce;
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
   StreamSubscription<List<Episode>>? _markedSub;
@@ -1689,6 +1690,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 
   @override
   void dispose() {
+    _diffDebounce?.cancel();
     _sub?.cancel();
     _markedSub?.cancel();
     _downloadedCountSub?.cancel();
@@ -1767,15 +1769,21 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 
   void _onData(List<Episode> raw) {
     _raw = raw;
-    final filtered = _applyFilters(raw);
     if (_initialLoad) {
+      // First event: render immediately, no debounce.
+      final filtered = _applyFilters(raw);
       setState(() {
         _displayed = List.of(filtered);
         _initialLoad = false;
       });
       return;
     }
-    _diffUpdate(filtered);
+    // Debounce: batch-DB ops (subscribe, refresh) fire the stream multiple times
+    // in rapid succession, causing spurious insert→remove animation cycles.
+    _diffDebounce?.cancel();
+    _diffDebounce = Timer(const Duration(milliseconds: 80), () {
+      _diffUpdate(_applyFilters(_raw));
+    });
   }
 
   void _diffUpdate(List<Episode> next) {
@@ -1826,11 +1834,9 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       final nextPos = {for (int i = 0; i < next.length; i++) next[i].id: i};
       _displayed.sort((a, b) => (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
       setState(() {});
-    } else {
-      // removeItem/insertItem already updated the internal count; call setState
-      // so the parent rebuilds footers and the empty-state sliver correctly.
-      setState(() {});
     }
+    // add/remove: SliverAnimatedList drives the rebuild internally; the empty-state
+    // sliver will appear on the next external setState (from _markedSub etc.).
   }
 
   Widget _tile(Episode ep) => RepaintBoundary(
@@ -1842,12 +1848,12 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         ),
       );
 
+  // Insert animation: tile grows in from 0 height + fades in.
+  // Existing items have anim=1.0 so SizeTransition is a no-op for them —
+  // SliverAnimatedList handles their natural slide-up during removals.
   Widget _animatedTile(Episode ep, Animation<double> anim) => SizeTransition(
         sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
-        child: FadeTransition(
-          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
-          child: _tile(ep),
-        ),
+        child: _tile(ep),
       );
 
   Widget _exitTile(Episode ep, Animation<double> anim) => SizeTransition(
