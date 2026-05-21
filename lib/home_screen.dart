@@ -24,6 +24,7 @@ import 'player_provider.dart';
 import 'podcast_header.dart';
 import 'package:share_plus/share_plus.dart';
 import 'podcast_service.dart';
+import 'list_test_screen.dart';
 import 'share_utils.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1299,10 +1300,12 @@ class _Toolbar extends StatelessWidget {
     return Row(
       children: [
         const SizedBox(width: 10),
-        GestureDetector(
+        Builder(builder: (ctx) => GestureDetector(
           onTap: onLogoTap,
+          onLongPress: () => Navigator.push(
+            ctx, MaterialPageRoute(builder: (_) => const ListTestScreen())),
           child: ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
-        ),
+        )),
         const SizedBox(width: 8),
         GestureDetector(
           onTap: onLogoTap,
@@ -1662,28 +1665,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   @override
   void didUpdateWidget(_EpisodeFeed old) {
     super.didUpdateWidget(old);
-    // Reset "show marked" when the downloaded filter is turned off
     if (!widget.filter.downloaded && _showMarked) {
       _showMarked = false;
     }
-    // Stream source changes when search is toggled on/off, podcast filter changes,
-    // or DB-level filters change
-    final wasSearching = old.searchQuery.isNotEmpty;
-    final isSearching = widget.searchQuery.isNotEmpty;
-    final wasPodcastScoped = old.filter.podcasts && old.podcastIdFilter != null;
-    final isPodcastScoped = widget.filter.podcasts && widget.podcastIdFilter != null;
-    final streamChanged = wasSearching != isSearching ||
-        wasPodcastScoped != isPodcastScoped ||
-        (!isSearching && !isPodcastScoped && (
-          old.filter.history != widget.filter.history ||
-          old.filter.newOnly != widget.filter.newOnly ||
-          old.filter.downloaded != widget.filter.downloaded
-        ));
-    if (streamChanged) {
-      _sub?.cancel();
-      _subscribe();
-    } else if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
-      // Must go through _diffUpdate so SliverAnimatedList item count stays in sync
+    if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
       _diffUpdate(_applyFilters(_raw));
     }
   }
@@ -1698,30 +1683,13 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     super.dispose();
   }
 
-  Stream<List<Episode>> get _stream {
-    // Search mode or podcast-scoped search: fetch all, filter in-app
-    final isPodcastScoped = widget.filter.podcasts && widget.podcastIdFilter != null;
-    if (widget.searchQuery.isNotEmpty || isPodcastScoped) {
-      return widget.db.watchAllFeedEpisodes(downloadedOnly: false);
-    }
-    // Show downloaded + marked episodes when user tapped "Show marked for download"
-    if (_showMarked && widget.filter.downloaded) {
-      return widget.db.watchDownloadedOrMarkedEpisodes();
-    }
-    final dl = widget.filter.downloaded;
-    if (widget.filter.history) return widget.db.watchFinishedEpisodes(downloadedOnly: dl);
-    if (widget.filter.newOnly) return widget.db.watchUnfinishedEpisodes(downloadedOnly: dl);
-    return widget.db.watchAllFeedEpisodes(downloadedOnly: dl);
-  }
-
   void _subscribe() {
-    _sub = _stream.listen(_onData);
+    _sub = widget.db.watchAllFeedEpisodes(downloadedOnly: false).listen(_onData);
   }
 
   void _revealMarked() {
     setState(() => _showMarked = true);
-    _sub?.cancel();
-    _subscribe();
+    _diffUpdate(_applyFilters(_raw));
   }
 
   List<Episode> _applyFilters(List<Episode> raw) {
@@ -1751,8 +1719,16 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       return _sortEpisodes(eps, widget.filter.sort,
           inProgress: widget.filter.inProgress);
     }
-    // When showing downloaded + marked: downloaded group first, marked group second,
-    // each group sorted by the active sort mode.
+    // Apply chip filters for all modes.
+    if (widget.filter.history) {
+      eps = eps.where((e) => e.isFinished).toList();
+    } else if (widget.filter.newOnly) {
+      eps = eps.where((e) => !e.isFinished).toList();
+    }
+    if (widget.filter.downloaded) {
+      eps = eps.where((e) => e.isDownloaded || e.markedForDownload).toList();
+    }
+    // When showing downloaded + marked: downloaded group first, marked group second.
     if (_showMarked && widget.filter.downloaded) {
       final downloaded = _sortEpisodes(
         eps.where((e) => e.isDownloaded).toList(),
@@ -2825,40 +2801,6 @@ class _AntPainter extends CustomPainter {
 // for existing items). Skeleton only shows for genuinely new inserts.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SkeletonTile extends StatelessWidget {
-  const _SkeletonTile();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final shimmer = cs.onSurface.withValues(alpha: 0.08);
-    return SizedBox(
-      height: 72,
-      child: Row(
-        children: [
-          const SizedBox(width: 16),
-          Container(width: 56, height: 56, decoration: BoxDecoration(
-            color: shimmer, borderRadius: BorderRadius.circular(6))),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(height: 13, width: double.infinity, decoration: BoxDecoration(
-                  color: shimmer, borderRadius: BorderRadius.circular(4))),
-                const SizedBox(height: 6),
-                Container(height: 11, width: 160, decoration: BoxDecoration(
-                  color: shimmer, borderRadius: BorderRadius.circular(4))),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-        ],
-      ),
-    );
-  }
-}
 
 class _LazyTile extends StatefulWidget {
   final Episode episode;
@@ -2871,19 +2813,21 @@ class _LazyTile extends StatefulWidget {
 }
 
 class _LazyTileState extends State<_LazyTile> {
-  bool _ready = false;
+  bool _visible = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _ready = true);
+      if (mounted) setState(() => _visible = true);
     });
   }
 
   @override
-  Widget build(BuildContext context) =>
-      _ready ? EpisodeTile(episode: widget.episode, onCoverTap: widget.onCoverTap)
-             : const _SkeletonTile();
+  Widget build(BuildContext context) => AnimatedOpacity(
+        opacity: _visible ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 120),
+        child: EpisodeTile(episode: widget.episode, onCoverTap: widget.onCoverTap),
+      );
 }
 
