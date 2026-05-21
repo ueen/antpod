@@ -8,9 +8,15 @@ import 'podcast_service.dart';
 class ShareUtils {
   static const _base = 'https://antpod.eu/open';
 
-  // Clip to max chars for display-only params (title, podcast name).
-  static String _clip(String s, int max) =>
-      s.length <= max ? s : '${s.substring(0, max)}…';
+  // Clip title at a natural separator (': ', ' - ', ' – ', etc.) if it falls
+  // within the first 20 chars; otherwise hard-clip at 20.
+  static String _clip(String s) {
+    for (final sep in [': ', ' - ', ' – ', ' — ', ' | ']) {
+      final i = s.indexOf(sep);
+      if (i > 0 && i < 20) return s.substring(0, i);
+    }
+    return s.length <= 20 ? s : '${s.substring(0, 20)}…';
+  }
 
   // Strip https:// to save 8 chars; mark http:// feeds with "h0:" prefix.
   static String _stripProto(String url) {
@@ -54,20 +60,20 @@ class ShareUtils {
 
   static String podcastUrl(Podcast podcast) {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(podcast.feedUrl))}');
-    if (podcast.title.isNotEmpty) b.write('&t=${_enc(_clip(podcast.title, 50))}');
+    if (podcast.title.isNotEmpty) b.write('&t=${_enc(_clip(podcast.title))}');
     return b.toString();
   }
 
   static String podcastResultUrl(PodcastResult result) {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(result.feedUrl))}');
-    if (result.title.isNotEmpty) b.write('&t=${_enc(_clip(result.title, 50))}');
+    if (result.title.isNotEmpty) b.write('&t=${_enc(_clip(result.title))}');
     return b.toString();
   }
 
   static String episodeUrl(Episode episode) {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(episode.podcastId))}'
         '&h=${guidHash(episode.id)}');
-    if (episode.title.isNotEmpty) b.write('&t=${_enc(_clip(episode.title, 50))}');
+    if (episode.title.isNotEmpty) b.write('&t=${_enc(_clip(episode.title))}');
     return b.toString();
   }
 }
