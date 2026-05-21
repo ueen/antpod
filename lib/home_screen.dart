@@ -489,18 +489,27 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Unsubscribe ───────────────────────────────────────────────────────────
 
   Future<void> _unsubscribe(Podcast podcast) async {
-    final db       = context.read<AppDatabase>();
-    final player   = context.read<PlayerProvider>();
+    final db        = context.read<AppDatabase>();
+    final player    = context.read<PlayerProvider>();
     final downloads = context.read<DownloadProvider>();
 
+    final epPodId = player.currentEpisode?.podcastId;
+    debugPrint('[unsub] podcast.id=${podcast.id} feedUrl=${podcast.feedUrl} '
+        'currentEpisode.podcastId=$epPodId');
+
     // Stop player if it's playing an episode from this podcast.
-    if (player.currentEpisode?.podcastId == podcast.id) {
+    // Compare against both id and feedUrl to handle historical iTunes-ID mismatch.
+    if (epPodId != null &&
+        (epPodId == podcast.id || epPodId == podcast.feedUrl)) {
+      debugPrint('[unsub] stopping player');
       await player.stopAndClear();
+      debugPrint('[unsub] player cleared');
     }
 
     // Cancel any in-progress downloads for this podcast's episodes.
+    // feedUrl is the canonical podcastId; id equals feedUrl after the schema fix.
     final eps = await (db.select(db.episodes)
-          ..where((e) => e.podcastId.equals(podcast.id))
+          ..where((e) => e.podcastId.equals(podcast.feedUrl))
           ..where((e) => e.downloadTaskId.isNotNull()))
         .get();
     for (final ep in eps) {
@@ -509,7 +518,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    debugPrint('[unsub] deleting podcast ${podcast.id}');
     await db.deletePodcast(podcast.id);
+    debugPrint('[unsub] done, exiting to feed');
     if (mounted) _exitToFeed();
   }
 

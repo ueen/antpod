@@ -92,7 +92,7 @@ class PodcastResult {
   }
 
   PodcastsCompanion toCompanion() => PodcastsCompanion(
-        id: Value(feedUrl.isNotEmpty ? feedUrl : id),
+        id: Value(feedUrl),
         title: Value(title),
         description: Value(description),
         imageUrl: Value(imageUrl),

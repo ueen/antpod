@@ -125,17 +125,24 @@ class AppDatabase extends _$AppDatabase {
       into(podcasts).insertOnConflictUpdate(pod);
 
   Future<void> deletePodcast(String id) async {
+    // Fetch the podcast first so we can delete episodes by feedUrl (the canonical
+    // podcastId used in episodes) even if id was historically an iTunes ID.
+    final pod = await (select(podcasts)..where((p) => p.id.equals(id))).getSingleOrNull();
+    final feedUrl = pod?.feedUrl ?? id;
+
     final eps = await (select(episodes)
-          ..where((e) => e.podcastId.equals(id))
+          ..where((e) => e.podcastId.equals(feedUrl) | e.podcastId.equals(id))
           ..where((e) => e.isDownloaded.equals(true)))
         .get();
     for (final ep in eps) {
       if (ep.localPath != null) {
         final f = File(ep.localPath!);
-        if (f.existsSync()) f.deleteSync();
+        try { if (f.existsSync()) f.deleteSync(); } catch (_) {}
       }
     }
-    await (delete(episodes)..where((e) => e.podcastId.equals(id))).go();
+    await (delete(episodes)
+          ..where((e) => e.podcastId.equals(feedUrl) | e.podcastId.equals(id)))
+        .go();
     await (delete(podcasts)..where((p) => p.id.equals(id))).go();
   }
 
