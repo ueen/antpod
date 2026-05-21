@@ -22,7 +22,9 @@ class ShareUtils {
   static String _enc(String s) {
     final buf = StringBuffer();
     for (final b in utf8.encode(s)) {
-      if (_safe(b)) {
+      if (b == 32) {
+        buf.write('+');        // space → + (saves 2 chars vs %20); literal + → %2B below
+      } else if (_safe(b)) {
         buf.writeCharCode(b);
       } else {
         buf.write('%${b.toRadixString(16).toUpperCase().padLeft(2, '0')}');
