@@ -246,7 +246,7 @@ class _MiniProgress extends StatelessWidget {
         value: progress.clamp(0.0, 1.0),
         minHeight: 5,
         backgroundColor: Colors.transparent,
-        color: cs.inversePrimary.withValues(alpha: 0.7),
+        color: cs.inversePrimary,
       ),
     );
   }

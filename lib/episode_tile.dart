@@ -667,6 +667,8 @@ class _ActionAreaState extends State<_ActionArea>
   @override
   void didUpdateWidget(_ActionArea old) {
     super.didUpdateWidget(old);
+    // Slot was reused for a different episode — don't carry over drain/dots state.
+    if (old.episode.id != widget.episode.id) return;
     if (widget.ringProgress != null && !widget.episode.isDownloaded && widget.ringProgress! < 0.99) {
       _lastRealProgress = widget.ringProgress;
     }

@@ -211,10 +211,27 @@ class AppDatabase extends _$AppDatabase {
         mode: InsertMode.insertOrIgnore,
       ));
 
+  /// Only promotes temp episodes that were actually played/finished to subscribed.
+  /// Unplayed temp episodes (Apple search results, preview inserts) are left alone
+  /// so they don't appear as duplicates alongside the real RSS episodes.
   Future<void> markEpisodesSubscribed(String podcastId) =>
-      (update(episodes)..where((e) => e.podcastId.equals(podcastId))).write(
-        const EpisodesCompanion(isSubscribed: Value(true)),
-      );
+      (update(episodes)
+            ..where((e) =>
+                e.podcastId.equals(podcastId) &
+                (e.lastPositionMs.isBiggerThanValue(0) | e.isFinished.equals(true))))
+          .write(const EpisodesCompanion(isSubscribed: Value(true)));
+
+  /// Delete unplayed, undownloaded temp episodes for a feed before subscribing,
+  /// so Apple search-result stubs don't accumulate as orphaned rows.
+  Future<void> deleteUnplayedTempEpisodes(String podcastId) =>
+      (delete(episodes)
+            ..where((e) =>
+                e.podcastId.equals(podcastId) &
+                e.isSubscribed.equals(false) &
+                e.lastPositionMs.equals(0) &
+                e.isFinished.equals(false) &
+                e.isDownloaded.equals(false)))
+          .go();
 
   /// Save resume position (ms + seconds) and optionally mark finished.
   Future<void> updatePlaybackPosition(

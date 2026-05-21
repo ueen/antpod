@@ -202,6 +202,16 @@ class PlayerProvider extends ChangeNotifier {
         .then((p) => p.setString(_prefLastEpisodeId, id));
   }
 
+  /// Stop playback and clear the current episode (e.g. on podcast unsubscribe).
+  Future<void> stopAndClear() async {
+    await audioHandler.stop();
+    _episodeWatchSub?.cancel();
+    _episodeWatchSub = null;
+    _currentEpisode = null;
+    _chapters = [];
+    notifyListeners();
+  }
+
   /// Load episode into player without starting playback.
   Future<void> load(Episode episode) async {
     if (_currentEpisode?.id == episode.id) return;
@@ -264,7 +274,17 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   void _onEpisodeUpdated(Episode? updated) {
-    if (updated == null || _currentEpisode == null) return;
+    if (_currentEpisode == null) return;
+    if (updated == null) {
+      // Episode was deleted from DB (e.g. unsubscribe) — stop and clear.
+      audioHandler.stop();
+      _episodeWatchSub?.cancel();
+      _episodeWatchSub = null;
+      _currentEpisode = null;
+      _chapters = [];
+      notifyListeners();
+      return;
+    }
     final prevLocal = _currentEpisode!.localPath;
     final newLocal = updated.localPath;
     _currentEpisode = updated;

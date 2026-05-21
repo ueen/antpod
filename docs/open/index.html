@@ -369,45 +369,25 @@
     document.getElementById('footer-dl').textContent          = t.download;
 
     // ── URL params ────────────────────────────────────────────────────────────
-    const p    = new URLSearchParams(location.search);
-    const feed = p.get('feed') || '';
-    const guid = p.get('guid') || '';
-
-    // ── PodcastIndex API ──────────────────────────────────────────────────────
-    async function piHeaders() {
-      const key = 'WVABNRFZXMR56UKS7488', secret = 'Yrb2fXKRtwFRkzcj4XNZBKmBhVbg8Uz5ZvMj5Prd';
-      const ts  = Math.floor(Date.now() / 1000).toString();
-      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(key + secret + ts));
-      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-      return { 'User-Agent': 'AntPod/1.0', 'X-Auth-Key': key, 'X-Auth-Date': ts, 'Authorization': hash };
+    // Short params: f/g/i (new). Long params: feed/guid/img (old links, kept for compat).
+    const p = new URLSearchParams(location.search);
+    function restoreProto(s) {
+      if (!s || s.startsWith('https://') || s.startsWith('http://')) return s;
+      return s.startsWith('h0:') ? 'http://' + s.slice(3) : 'https://' + s;
     }
+    const feed   = restoreProto(p.get('f') || p.get('feed') || '');
+    const guid   = p.get('g') || p.get('guid') || '';
+    const pTitle = p.get('t') || '';
+    const pPod   = p.get('p') || p.get('pod') || '';
+    // i/img kept for backward compat with old links only
+    const pImg   = restoreProto(p.get('i') || p.get('img') || '');
 
-    async function fetchFromPI() {
-      try {
-        const headers = await piHeaders();
-        if (guid) {
-          const r = await fetch(
-            'https://api.podcastindex.org/api/1.0/episodes/byguid?guid=' +
-            encodeURIComponent(guid) + '&feedurl=' + encodeURIComponent(feed), { headers });
-          const d  = await r.json();
-          const ep = d.episode || {};
-          render(ep.feedUrl || feed, ep.title || '', ep.feedTitle || '',
-                 ep.image || ep.feedImage || '', ep.enclosureUrl || '');
-        } else {
-          const r = await fetch(
-            'https://api.podcastindex.org/api/1.0/podcasts/byfeedurl?url=' +
-            encodeURIComponent(feed), { headers });
-          const d = await r.json();
-          const f = d.feed || {};
-          render(f.url || feed, f.title || '', '', f.image || '', '');
-        }
-      } catch (e) {
-        document.getElementById('ep-title').textContent = t.failedToLoad;
-      }
-    }
+function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
 
     function render(rFeed, rTitle, rPodcast, rCover, rAudio) {
       const isEpisode = !!guid;
+      rTitle   = clip(rTitle,   20);
+      rPodcast = clip(rPodcast, 20);
 
       document.title = (rTitle || (isEpisode ? t.episode : 'Podcast')) +
         (rPodcast ? ' · ' + rPodcast : '') + ' — AntPod';
@@ -484,11 +464,34 @@
       window.addEventListener('touchend',  () => seeking = false);
     }
 
+    // ── Lazy RSS image fetch ──────────────────────────────────────────────────
+    // Attempt to pull the podcast cover from the RSS feed itself.
+    // Only fires when the i= param is absent; silently drops if CORS blocks the feed.
+    function tryFetchCover(feedUrl) {
+      fetch(feedUrl)
+        .then(r => r.text())
+        .then(xml => {
+          const doc = new DOMParser().parseFromString(xml, 'text/xml');
+          // <itunes:image href="..."/> takes precedence over <image><url>...</url></image>
+          const img =
+            doc.querySelector('image[href]')?.getAttribute('href') ||
+            doc.querySelector('image url')?.textContent?.trim();
+          if (img) {
+            const el = document.getElementById('cover-img');
+            el.src = img; el.alt = '';
+          }
+        })
+        .catch(() => {});
+    }
+
     // ── Init ─────────────────────────────────────────────────────────────────
     window._openQuery = location.search;
 
     if (feed) {
-      fetchFromPI();
+      render(feed, pTitle, pPod, pImg, '');
+      // Always try to get the real cover from the RSS feed (best-effort, CORS permitting).
+      // pImg is only set for old links; new links never include it.
+      tryFetchCover(feed);
     } else {
       document.getElementById('ep-title').textContent = t.failedToLoad;
     }

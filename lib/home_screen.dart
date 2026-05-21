@@ -221,51 +221,68 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // Restore https:// prefix stripped by ShareUtils._stripProto().
+  static String _restoreProto(String s) {
+    if (s.startsWith('http://') || s.startsWith('https://')) return s;
+    if (s.startsWith('h0:')) return 'http://${s.substring(3)}';
+    return 'https://$s';
+  }
+
   Future<void> _handleDeepLink(Uri uri) async {
-    final feed = uri.queryParameters['feed'];
-    if (feed == null || feed.isEmpty || !mounted) return;
+    // Support both short params (f/g, new) and long params (feed/guid, old links).
+    final rawFeed = uri.queryParameters['f'] ?? uri.queryParameters['feed'];
+    final feed = rawFeed != null && rawFeed.isNotEmpty ? _restoreProto(rawFeed) : null;
+    if (feed == null || !mounted) return;
     final db = context.read<AppDatabase>();
     final player = context.read<PlayerProvider>();
-    final guid = uri.queryParameters['guid'];
+    final guid = uri.queryParameters['g'] ?? uri.queryParameters['guid'];
+
+    // Check subscription status first — used by both episode and podcast paths.
+    final all = await db.getAllPodcasts();
+    if (!mounted) return;
+    final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
 
     // Episode deep link — fetch RSS to get full episode data, then play
     if (guid != null && guid.isNotEmpty) {
       var episode = await db.getEpisode(guid);
-      if (episode == null) {
+
+      if (episode == null && subscribed == null) {
+        // Not subscribed — fetch feed and store as temp so episode can be played.
         final data = await PodcastService.loadFeed(feed);
         if (!mounted) return;
         final companion = data?.episodes
             .where((e) => e.id.value == guid)
             .firstOrNull;
         if (companion != null) {
-          await db.insertTempEpisode(companion.copyWith(isSubscribed: const Value(false)));
+          await db.insertTempEpisode(companion);
           episode = await db.getEpisode(guid);
         }
       }
-      if (episode == null || !mounted) return;
 
-      final all = await db.getAllPodcasts();
-      if (!mounted) return;
-      final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
       if (subscribed != null) {
+        // Subscribed — episode must already be in DB from regular sync.
+        // Navigate to the podcast feed regardless of whether episode was found.
         _enterPodcastFilter(subscribed);
-      } else {
-        _openPreview(PodcastResult(
-          id: feed, title: episode.podcastTitle, author: '',
-          description: '', imageUrl: episode.podcastImageUrl, feedUrl: feed,
-        ));
+        if (episode != null && mounted) {
+          await player.load(episode);
+          if (!mounted) return;
+          await showPlayerSheet(context, onPodcastTap: _openPodcastFromPlayer);
+        }
+        return;
       }
 
+      if (episode == null || !mounted) return;
+      _openPreview(PodcastResult(
+        id: feed, title: episode.podcastTitle, author: '',
+        description: '', imageUrl: episode.podcastImageUrl, feedUrl: feed,
+      ));
       await player.load(episode);
       if (!mounted) return;
       await showPlayerSheet(context, onPodcastTap: _openPodcastFromPlayer);
       return;
     }
 
-    // Podcast deep link — navigate to subscribed feed or open preview
-    final all = await db.getAllPodcasts();
-    if (!mounted) return;
-    final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
+    // Podcast-only deep link — navigate to subscribed feed or open preview
     if (subscribed != null) {
       _enterPodcastFilter(subscribed);
     } else {
@@ -467,7 +484,26 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Unsubscribe ───────────────────────────────────────────────────────────
 
   Future<void> _unsubscribe(Podcast podcast) async {
-    final db = context.read<AppDatabase>();
+    final db       = context.read<AppDatabase>();
+    final player   = context.read<PlayerProvider>();
+    final downloads = context.read<DownloadProvider>();
+
+    // Stop player if it's playing an episode from this podcast.
+    if (player.currentEpisode?.podcastId == podcast.id) {
+      await player.stopAndClear();
+    }
+
+    // Cancel any in-progress downloads for this podcast's episodes.
+    final eps = await (db.select(db.episodes)
+          ..where((e) => e.podcastId.equals(podcast.id))
+          ..where((e) => e.downloadTaskId.isNotNull()))
+        .get();
+    for (final ep in eps) {
+      if (ep.downloadTaskId != null) {
+        await downloads.cancelDownload(ep.downloadTaskId!, ep.id);
+      }
+    }
+
     await db.deletePodcast(podcast.id);
     if (mounted) _exitToFeed();
   }
@@ -769,12 +805,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _subscribe(PodcastResult result) async {
     final db = context.read<AppDatabase>();
     await db.insertPodcast(result.toCompanion());
+    // Remove Apple search stubs and unplayed preview episodes for this feed.
+    await db.deleteUnplayedTempEpisodes(result.feedUrl);
+    // Promote played/finished temp episodes (e.g. from deep link) to subscribed.
     await db.markEpisodesSubscribed(result.feedUrl);
     final data = await PodcastService.loadFeed(result.feedUrl);
     if (data != null) {
       await db.insertEpisodes(
         data.episodes
-            .map((e) => e.copyWith(isSubscribed: const Value(true)))
+            .map((e) => e.copyWith(
+                  podcastId: Value(result.feedUrl),
+                  isSubscribed: const Value(true),
+                ))
             .toList(),
       );
     }
@@ -1572,7 +1614,7 @@ class _EpisodeFeed extends StatefulWidget {
 }
 
 class _EpisodeFeedState extends State<_EpisodeFeed> {
-  GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
+  final GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
   List<Episode> _displayed = [];
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
@@ -1729,81 +1771,74 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 
     final nextIds = {for (final e in next) e.id};
     final displayedIds = {for (final e in _displayed) e.id};
-    final removed = _displayed.where((e) => !nextIds.contains(e.id)).length;
-    final added = next.where((e) => !displayedIds.contains(e.id)).length;
 
-    if (removed + added > 8) {
-      setState(() {
-        _listKey = GlobalKey<SliverAnimatedListState>();
-        _displayed = List.of(next);
-      });
-      return;
-    }
-
-    final hadAnimation = removed + added > 0;
-
+    int removedCount = 0;
     for (int i = _displayed.length - 1; i >= 0; i--) {
       if (!nextIds.contains(_displayed[i].id)) {
         final ep = _displayed.removeAt(i);
         state.removeItem(i, (ctx, anim) => _exitTile(ep, anim),
             duration: const Duration(milliseconds: 250));
+        removedCount++;
       }
     }
-    final nextPos = {for (int i = 0; i < next.length; i++) next[i].id: i};
+
+    int addedCount = 0;
     for (int i = 0; i < next.length; i++) {
       if (!displayedIds.contains(next[i].id)) {
         _displayed.insert(i, next[i]);
         state.insertItem(i, duration: const Duration(milliseconds: 250));
+        addedCount++;
       }
     }
 
-    // Update episode data outside setState when animations are running — avoids
-    // a layout rebuild that blips items below the animating-out tile.
-    // SliverAnimatedList rebuilds itself each animation frame and picks up the
-    // updated _displayed data without a second concurrent setState.
+    // Refresh data for items that stayed.
     final byId = {for (final e in next) e.id: e};
     for (int i = 0; i < _displayed.length; i++) {
       _displayed[i] = byId[_displayed[i].id] ?? _displayed[i];
     }
-    _displayed.sort((a, b) =>
-        (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
 
-    if (!hadAnimation) setState(() {});
+    if (removedCount + addedCount == 0) {
+      // Pure filter/sort change — re-sort and rebuild. No animations were
+      // triggered so there's no mid-flight reorder to worry about.
+      final nextPos = {for (int i = 0; i < next.length; i++) next[i].id: i};
+      _displayed.sort((a, b) => (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
+      setState(() {});
+    }
+    // When items were added/removed the insert/remove loops already placed them
+    // at the correct positions — no sort needed, SliverAnimatedList drives the rebuild.
   }
 
-  Widget _animatedTile(Episode ep, Animation<double> anim) {
-    return SizeTransition(
-      sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
-      child: FadeTransition(
-        opacity: CurvedAnimation(parent: anim, curve: Curves.easeIn),
-        child: RepaintBoundary(
-          child: Column(
-            children: [
-              _LazyTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
-              Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
-            ],
+  Widget _tile(Episode ep) => RepaintBoundary(
+        child: Column(
+          children: [
+            _LazyTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+            Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
+          ],
+        ),
+      );
+
+  Widget _animatedTile(Episode ep, Animation<double> anim) => SizeTransition(
+        sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+        child: FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+          child: _tile(ep),
+        ),
+      );
+
+  Widget _exitTile(Episode ep, Animation<double> anim) => SizeTransition(
+        sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+        child: FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+          child: RepaintBoundary(
+            child: Column(
+              children: [
+                EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+                Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _exitTile(Episode ep, Animation<double> anim) {
-    return SizeTransition(
-      sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
-      child: FadeTransition(
-        opacity: CurvedAnimation(parent: anim, curve: Curves.easeIn),
-        child: RepaintBoundary(
-          child: Column(
-            children: [
-              EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
-              Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+      );
 
   @override
   Widget build(BuildContext context) {
