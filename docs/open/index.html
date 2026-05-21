@@ -369,7 +369,7 @@
     document.getElementById('footer-dl').textContent          = t.download;
 
     // ── URL params ────────────────────────────────────────────────────────────
-    // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5), t = title, i = cover image URL
+    // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5), t = title
     const p = new URLSearchParams(location.search);
     function restoreProto(s) {
       if (!s || s.startsWith('https://') || s.startsWith('http://')) return s;
@@ -378,7 +378,6 @@
     const feed   = restoreProto(p.get('f') || '');
     const h      = p.get('h') || '';
     const pTitle = p.get('t') || '';
-    const pImg   = restoreProto(p.get('i') || '');
 
 function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
 
@@ -462,33 +461,45 @@ function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
       window.addEventListener('touchend',  () => seeking = false);
     }
 
-    // ── Lazy RSS image fetch ──────────────────────────────────────────────────
-    // Attempt to pull the podcast cover from the RSS feed itself.
-    // Only fires when the i= param is absent; silently drops if CORS blocks the feed.
-    function tryFetchCover(feedUrl) {
+    // ── Cover image: RSS-first, iTunes fallback ───────────────────────────────
+    function _showCover(src) {
+      const el = document.getElementById('cover-img');
+      el.src = src; el.alt = '';
+    }
+
+    function _itunesCover(term) {
+      if (!term) return;
+      fetch('https://itunes.apple.com/search?term=' + encodeURIComponent(term) +
+            '&media=podcast&entity=podcast&limit=1')
+        .then(r => r.json())
+        .then(d => {
+          const img = d?.results?.[0]?.artworkUrl600 || d?.results?.[0]?.artworkUrl100;
+          if (img) _showCover(img);
+        })
+        .catch(() => {});
+    }
+
+    // Try RSS feed for cover art; fall back to iTunes Search API on CORS failure or missing image.
+    function tryFetchCover(feedUrl, searchTerm) {
       fetch(feedUrl)
         .then(r => r.text())
         .then(xml => {
           const doc = new DOMParser().parseFromString(xml, 'text/xml');
-          // <itunes:image href="..."/> takes precedence over <image><url>...</url></image>
           const img =
             doc.querySelector('image[href]')?.getAttribute('href') ||
             doc.querySelector('image url')?.textContent?.trim();
-          if (img) {
-            const el = document.getElementById('cover-img');
-            el.src = img; el.alt = '';
-          }
+          if (img) { _showCover(img); return; }
+          _itunesCover(searchTerm);
         })
-        .catch(() => {});
+        .catch(() => _itunesCover(searchTerm));
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
     window._openQuery = location.search;
 
     if (feed) {
-      render(feed, pTitle, '', pImg, '');
-      // Lazy RSS cover fetch as fallback when i= param is absent (CORS permitting).
-      if (!pImg) tryFetchCover(feed);
+      render(feed, pTitle, '', '', '');
+      tryFetchCover(feed, pTitle);
     } else {
       document.getElementById('ep-title').textContent = t.failedToLoad;
     }

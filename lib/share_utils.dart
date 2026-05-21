@@ -55,14 +55,12 @@ class ShareUtils {
   static String podcastUrl(Podcast podcast) {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(podcast.feedUrl))}');
     if (podcast.title.isNotEmpty) b.write('&t=${_enc(_clip(podcast.title, 50))}');
-    if (podcast.imageUrl.isNotEmpty) b.write('&i=${_enc(_stripProto(podcast.imageUrl))}');
     return b.toString();
   }
 
   static String podcastResultUrl(PodcastResult result) {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(result.feedUrl))}');
     if (result.title.isNotEmpty) b.write('&t=${_enc(_clip(result.title, 50))}');
-    if (result.imageUrl.isNotEmpty) b.write('&i=${_enc(_stripProto(result.imageUrl))}');
     return b.toString();
   }
 
@@ -70,9 +68,6 @@ class ShareUtils {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(episode.podcastId))}'
         '&h=${guidHash(episode.id)}');
     if (episode.title.isNotEmpty) b.write('&t=${_enc(_clip(episode.title, 50))}');
-    if (episode.podcastImageUrl.isNotEmpty) {
-      b.write('&i=${_enc(_stripProto(episode.podcastImageUrl))}');
-    }
     return b.toString();
   }
 }
