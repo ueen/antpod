@@ -24,7 +24,6 @@ import 'player_provider.dart';
 import 'podcast_header.dart';
 import 'package:share_plus/share_plus.dart';
 import 'podcast_service.dart';
-import 'list_test_screen.dart';
 import 'share_utils.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1300,12 +1299,10 @@ class _Toolbar extends StatelessWidget {
     return Row(
       children: [
         const SizedBox(width: 10),
-        Builder(builder: (ctx) => GestureDetector(
+        GestureDetector(
           onTap: onLogoTap,
-          onLongPress: () => Navigator.push(
-            ctx, MaterialPageRoute(builder: (_) => const ListTestScreen())),
           child: ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
-        )),
+        ),
         const SizedBox(width: 8),
         GestureDetector(
           onTap: onLogoTap,
