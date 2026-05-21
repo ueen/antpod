@@ -2012,7 +2012,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 // Podcast-filtered feed (with filter chips)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PodcastFeed extends StatelessWidget {
+class _PodcastFeed extends StatefulWidget {
   final AppDatabase db;
   final ColorScheme cs;
   final AppLocalizations l10n;
@@ -2041,72 +2041,121 @@ class _PodcastFeed extends StatelessWidget {
     this.onCoverTap, this.onSubscribe, this.onUnsubscribe,
   });
 
+  @override
+  State<_PodcastFeed> createState() => _PodcastFeedState();
+}
+
+class _PodcastFeedState extends State<_PodcastFeed> {
+  final _scrollCtrl = ScrollController();
+  bool _showScrollTop = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl.addListener(() {
+      final show = _scrollCtrl.offset > 300;
+      if (show != _showScrollTop) setState(() => _showScrollTop = show);
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
   List<Episode> _applyFilters(List<Episode> raw) {
     var eps = raw;
-    if (filter.history) {
+    if (widget.filter.history) {
       eps = eps.where((e) => e.isFinished).toList();
-    } else if (filter.newOnly) {
+    } else if (widget.filter.newOnly) {
       eps = eps.where((e) => !e.isFinished).toList();
     }
-    if (filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
-    return _sortEpisodes(eps, filter.sort, inProgress: filter.inProgress);
+    if (widget.filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
+    return _sortEpisodes(eps, widget.filter.sort, inProgress: widget.filter.inProgress);
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasMiniPlayer = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
+    final fabBottom = _showScrollTop ? (hasMiniPlayer ? 88.0 : 24.0) : -56.0;
     return StreamBuilder<List<Episode>>(
-      stream: db.watchEpisodesForPodcast(feedId),
+      stream: widget.db.watchEpisodesForPodcast(widget.feedId),
       builder: (context, snap) {
         final eps = _applyFilters(snap.data ?? []);
-        return Column(
+        return Stack(
           children: [
-            PodcastHeader(
-              imageUrl: imageUrl,
-              title: title,
-              author: author,
-              description: description,
-              shareUrl: shareUrl,
-              onSubscribe: onSubscribe,
-              onUnsubscribe: onUnsubscribe,
-            ),
-            ClipRect(
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOut,
-                alignment: Alignment.topCenter,
-                heightFactor: filterChipsVisible ? 1.0 : 0.0,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: filterChipsVisible ? 1.0 : 0.0,
-                  child: _FilterChipsRow(
-                    filter: filter, l10n: l10n, cs: cs,
-                    onToggle: onFilterToggle,
-                    showPodcastsChip: false,
+            Column(
+              children: [
+                PodcastHeader(
+                  imageUrl: widget.imageUrl,
+                  title: widget.title,
+                  author: widget.author,
+                  description: widget.description,
+                  shareUrl: widget.shareUrl,
+                  onSubscribe: widget.onSubscribe,
+                  onUnsubscribe: widget.onUnsubscribe,
+                ),
+                ClipRect(
+                  child: AnimatedAlign(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                    alignment: Alignment.topCenter,
+                    heightFactor: widget.filterChipsVisible ? 1.0 : 0.0,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: widget.filterChipsVisible ? 1.0 : 0.0,
+                      child: _FilterChipsRow(
+                        filter: widget.filter, l10n: widget.l10n, cs: widget.cs,
+                        onToggle: widget.onFilterToggle,
+                        showPodcastsChip: false,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                Expanded(
+                  child: widget.loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : eps.isEmpty
+                          ? Center(child: Text(widget.l10n.emptySearchTitle,
+                                style: TextStyle(color: widget.cs.onSurfaceVariant)))
+                          : ListView.separated(
+                              controller: _scrollCtrl,
+                              padding: const EdgeInsets.only(bottom: 88),
+                              itemCount: eps.length,
+                              separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  color: widget.cs.outlineVariant.withValues(alpha: 0.5),
+                                  indent: 88),
+                              itemBuilder: (_, i) => EpisodeTile(
+                                episode: eps[i],
+                                onCoverTap: widget.onCoverTap != null
+                                    ? () => widget.onCoverTap!(eps[i], widget.db)
+                                    : () {},
+                                isSubscribedContext: widget.isSubscribed,
+                              ),
+                            ),
+                ),
+              ],
             ),
-            Expanded(
-              child: loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : eps.isEmpty
-                      ? Center(child: Text(l10n.emptySearchTitle,
-                            style: TextStyle(color: cs.onSurfaceVariant)))
-                      : ListView.separated(
-                          padding: const EdgeInsets.only(bottom: 88),
-                          itemCount: eps.length,
-                          separatorBuilder: (_, __) => Divider(
-                              height: 1,
-                              color: cs.outlineVariant.withValues(alpha: 0.5),
-                              indent: 88),
-                          itemBuilder: (_, i) => EpisodeTile(
-                            episode: eps[i],
-                            onCoverTap: onCoverTap != null
-                                ? () => onCoverTap!(eps[i], db)
-                                : () {},
-                            isSubscribedContext: isSubscribed,
-                          ),
-                        ),
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              right: 16,
+              bottom: fabBottom,
+              child: GestureDetector(
+                onTap: () => _scrollCtrl.animateTo(
+                  0, duration: const Duration(milliseconds: 350), curve: Curves.easeOut),
+                child: Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: widget.cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))],
+                  ),
+                  child: Icon(Icons.arrow_upward_rounded, color: widget.cs.onPrimaryContainer, size: 22),
+                ),
+              ),
             ),
           ],
         );
