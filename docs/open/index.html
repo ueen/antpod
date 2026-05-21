@@ -511,24 +511,20 @@
 
         if (!h) return;
 
-        // Fresh headers for episode call (new timestamp).
         const epData = await fetch(base + '/episodes/byfeedurl?' +
           new URLSearchParams({url: feedUrl, max: '1000'}), {headers: await piHeaders()}).then(r => r.json());
-        console.log('[PI] episodes status:', epData.status, 'count:', epData.count, 'items:', epData.items?.length);
-        for (const item of (epData.items || [])) {
-          const guid = (item.guid || '').trim();
-          if (!guid) continue;
-          const itemHash = await guidHash(guid);
-          console.log('[PI] guid:', guid, '→ hash:', itemHash, 'target:', h);
-          if (itemHash !== h) continue;
-          const audio = item.enclosureUrl || item.url || '';
-          console.log('[PI] matched! audio:', audio);
+        const items = epData.items || [];
+        const guids = items.map(item => (item.guid || '').trim());
+        // Hash all GUIDs in parallel — much faster than sequential await in a loop.
+        const hashes = await Promise.all(guids.map(g => g ? guidHash(g) : Promise.resolve('')));
+        const idx = hashes.indexOf(h);
+        if (idx >= 0) {
+          const audio = items[idx].enclosureUrl || items[idx].url || '';
           if (audio) {
             const audioEl = document.getElementById('audio-el');
             audioEl.src = audio;
             showPlayer(audioEl);
           }
-          break;
         }
       } catch (e) { console.warn('[PI] error:', e); }
     }
@@ -552,19 +548,17 @@
       if (img) _showCover(img);
 
       if (!h) return;
-      const items = doc.querySelectorAll('item');
-      for (const item of items) {
-        const guid = item.querySelector('guid')?.textContent?.trim() || '';
-        if (!guid) continue;
-        const itemHash = await guidHash(guid);
-        if (itemHash !== h) continue;
-        const audio = item.querySelector('enclosure')?.getAttribute('url') || '';
+      const items = [...doc.querySelectorAll('item')];
+      const guids = items.map(item => item.querySelector('guid')?.textContent?.trim() || '');
+      const hashes = await Promise.all(guids.map(g => g ? guidHash(g) : Promise.resolve('')));
+      const idx = hashes.indexOf(h);
+      if (idx >= 0) {
+        const audio = items[idx].querySelector('enclosure')?.getAttribute('url') || '';
         if (audio) {
           const audioEl = document.getElementById('audio-el');
           audioEl.src = audio;
           showPlayer(audioEl);
         }
-        break;
       }
     }
 

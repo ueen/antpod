@@ -228,6 +228,40 @@ class AppDatabase extends _$AppDatabase {
                 (e.lastPositionMs.isBiggerThanValue(0) | e.isFinished.equals(true))))
           .write(const EpisodesCompanion(isSubscribed: Value(true)));
 
+  /// Match Apple episode stubs (id prefix 'apple-') to the real RSS episodes
+  /// for the same feed by title. Migrates playback progress to the RSS episode,
+  /// then deletes the stubs. Call after inserting RSS episodes for a feed.
+  /// Returns {appleId → rssGuid} for every stub that was resolved.
+  Future<Map<String, String>> migrateAppleEpisodeStubs(String podcastId) async {
+    final stubs = await (select(episodes)
+          ..where((e) => e.podcastId.equals(podcastId) & e.id.like('apple-%')))
+        .get();
+    if (stubs.isEmpty) return {};
+
+    final rssEps = await (select(episodes)
+          ..where((e) => e.podcastId.equals(podcastId) & e.id.like('apple-%').not()))
+        .get();
+
+    final migrated = <String, String>{};
+    for (final stub in stubs) {
+      final stubTitle = stub.title.toLowerCase().trim();
+      final match = rssEps.where(
+        (e) => e.title.toLowerCase().trim() == stubTitle,
+      ).firstOrNull;
+      if (match != null) {
+        if (stub.lastPositionMs > match.lastPositionMs) {
+          await updatePlaybackPosition(match.id,
+              positionMs: stub.lastPositionMs,
+              durationMs: stub.durationSeconds * 1000);
+        }
+        if (stub.isFinished && !match.isFinished) await markFinished(match.id);
+        migrated[stub.id] = match.id;
+      }
+      await (delete(episodes)..where((e) => e.id.equals(stub.id))).go();
+    }
+    return migrated;
+  }
+
   /// Delete unplayed, undownloaded temp episodes for a feed before subscribing,
   /// so Apple search-result stubs don't accumulate as orphaned rows.
   Future<void> deleteUnplayedTempEpisodes(String podcastId) =>

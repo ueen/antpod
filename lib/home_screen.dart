@@ -458,10 +458,18 @@ class _HomeScreenState extends State<HomeScreen> {
       _filter = _filter.copyWith(newOnly: false, podcasts: false);
     });
     final db = context.read<AppDatabase>();
+    final player = context.read<PlayerProvider>();
     final data = await PodcastService.loadFeed(result.feedUrl);
     if (!mounted) return;
     if (data != null) {
       await db.insertTempEpisodes(data.episodes);
+      // Resolve Apple stubs (id: 'apple-*') to real RSS episodes by title-match.
+      // Migrates any saved playback progress to the RSS episode, then removes the stub.
+      final migrated = await db.migrateAppleEpisodeStubs(result.feedUrl);
+      if (migrated.containsKey(player.currentEpisode?.id) && mounted) {
+        final rssEp = await db.getEpisode(migrated[player.currentEpisode!.id]!);
+        if (rssEp != null && mounted) await player.load(rssEp);
+      }
       // Backfill any metadata that was missing when opening from a temp episode cover tap
       setState(() {
         _previewResult = PodcastResult(
@@ -718,13 +726,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final fetched = await Future.wait([
       PodcastService.search(trimmed),
       PodcastService.appleSearch(trimmed, country: country),
-      PodcastService.appleEpisodeSearch(trimmed, country: country),
+      PodcastService.searchEpisodes(trimmed, country: country),
     ]);
     if (!mounted || _searchQuery != q) return;
     final podcasts = _mergeSearchResults(
         fetched[0] as List<PodcastResult>, fetched[1] as List<PodcastResult>);
     final apiEpisodes = fetched[2] as List<Episode>;
-    // Persist API episodes so player/download infra can access them
     final companions = apiEpisodes.map((e) => EpisodesCompanion(
       id: Value(e.id), podcastId: Value(e.podcastId),
       podcastTitle: Value(e.podcastTitle), podcastImageUrl: Value(e.podcastImageUrl),
@@ -736,7 +743,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted || _searchQuery != q) return;
     setState(() {
       _unifiedSearchResults = _buildUnified(podcasts, apiEpisodes);
-      _searchHasMore = fetched[0].length == 20;
+      _searchHasMore = (fetched[0] as List).length == 20;
       _searchingPI = false;
     });
   }
@@ -773,9 +780,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final lang = locale.languageCode == 'en' ? 'en' : '${locale.languageCode},en';
     setState(() { _loadingTrending = true; _loadingRec = true; _trendingError = null; });
 
-    // Fetch charts + subscriptions in parallel, reuse chart result for both tabs.
+    // Fetch Apple charts, subscriptions, and PI recommendations in parallel.
     final parallel = await Future.wait([
-      PodcastService.appleCharts(country, limit: 20),
+      PodcastService.appleCharts(country, limit: 10),
       db.getAllPodcasts(),
     ]);
     if (!mounted) return;
@@ -785,7 +792,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (charts.isEmpty) {
       // Apple Charts unavailable — fall back to PI trending.
       try {
-        charts = await PodcastService.trending(max: 20, lang: lang);
+        charts = await PodcastService.trending(max: 10, lang: lang);
       } catch (e) {
         if (mounted) setState(() { _trendingError = e.toString(); _loadingTrending = false; _loadingRec = false; });
         return;
@@ -793,12 +800,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (!mounted) return;
 
-    final subscribedUrls = subs.map((p) => p.feedUrl).toSet();
-    // Suggestions = same chart, subscribed podcasts filtered out.
-    final suggestions = charts
-        .where((p) => !subscribedUrls.contains(p.feedUrl))
-        .take(15)
-        .toList();
+    // Suggestions: PI category-aware recommendations (personalized to subscriptions,
+    // falls back to broad PI trending when no subscriptions). Different source from
+    // Apple Charts trending, so the two tabs show distinct content.
+    List<PodcastResult> suggestions;
+    try {
+      suggestions = await PodcastService.recommendations(
+          subscribed: subs, max: 10, lang: lang);
+    } catch (_) {
+      // Fallback: filter subscribed podcasts out of the chart.
+      final subscribedUrls = subs.map((p) => p.feedUrl).toSet();
+      suggestions = charts
+          .where((p) => !subscribedUrls.contains(p.feedUrl))
+          .take(10)
+          .toList();
+    }
+    if (!mounted) return;
 
     setState(() {
       _trending = charts;
@@ -827,6 +844,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ))
             .toList(),
       );
+      await db.migrateAppleEpisodeStubs(result.feedUrl);
     }
   }
 
@@ -1639,12 +1657,14 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   void initState() {
     super.initState();
     _subscribe();
-    _markedSub = widget.db.watchMarkedForDownloadEpisodes().listen(
-      (eps) => setState(() => _markedCount = eps.length),
-    );
-    _downloadedCountSub = widget.db.watchAllFeedEpisodes(downloadedOnly: true).listen(
-      (eps) => setState(() => _totalDownloadedCount = eps.length),
-    );
+    _markedSub = widget.db.watchMarkedForDownloadEpisodes().listen((eps) {
+      final c = eps.length;
+      if (c != _markedCount) setState(() => _markedCount = c);
+    });
+    _downloadedCountSub = widget.db.watchAllFeedEpisodes(downloadedOnly: true).listen((eps) {
+      final c = eps.length;
+      if (c != _totalDownloadedCount) setState(() => _totalDownloadedCount = c);
+    });
     _scrollCtrl.addListener(() {
       final show = _scrollCtrl.offset > 300;
       if (show != _showScrollTop) setState(() => _showScrollTop = show);
@@ -1761,21 +1781,18 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 
   void _diffUpdate(List<Episode> next) {
     final state = _listKey.currentState;
-    debugPrint('[diff] state=${state != null ? "ok" : "NULL"} '
-        'displayed=${_displayed.length} next=${next.length}');
     if (state == null) {
-      debugPrint('[diff] no state — direct replace');
       setState(() => _displayed = List.of(next));
       return;
     }
 
+    final wasEmpty = _displayed.isEmpty;
     final nextIds = {for (final e in next) e.id};
     final displayedIds = {for (final e in _displayed) e.id};
 
     int removedCount = 0;
     for (int i = _displayed.length - 1; i >= 0; i--) {
       if (!nextIds.contains(_displayed[i].id)) {
-        debugPrint('[diff] remove idx=$i id=${_displayed[i].id.substring(0, math.min(12, _displayed[i].id.length))}');
         final ep = _displayed.removeAt(i);
         state.removeItem(i, (ctx, anim) => _exitTile(ep, anim),
             duration: const Duration(milliseconds: 250));
@@ -1786,7 +1803,6 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     int addedCount = 0;
     for (int i = 0; i < next.length; i++) {
       if (!displayedIds.contains(next[i].id)) {
-        debugPrint('[diff] insert idx=$i id=${next[i].id.substring(0, math.min(12, next[i].id.length))}');
         _displayed.insert(i, next[i]);
         state.insertItem(i, duration: const Duration(milliseconds: 250));
         addedCount++;
@@ -1799,37 +1815,36 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       _displayed[i] = byId[_displayed[i].id] ?? _displayed[i];
     }
 
-    debugPrint('[diff] removed=$removedCount added=$addedCount '
-        'displayed→${_displayed.length}');
-
     if (removedCount + addedCount == 0) {
       // Pure data/sort update — re-sort and rebuild via setState.
       final nextPos = {for (int i = 0; i < next.length; i++) next[i].id: i};
       _displayed.sort((a, b) => (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
       setState(() {});
-    } else {
-      // Trigger a rebuild so the empty-state / footer slivers reflect the new count.
-      // SliverAnimatedList handles its own item animations; setState here is safe
-      // because the key keeps its internal state intact.
+    } else if (wasEmpty != _displayed.isEmpty) {
+      // Empty-state sliver needs to appear or disappear.
       setState(() {});
     }
+    // else: SliverAnimatedList drives its own item rendering — no setState needed.
   }
 
   Widget _tile(Episode ep) => RepaintBoundary(
         child: Column(
           children: [
-            _LazyTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+            EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
             Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
           ],
         ),
       );
 
   // Insert animation: tile grows in from 0 height + fades in.
-  // Existing items have anim=1.0 so SizeTransition is a no-op for them —
-  // SliverAnimatedList handles their natural slide-up during removals.
+  // Existing items have anim=1.0 so both transitions are no-ops for them.
   Widget _animatedTile(Episode ep, Animation<double> anim) => SizeTransition(
+        key: ValueKey(ep.id),
         sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
-        child: _tile(ep),
+        child: FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+          child: _tile(ep),
+        ),
       );
 
   Widget _exitTile(Episode ep, Animation<double> anim) => SizeTransition(
@@ -2768,34 +2783,4 @@ class _AntPainter extends CustomPainter {
 // so _ready stays true when items shift after insert/remove (no skeleton blip
 // for existing items). Skeleton only shows for genuinely new inserts.
 // ─────────────────────────────────────────────────────────────────────────────
-
-
-class _LazyTile extends StatefulWidget {
-  final Episode episode;
-  final VoidCallback onCoverTap;
-
-  const _LazyTile({required this.episode, required this.onCoverTap});
-
-  @override
-  State<_LazyTile> createState() => _LazyTileState();
-}
-
-class _LazyTileState extends State<_LazyTile> {
-  bool _visible = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _visible = true);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedOpacity(
-        opacity: _visible ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 120),
-        child: EpisodeTile(episode: widget.episode, onCoverTap: widget.onCoverTap),
-      );
-}
 

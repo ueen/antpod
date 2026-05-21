@@ -4,7 +4,7 @@
 //
 // Endpoints genutzt:
 //   /api/1.0/search/byterm        → Suche
-//   /api/1.0/podcasts/trending    → Trending (7-day window, fetch 2× and take top-n)
+//   /api/1.0/podcasts/trending    → Trending (30-day window)
 //   /api/1.0/podcasts/byfeedurl   → Empfehlungen: Kategorien der Abos ermitteln
 //   /api/1.0/search/byterm        → Empfehlungen: Suche nach Kategoriebegriffen
 
@@ -122,6 +122,45 @@ class PodcastService {
     }
   }
 
+  /// Episode search: Apple finds by keyword, PI resolves real RSS GUIDs.
+  /// If a feed is not indexed by PI the Apple episode is kept as a fallback
+  /// (id: 'apple-{trackId}'); migrateAppleEpisodeStubs cleans those up when
+  /// the feed is opened.
+  static Future<List<Episode>> searchEpisodes(String query, {String country = 'us'}) async {
+    final appleEps = await appleEpisodeSearch(query, country: country);
+    if (appleEps.isEmpty) return [];
+
+    // Fetch PI episodes for every unique feedUrl in parallel to resolve GUIDs.
+    final uniqueFeeds = appleEps.map((e) => e.podcastId).toSet();
+    final piByFeed = <String, List<Map<String, dynamic>>>{};
+    await Future.wait(uniqueFeeds.map((feedUrl) async {
+      try {
+        final uri = Uri.parse('$_baseUrl/episodes/byfeedurl')
+            .replace(queryParameters: {'url': feedUrl, 'max': '30'});
+        final res = await http.get(uri, headers: _authHeaders());
+        if (res.statusCode == 200) {
+          final items = (jsonDecode(res.body) as Map<String, dynamic>)['items'] as List? ?? [];
+          piByFeed[feedUrl] = items.cast();
+        }
+      } catch (_) {}
+    }));
+
+    // For each Apple episode, swap in the PI GUID + enclosureUrl if matched.
+    return appleEps.map((ep) {
+      final piItems = piByFeed[ep.podcastId] ?? [];
+      final appleTitle = ep.title.trim().toLowerCase();
+      final match = piItems.where(
+        (m) => (m['title'] as String? ?? '').trim().toLowerCase() == appleTitle,
+      ).firstOrNull;
+      if (match == null) return ep; // iTunes-only podcast, keep Apple data
+      final guid  = (match['guid']         as String? ?? '').trim();
+      final audio = (match['enclosureUrl'] as String? ?? '').trim();
+      if (guid.isEmpty || audio.isEmpty) return ep;
+      return ep.copyWith(id: guid, audioUrl: audio,
+          chaptersUrl: Value(match['chaptersUrl'] as String?));
+    }).toList();
+  }
+
   static Future<List<Episode>> appleEpisodeSearch(String query, {String country = 'us'}) async {
     try {
       final uri = Uri.parse('https://itunes.apple.com/search').replace(
@@ -145,7 +184,7 @@ class PodcastService {
           publishDate = DateTime.now();
         }
         episodes.add(Episode(
-          id:                    '${r['trackId']}',
+          id:                    'apple-${r['trackId']}',
           podcastId:             feedUrl,
           podcastTitle:          r['collectionName'] ?? '',
           podcastImageUrl:       r['artworkUrl600'] ?? r['artworkUrl160'] ?? '',
@@ -240,7 +279,7 @@ class PodcastService {
   }) async {
     final since = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 2592000;
     final params = <String, String>{
-      'max': '${max * 2}',
+      'max': '$max',
       'lang': lang,
       'since': '$since', // 30-day window
     };
