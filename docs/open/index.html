@@ -501,26 +501,28 @@
 
     // PodcastIndex fallback: fetch cover + episode audio when RSS is CORS-blocked.
     async function tryPodcastIndex(feedUrl, searchTerm) {
+      const base = 'https://api.podcastindex.org/api/1.0';
       try {
-        const hdrs = await piHeaders();
-        const base = 'https://api.podcastindex.org/api/1.0';
-
         // Cover art via feed lookup
         const feedData = await fetch(base + '/podcasts/byfeedurl?' +
-          new URLSearchParams({url: feedUrl}), {headers: hdrs}).then(r => r.json());
+          new URLSearchParams({url: feedUrl}), {headers: await piHeaders()}).then(r => r.json());
         const cover = feedData.feed?.artwork || feedData.feed?.image;
         if (cover) _showCover(cover);
 
         if (!h) return;
 
-        // Episode list — match by GUID hash
+        // Fresh headers for episode call (new timestamp).
         const epData = await fetch(base + '/episodes/byfeedurl?' +
-          new URLSearchParams({url: feedUrl, max: '1000'}), {headers: hdrs}).then(r => r.json());
+          new URLSearchParams({url: feedUrl, max: '1000'}), {headers: await piHeaders()}).then(r => r.json());
+        console.log('[PI] episodes status:', epData.status, 'count:', epData.count, 'items:', epData.items?.length);
         for (const item of (epData.items || [])) {
-          const guid = item.guid || '';
+          const guid = (item.guid || '').trim();
           if (!guid) continue;
-          if (await guidHash(guid) !== h) continue;
-          const audio = item.enclosureUrl || '';
+          const itemHash = await guidHash(guid);
+          console.log('[PI] guid:', guid, '→ hash:', itemHash, 'target:', h);
+          if (itemHash !== h) continue;
+          const audio = item.enclosureUrl || item.url || '';
+          console.log('[PI] matched! audio:', audio);
           if (audio) {
             const audioEl = document.getElementById('audio-el');
             audioEl.src = audio;
@@ -528,7 +530,7 @@
           }
           break;
         }
-      } catch (_) {}
+      } catch (e) { console.warn('[PI] error:', e); }
     }
 
     // Fetch RSS, extract cover art and (if episode) match audio by GUID hash.

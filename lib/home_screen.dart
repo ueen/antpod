@@ -177,7 +177,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Preview (unsubscribed podcast header + episodes)
   PodcastResult? _previewResult;
-  bool _loadingPreview = false;
   _FeedMode _previewFrom = _FeedMode.discover;
 
   StreamSubscription<Uri>? _linkSub;
@@ -454,7 +453,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openPreview(PodcastResult result) async {
     setState(() {
       _previewResult = result;
-      _loadingPreview = true;
       _previewFrom = _mode;
       _mode = _FeedMode.previewPodcast;
       _filter = _filter.copyWith(newOnly: false, podcasts: false);
@@ -476,7 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       });
     }
-    if (mounted) setState(() => _loadingPreview = false);
+    if (mounted) setState(() {});
   }
 
   void _exitPreview() {
@@ -493,38 +491,24 @@ class _HomeScreenState extends State<HomeScreen> {
     final player    = context.read<PlayerProvider>();
     final downloads = context.read<DownloadProvider>();
 
+    // Stop player independently — must not block podcast deletion if it throws.
+    final epPodId = player.currentEpisode?.podcastId;
+    if (epPodId != null && (epPodId == podcast.id || epPodId == podcast.feedUrl)) {
+      await player.stopAndClear();
+    }
+
     try {
-      final epPodId = player.currentEpisode?.podcastId;
-      final matchesId  = epPodId == podcast.id;
-      final matchesFeed = epPodId == podcast.feedUrl;
-      debugPrint('[unsub] podcast.id=${podcast.id} feedUrl=${podcast.feedUrl} '
-          'currentEpisode.podcastId=$epPodId '
-          'matchesId=$matchesId matchesFeed=$matchesFeed');
-
-      // Stop player if it's playing an episode from this podcast.
-      if (epPodId != null && (matchesId || matchesFeed)) {
-        debugPrint('[unsub] stopping player');
-        await player.stopAndClear();
-        debugPrint('[unsub] player cleared');
-      } else if (epPodId != null) {
-        debugPrint('[unsub] skipping stopAndClear — different podcast playing');
-      }
-
       // Cancel any in-progress downloads for this podcast's episodes.
       final eps = await (db.select(db.episodes)
             ..where((e) => e.podcastId.equals(podcast.feedUrl))
             ..where((e) => e.downloadTaskId.isNotNull()))
           .get();
-      debugPrint('[unsub] cancelling ${eps.length} downloads');
       for (final ep in eps) {
         if (ep.downloadTaskId != null) {
           await downloads.cancelDownload(ep.downloadTaskId!, ep.id);
         }
       }
-
-      debugPrint('[unsub] deleting podcast ${podcast.id}');
       await db.deletePodcast(podcast.id);
-      debugPrint('[unsub] done, exiting to feed');
     } catch (e, st) {
       debugPrint('[unsub] ERROR: $e\n$st');
     } finally {
@@ -910,29 +894,29 @@ class _HomeScreenState extends State<HomeScreen> {
         switch (key) {
           case 'new':
             _searchFilter = _searchFilter.copyWith(
-                newOnly: !_searchFilter.newOnly, history: false, podcasts: false);
+                newOnly: !_searchFilter.newOnly, history: false);
           case 'history':
             _searchFilter = _searchFilter.copyWith(
                 history: !_searchFilter.history, newOnly: false,
-                downloaded: false, inProgress: false, podcasts: false);
+                downloaded: false, inProgress: false);
           case 'dl':
             _searchFilter = _searchFilter.copyWith(
-                downloaded: !_searchFilter.downloaded, podcasts: false);
+                downloaded: !_searchFilter.downloaded);
           case 'az':
             _searchFilter = _searchFilter.copyWith(
                 sort: _searchFilter.sort == _SortMode.alphabetical
-                    ? _SortMode.none : _SortMode.alphabetical, podcasts: false);
+                    ? _SortMode.none : _SortMode.alphabetical);
           case 'oldest':
             _searchFilter = _searchFilter.copyWith(
                 sort: _searchFilter.sort == _SortMode.oldest
-                    ? _SortMode.none : _SortMode.oldest, podcasts: false);
+                    ? _SortMode.none : _SortMode.oldest);
           case 'random':
             _searchFilter = _searchFilter.copyWith(
                 sort: _searchFilter.sort == _SortMode.random
-                    ? _SortMode.none : _SortMode.random, podcasts: false);
+                    ? _SortMode.none : _SortMode.random);
           case 'inprogress':
             _searchFilter = _searchFilter.copyWith(
-                inProgress: !_searchFilter.inProgress, podcasts: false);
+                inProgress: !_searchFilter.inProgress);
           case 'podcasts':
             _searchFilter = _searchFilter.copyWith(
                 podcasts: !_searchFilter.podcasts);
@@ -1148,7 +1132,6 @@ class _HomeScreenState extends State<HomeScreen> {
           author: _previewResult!.author,
           description: _previewResult!.description,
           shareUrl: ShareUtils.podcastResultUrl(_previewResult!),
-          loading: _loadingPreview,
           isSubscribed: false,
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
@@ -1171,7 +1154,6 @@ class _HomeScreenState extends State<HomeScreen> {
           author: _filterPodcast?.author ?? '',
           description: _filterPodcast?.description ?? '',
           shareUrl: _filterPodcast != null ? ShareUtils.podcastUrl(_filterPodcast!) : '',
-          loading: false,
           isSubscribed: true,
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
@@ -1396,22 +1378,22 @@ class _FilterChipsRow extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           _Chip(label: l10n.filterNew,
-              active: filter.newOnly && !filter.podcasts,
+              active: filter.newOnly,
               cs: cs, icon: Icons.headphones_rounded,
               onTap: () => onToggle('new')),
           const SizedBox(width: 8),
           _Chip(label: l10n.filterPlaying,
-              active: filter.inProgress && !filter.podcasts,
+              active: filter.inProgress,
               cs: cs, icon: Icons.play_circle_rounded,
               onTap: () => onToggle('inprogress')),
           const SizedBox(width: 8),
           _Chip(label: l10n.filterDownloaded,
-              active: filter.downloaded && !filter.podcasts,
+              active: filter.downloaded,
               cs: cs, icon: Icons.download_done_rounded,
               onTap: () => onToggle('dl')),
           const SizedBox(width: 8),
           _Chip(label: l10n.filterListened,
-              active: filter.history && !filter.podcasts,
+              active: filter.history,
               cs: cs, icon: Icons.check_circle_outline,
               onTap: () => onToggle('history')),
           if (showPodcastsChip && !podcastsFirst) ...[
@@ -1420,17 +1402,17 @@ class _FilterChipsRow extends StatelessWidget {
           ],
           const SizedBox(width: 8),
           _Chip(label: l10n.filterAlphabetical,
-              active: filter.sort == _SortMode.alphabetical && !filter.podcasts,
+              active: filter.sort == _SortMode.alphabetical,
               cs: cs, icon: Icons.sort_by_alpha_rounded,
               onTap: () => onToggle('az')),
           const SizedBox(width: 8),
           _Chip(label: l10n.filterOldest,
-              active: filter.sort == _SortMode.oldest && !filter.podcasts,
+              active: filter.sort == _SortMode.oldest,
               cs: cs, icon: Icons.arrow_upward_rounded,
               onTap: () => onToggle('oldest')),
           const SizedBox(width: 8),
           _Chip(label: l10n.filterRandom,
-              active: filter.sort == _SortMode.random && !filter.podcasts,
+              active: filter.sort == _SortMode.random,
               cs: cs, icon: Icons.shuffle_rounded,
               onTap: () => onToggle('random')),
         ],
@@ -1622,6 +1604,7 @@ class _EpisodeFeed extends StatefulWidget {
   final VoidCallback? onSearchOnline;
   final VoidCallback? onShowAllDownloads;
   final String? podcastIdFilter;
+  final List<Widget>? headerSlivers;
 
   const _EpisodeFeed({
     required this.db, required this.cs,
@@ -1631,6 +1614,7 @@ class _EpisodeFeed extends StatefulWidget {
     this.onSearchOnline,
     this.onShowAllDownloads,
     this.podcastIdFilter,
+    this.headerSlivers,
   });
 
   @override
@@ -1673,6 +1657,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     if (!widget.filter.downloaded && _showMarked) {
       _showMarked = false;
     }
+    if (old.podcastIdFilter != widget.podcastIdFilter) {
+      _subscribe(); // stream source changes; _onData will trigger _diffUpdate
+      return;
+    }
     if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
       _diffUpdate(_applyFilters(_raw));
     }
@@ -1689,7 +1677,11 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
   }
 
   void _subscribe() {
-    _sub = widget.db.watchAllFeedEpisodes(downloadedOnly: false).listen(_onData);
+    _sub?.cancel();
+    _sub = (widget.podcastIdFilter != null
+            ? widget.db.watchEpisodesForPodcast(widget.podcastIdFilter!)
+            : widget.db.watchAllFeedEpisodes(downloadedOnly: false))
+        .listen(_onData);
   }
 
   void _revealMarked() {
@@ -1699,9 +1691,9 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 
   List<Episode> _applyFilters(List<Episode> raw) {
     var eps = raw;
-    final isPodcastScoped = widget.filter.podcasts && widget.podcastIdFilter != null;
+    final isPodcastScoped = widget.podcastIdFilter != null;
     if (widget.searchQuery.isNotEmpty || isPodcastScoped) {
-      // Narrow to the specific podcast when opened from a podcast feed.
+      // Narrow to the specific podcast when opened from a podcast feed or local search.
       if (isPodcastScoped) {
         eps = eps.where((e) => e.podcastId == widget.podcastIdFilter).toList();
       }
@@ -1815,9 +1807,12 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       final nextPos = {for (int i = 0; i < next.length; i++) next[i].id: i};
       _displayed.sort((a, b) => (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
       setState(() {});
+    } else {
+      // Trigger a rebuild so the empty-state / footer slivers reflect the new count.
+      // SliverAnimatedList handles its own item animations; setState here is safe
+      // because the key keeps its internal state intact.
+      setState(() {});
     }
-    // add/remove: SliverAnimatedList drives the rebuild internally; the empty-state
-    // sliver will appear on the next external setState (from _markedSub etc.).
   }
 
   Widget _tile(Episode ep) => RepaintBoundary(
@@ -1883,6 +1878,9 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         controller: _scrollCtrl,
         physics: const _SmoothScrollPhysics(),
         slivers: [
+          if (widget.headerSlivers != null)
+            for (final w in widget.headerSlivers!)
+              SliverToBoxAdapter(child: w),
           SliverAnimatedList(
             key: _listKey,
             initialItemCount: _displayed.length,
@@ -1902,13 +1900,13 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
                           color: widget.cs.onSurfaceVariant),
                       const SizedBox(height: 16),
                       Text(
-                        isSearching || widget.filter.hasAny
+                        isSearching || widget.filter.hasAny || widget.podcastIdFilter != null
                             ? widget.l10n.emptySearchTitle
                             : widget.l10n.emptyFeedTitle,
                         style: TextStyle(
                             fontSize: 16, color: widget.cs.onSurfaceVariant),
                       ),
-                      if (!isSearching && !widget.filter.hasAny) ...[
+                      if (!isSearching && !widget.filter.hasAny && widget.podcastIdFilter == null) ...[
                         const SizedBox(height: 6),
                         Text(widget.l10n.emptyFeedSub,
                             style: TextStyle(
@@ -2020,7 +2018,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 // Podcast-filtered feed (with filter chips)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PodcastFeed extends StatefulWidget {
+class _PodcastFeed extends StatelessWidget {
   final AppDatabase db;
   final ColorScheme cs;
   final AppLocalizations l10n;
@@ -2030,7 +2028,6 @@ class _PodcastFeed extends StatefulWidget {
   final String author;
   final String description;
   final String shareUrl;
-  final bool loading;
   final bool isSubscribed;
   final _FilterState filter;
   final bool filterChipsVisible;
@@ -2043,131 +2040,48 @@ class _PodcastFeed extends StatefulWidget {
     required this.db, required this.cs, required this.l10n,
     required this.feedId, required this.imageUrl, required this.title,
     required this.author, required this.description, required this.shareUrl,
-    required this.loading, required this.isSubscribed,
+    required this.isSubscribed,
     required this.filter, required this.filterChipsVisible,
     required this.onFilterToggle,
     this.onCoverTap, this.onSubscribe, this.onUnsubscribe,
   });
 
   @override
-  State<_PodcastFeed> createState() => _PodcastFeedState();
-}
-
-class _PodcastFeedState extends State<_PodcastFeed> {
-  final _scrollCtrl = ScrollController();
-  bool _showScrollTop = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollCtrl.addListener(() {
-      final show = _scrollCtrl.offset > 300;
-      if (show != _showScrollTop) setState(() => _showScrollTop = show);
-    });
-  }
-
-  @override
-  void dispose() {
-    _scrollCtrl.dispose();
-    super.dispose();
-  }
-
-  List<Episode> _applyFilters(List<Episode> raw) {
-    var eps = raw;
-    if (widget.filter.history) {
-      eps = eps.where((e) => e.isFinished).toList();
-    } else if (widget.filter.newOnly) {
-      eps = eps.where((e) => !e.isFinished).toList();
-    }
-    if (widget.filter.downloaded) eps = eps.where((e) => e.isDownloaded).toList();
-    return _sortEpisodes(eps, widget.filter.sort, inProgress: widget.filter.inProgress);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final hasMiniPlayer = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
-    final fabBottom = _showScrollTop ? (hasMiniPlayer ? 88.0 : 24.0) : -56.0;
-    return StreamBuilder<List<Episode>>(
-      stream: widget.db.watchEpisodesForPodcast(widget.feedId),
-      builder: (context, snap) {
-        final eps = _applyFilters(snap.data ?? []);
-        return Stack(
-          children: [
-            Column(
-              children: [
-                PodcastHeader(
-                  imageUrl: widget.imageUrl,
-                  title: widget.title,
-                  author: widget.author,
-                  description: widget.description,
-                  shareUrl: widget.shareUrl,
-                  onSubscribe: widget.onSubscribe,
-                  onUnsubscribe: widget.onUnsubscribe,
-                ),
-                ClipRect(
-                  child: AnimatedAlign(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOut,
-                    alignment: Alignment.topCenter,
-                    heightFactor: widget.filterChipsVisible ? 1.0 : 0.0,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: widget.filterChipsVisible ? 1.0 : 0.0,
-                      child: _FilterChipsRow(
-                        filter: widget.filter, l10n: widget.l10n, cs: widget.cs,
-                        onToggle: widget.onFilterToggle,
-                        showPodcastsChip: false,
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: widget.loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : eps.isEmpty
-                          ? Center(child: Text(widget.l10n.emptySearchTitle,
-                                style: TextStyle(color: widget.cs.onSurfaceVariant)))
-                          : ListView.separated(
-                              controller: _scrollCtrl,
-                              padding: const EdgeInsets.only(bottom: 88),
-                              itemCount: eps.length,
-                              separatorBuilder: (_, __) => Divider(
-                                  height: 1,
-                                  color: widget.cs.outlineVariant.withValues(alpha: 0.5),
-                                  indent: 88),
-                              itemBuilder: (_, i) => EpisodeTile(
-                                episode: eps[i],
-                                onCoverTap: widget.onCoverTap != null
-                                    ? () => widget.onCoverTap!(eps[i], widget.db)
-                                    : () {},
-                                isSubscribedContext: widget.isSubscribed,
-                              ),
-                            ),
-                ),
-              ],
-            ),
-            AnimatedPositioned(
+    return _EpisodeFeed(
+      db: db, cs: cs, l10n: l10n,
+      filter: filter,
+      podcastIdFilter: feedId,
+      onCoverTap: onCoverTap ?? (_, __) async {},
+      onRefresh: () async {},
+      headerSlivers: [
+        PodcastHeader(
+          imageUrl: imageUrl,
+          title: title,
+          author: author,
+          description: description,
+          shareUrl: shareUrl,
+          onSubscribe: onSubscribe,
+          onUnsubscribe: onUnsubscribe,
+        ),
+        ClipRect(
+          child: AnimatedAlign(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            heightFactor: filterChipsVisible ? 1.0 : 0.0,
+            child: AnimatedOpacity(
               duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              right: 16,
-              bottom: fabBottom,
-              child: GestureDetector(
-                onTap: () => _scrollCtrl.animateTo(
-                  0, duration: const Duration(milliseconds: 350), curve: Curves.easeOut),
-                child: Container(
-                  width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    color: widget.cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))],
-                  ),
-                  child: Icon(Icons.arrow_upward_rounded, color: widget.cs.onPrimaryContainer, size: 22),
-                ),
+              opacity: filterChipsVisible ? 1.0 : 0.0,
+              child: _FilterChipsRow(
+                filter: filter, l10n: l10n, cs: cs,
+                onToggle: onFilterToggle,
+                showPodcastsChip: false,
               ),
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 }

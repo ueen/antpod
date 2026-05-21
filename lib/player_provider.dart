@@ -204,7 +204,13 @@ class PlayerProvider extends ChangeNotifier {
 
   /// Stop playback and clear the current episode (e.g. on podcast unsubscribe).
   Future<void> stopAndClear() async {
-    await audioHandler.stop();
+    try {
+      await audioHandler.stop();
+    } catch (_) {
+      // audio_service can throw "Bad state: You cannot add items while items are
+      // being added from addStream" if the player is mid-stream. We still want
+      // to clear state regardless.
+    }
     _episodeWatchSub?.cancel();
     _episodeWatchSub = null;
     _currentEpisode = null;
