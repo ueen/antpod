@@ -493,35 +493,43 @@ class _HomeScreenState extends State<HomeScreen> {
     final player    = context.read<PlayerProvider>();
     final downloads = context.read<DownloadProvider>();
 
-    final epPodId = player.currentEpisode?.podcastId;
-    debugPrint('[unsub] podcast.id=${podcast.id} feedUrl=${podcast.feedUrl} '
-        'currentEpisode.podcastId=$epPodId');
+    try {
+      final epPodId = player.currentEpisode?.podcastId;
+      final matchesId  = epPodId == podcast.id;
+      final matchesFeed = epPodId == podcast.feedUrl;
+      debugPrint('[unsub] podcast.id=${podcast.id} feedUrl=${podcast.feedUrl} '
+          'currentEpisode.podcastId=$epPodId '
+          'matchesId=$matchesId matchesFeed=$matchesFeed');
 
-    // Stop player if it's playing an episode from this podcast.
-    // Compare against both id and feedUrl to handle historical iTunes-ID mismatch.
-    if (epPodId != null &&
-        (epPodId == podcast.id || epPodId == podcast.feedUrl)) {
-      debugPrint('[unsub] stopping player');
-      await player.stopAndClear();
-      debugPrint('[unsub] player cleared');
-    }
-
-    // Cancel any in-progress downloads for this podcast's episodes.
-    // feedUrl is the canonical podcastId; id equals feedUrl after the schema fix.
-    final eps = await (db.select(db.episodes)
-          ..where((e) => e.podcastId.equals(podcast.feedUrl))
-          ..where((e) => e.downloadTaskId.isNotNull()))
-        .get();
-    for (final ep in eps) {
-      if (ep.downloadTaskId != null) {
-        await downloads.cancelDownload(ep.downloadTaskId!, ep.id);
+      // Stop player if it's playing an episode from this podcast.
+      if (epPodId != null && (matchesId || matchesFeed)) {
+        debugPrint('[unsub] stopping player');
+        await player.stopAndClear();
+        debugPrint('[unsub] player cleared');
+      } else if (epPodId != null) {
+        debugPrint('[unsub] skipping stopAndClear — different podcast playing');
       }
-    }
 
-    debugPrint('[unsub] deleting podcast ${podcast.id}');
-    await db.deletePodcast(podcast.id);
-    debugPrint('[unsub] done, exiting to feed');
-    if (mounted) _exitToFeed();
+      // Cancel any in-progress downloads for this podcast's episodes.
+      final eps = await (db.select(db.episodes)
+            ..where((e) => e.podcastId.equals(podcast.feedUrl))
+            ..where((e) => e.downloadTaskId.isNotNull()))
+          .get();
+      debugPrint('[unsub] cancelling ${eps.length} downloads');
+      for (final ep in eps) {
+        if (ep.downloadTaskId != null) {
+          await downloads.cancelDownload(ep.downloadTaskId!, ep.id);
+        }
+      }
+
+      debugPrint('[unsub] deleting podcast ${podcast.id}');
+      await db.deletePodcast(podcast.id);
+      debugPrint('[unsub] done, exiting to feed');
+    } catch (e, st) {
+      debugPrint('[unsub] ERROR: $e\n$st');
+    } finally {
+      if (mounted) _exitToFeed();
+    }
   }
 
   void _toggleFilterChips() {

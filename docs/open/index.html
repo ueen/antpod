@@ -77,6 +77,9 @@
     /* Custom audio player */
     .player {
       display: none;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
       background: #FFFAF5; border: 1px solid #F0E4D4;
       border-radius: 0.75rem; padding: 0.75rem 1rem;
       margin-bottom: 1.125rem;
@@ -399,10 +402,9 @@
       document.getElementById('ep-title').textContent = rTitle || (isEpisode ? t.episode : 'Podcast');
 
       if (rAudio) {
-        document.getElementById('player').style.display = 'block';
         const audioEl = document.getElementById('audio-el');
         audioEl.src = rAudio;
-        wirePlayer(audioEl);
+        showPlayer(audioEl);
       }
 
       if (rFeed) {
@@ -420,6 +422,16 @@
     }
 
     // ── Audio player wiring ───────────────────────────────────────────────────
+    function showPlayer(audioEl) {
+      const playerEl = document.getElementById('player');
+      playerEl.style.display = 'block';
+      requestAnimationFrame(() => {
+        playerEl.style.opacity = '1';
+        playerEl.style.transform = 'translateY(0)';
+      });
+      wirePlayer(audioEl);
+    }
+
     function wirePlayer(audioEl) {
       const iconPlay  = document.getElementById('icon-play');
       const iconPause = document.getElementById('icon-pause');
@@ -469,18 +481,6 @@
       el.src = src; el.alt = '';
     }
 
-    function _itunesCover(term) {
-      if (!term) return;
-      fetch('https://itunes.apple.com/search?term=' + encodeURIComponent(term) +
-            '&media=podcast&entity=podcast&limit=1')
-        .then(r => r.json())
-        .then(d => {
-          const img = d?.results?.[0]?.artworkUrl600 || d?.results?.[0]?.artworkUrl100;
-          if (img) _showCover(img);
-        })
-        .catch(() => {});
-    }
-
     // SHA-1 first 8 bytes → base64url (same as Dart guidHash in share_utils.dart).
     async function guidHash(guid) {
       const data = new TextEncoder().encode(guid);
@@ -489,38 +489,80 @@
       return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
     }
 
-    // Fetch RSS, extract cover art and (if episode) match audio by GUID hash.
-    // Falls back to iTunes for cover on CORS failure / missing image.
-    async function tryFetchRSS(feedUrl, searchTerm) {
+    // PodcastIndex auth headers (same credentials as the app).
+    async function piHeaders() {
+      const key = 'WVABNRFZXMR56UKS7488';
+      const secret = 'Yrb2fXKRtwFRkzcj4XNZBKmBhVbg8Uz5ZvMj5Prd';
+      const ts = String(Math.floor(Date.now() / 1000));
+      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(key + secret + ts));
+      const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      return {'X-Auth-Key': key, 'X-Auth-Date': ts, 'Authorization': hex, 'User-Agent': 'AntPod/1.0'};
+    }
+
+    // PodcastIndex fallback: fetch cover + episode audio when RSS is CORS-blocked.
+    async function tryPodcastIndex(feedUrl, searchTerm) {
       try {
-        const xml = await fetch(feedUrl).then(r => r.text());
-        const doc = new DOMParser().parseFromString(xml, 'text/xml');
+        const hdrs = await piHeaders();
+        const base = 'https://api.podcastindex.org/api/1.0';
 
-        // Cover art
-        const img =
-          doc.querySelector('image[href]')?.getAttribute('href') ||
-          doc.querySelector('image url')?.textContent?.trim();
-        if (img) _showCover(img); else _itunesCover(searchTerm);
+        // Cover art via feed lookup
+        const feedData = await fetch(base + '/podcasts/byfeedurl?' +
+          new URLSearchParams({url: feedUrl}), {headers: hdrs}).then(r => r.json());
+        const cover = feedData.feed?.artwork || feedData.feed?.image;
+        if (cover) _showCover(cover);
 
-        // Episode audio: only when h= is set
         if (!h) return;
-        const items = doc.querySelectorAll('item');
-        for (const item of items) {
-          const guid = item.querySelector('guid')?.textContent?.trim() || '';
+
+        // Episode list — match by GUID hash
+        const epData = await fetch(base + '/episodes/byfeedurl?' +
+          new URLSearchParams({url: feedUrl, max: '1000'}), {headers: hdrs}).then(r => r.json());
+        for (const item of (epData.items || [])) {
+          const guid = item.guid || '';
           if (!guid) continue;
-          const itemHash = await guidHash(guid);
-          if (itemHash !== h) continue;
-          const audio = item.querySelector('enclosure')?.getAttribute('url') || '';
+          if (await guidHash(guid) !== h) continue;
+          const audio = item.enclosureUrl || '';
           if (audio) {
-            document.getElementById('player').style.display = 'block';
             const audioEl = document.getElementById('audio-el');
             audioEl.src = audio;
-            wirePlayer(audioEl);
+            showPlayer(audioEl);
           }
           break;
         }
+      } catch (_) {}
+    }
+
+    // Fetch RSS, extract cover art and (if episode) match audio by GUID hash.
+    // Falls back to PodcastIndex when RSS is CORS-blocked.
+    async function tryFetchRSS(feedUrl, searchTerm) {
+      let xml;
+      try {
+        xml = await fetch(feedUrl).then(r => r.text());
       } catch (_) {
-        _itunesCover(searchTerm);
+        tryPodcastIndex(feedUrl, searchTerm);
+        return;
+      }
+
+      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+
+      const img =
+        doc.querySelector('image[href]')?.getAttribute('href') ||
+        doc.querySelector('image url')?.textContent?.trim();
+      if (img) _showCover(img);
+
+      if (!h) return;
+      const items = doc.querySelectorAll('item');
+      for (const item of items) {
+        const guid = item.querySelector('guid')?.textContent?.trim() || '';
+        if (!guid) continue;
+        const itemHash = await guidHash(guid);
+        if (itemHash !== h) continue;
+        const audio = item.querySelector('enclosure')?.getAttribute('url') || '';
+        if (audio) {
+          const audioEl = document.getElementById('audio-el');
+          audioEl.src = audio;
+          showPlayer(audioEl);
+        }
+        break;
       }
     }
 
