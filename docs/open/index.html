@@ -369,7 +369,7 @@
     document.getElementById('footer-dl').textContent          = t.download;
 
     // ── URL params ────────────────────────────────────────────────────────────
-    // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5), t = title, p = podcast name
+    // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5), t = title, i = cover image URL
     const p = new URLSearchParams(location.search);
     function restoreProto(s) {
       if (!s || s.startsWith('https://') || s.startsWith('http://')) return s;
@@ -378,7 +378,7 @@
     const feed   = restoreProto(p.get('f') || '');
     const h      = p.get('h') || '';
     const pTitle = p.get('t') || '';
-    const pPod   = p.get('p') || '';
+    const pImg   = restoreProto(p.get('i') || '');
 
 function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
 
@@ -486,10 +486,9 @@ function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
     window._openQuery = location.search;
 
     if (feed) {
-      render(feed, pTitle, pPod, '', '');
-      // Always try to get the real cover from the RSS feed (best-effort, CORS permitting).
-      // pImg is only set for old links; new links never include it.
-      tryFetchCover(feed);
+      render(feed, pTitle, '', pImg, '');
+      // Lazy RSS cover fetch as fallback when i= param is absent (CORS permitting).
+      if (!pImg) tryFetchCover(feed);
     } else {
       document.getElementById('ep-title').textContent = t.failedToLoad;
     }
