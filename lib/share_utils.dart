@@ -19,13 +19,10 @@ class ShareUtils {
 
   // Minimal query-value encoding: only encode chars that truly break URL parsing.
   // Leaves : and / unencoded — the biggest savings vs Uri.encodeQueryComponent.
-  // Spaces → + (1 char vs %20's 3 chars).
   static String _enc(String s) {
     final buf = StringBuffer();
     for (final b in utf8.encode(s)) {
-      if (b == 32) {
-        buf.write('+');
-      } else if (_safe(b)) {
+      if (_safe(b)) {
         buf.writeCharCode(b);
       } else {
         buf.write('%${b.toRadixString(16).toUpperCase().padLeft(2, '0')}');
