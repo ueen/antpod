@@ -369,23 +369,21 @@
     document.getElementById('footer-dl').textContent          = t.download;
 
     // ── URL params ────────────────────────────────────────────────────────────
-    // Short params: f/g/i (new). Long params: feed/guid/img (old links, kept for compat).
+    // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5), t = title, p = podcast name
     const p = new URLSearchParams(location.search);
     function restoreProto(s) {
       if (!s || s.startsWith('https://') || s.startsWith('http://')) return s;
       return s.startsWith('h0:') ? 'http://' + s.slice(3) : 'https://' + s;
     }
-    const feed   = restoreProto(p.get('f') || p.get('feed') || '');
-    const guid   = restoreProto(p.get('g') || p.get('guid') || '');
+    const feed   = restoreProto(p.get('f') || '');
+    const h      = p.get('h') || '';
     const pTitle = p.get('t') || '';
-    const pPod   = p.get('p') || p.get('pod') || '';
-    // i/img kept for backward compat with old links only
-    const pImg   = restoreProto(p.get('i') || p.get('img') || '');
+    const pPod   = p.get('p') || '';
 
 function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
 
     function render(rFeed, rTitle, rPodcast, rCover, rAudio) {
-      const isEpisode = !!guid;
+      const isEpisode = !!h;
       rTitle   = clip(rTitle,   20);
       rPodcast = clip(rPodcast, 20);
 
@@ -488,7 +486,7 @@ function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
     window._openQuery = location.search;
 
     if (feed) {
-      render(feed, pTitle, pPod, pImg, '');
+      render(feed, pTitle, pPod, '', '');
       // Always try to get the real cover from the RSS feed (best-effort, CORS permitting).
       // pImg is only set for old links; new links never include it.
       tryFetchCover(feed);

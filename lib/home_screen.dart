@@ -221,48 +221,52 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // Restore https:// prefix stripped by ShareUtils._stripProto().
   static String _restoreProto(String s) {
     if (s.startsWith('http://') || s.startsWith('https://')) return s;
     if (s.startsWith('h0:')) return 'http://${s.substring(3)}';
     return 'https://$s';
   }
 
+  // Hash-match all episodes for a podcast against a 11-char base64url MD5 hash.
+  Future<Episode?> _findByHash(AppDatabase db, String podcastId, String hash) async {
+    final eps = await (db.select(db.episodes)
+          ..where((e) => e.podcastId.equals(podcastId)))
+        .get();
+    for (final ep in eps) {
+      if (ShareUtils.guidHash(ep.id) == hash) return ep;
+    }
+    return null;
+  }
+
   Future<void> _handleDeepLink(Uri uri) async {
-    // Support both short params (f/g, new) and long params (feed/guid, old links).
-    final rawFeed = uri.queryParameters['f'] ?? uri.queryParameters['feed'];
+    final rawFeed = uri.queryParameters['f'];
     final feed = rawFeed != null && rawFeed.isNotEmpty ? _restoreProto(rawFeed) : null;
     if (feed == null || !mounted) return;
     final db = context.read<AppDatabase>();
     final player = context.read<PlayerProvider>();
-    final rawGuid = uri.queryParameters['g'] ?? uri.queryParameters['guid'];
-    final guid = rawGuid != null && rawGuid.isNotEmpty ? _restoreProto(rawGuid) : null;
+    final guidHash = uri.queryParameters['h'];
 
-    // Check subscription status first — used by both episode and podcast paths.
     final all = await db.getAllPodcasts();
     if (!mounted) return;
     final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
 
-    // Episode deep link — fetch RSS to get full episode data, then play
-    if (guid != null && guid.isNotEmpty) {
-      var episode = await db.getEpisode(guid);
+    if (guidHash != null && guidHash.isNotEmpty) {
+      // Episode link — find by hash in DB, or fetch feed and hash-match.
+      var episode = await _findByHash(db, feed, guidHash);
 
       if (episode == null && subscribed == null) {
-        // Not subscribed — fetch feed and store as temp so episode can be played.
         final data = await PodcastService.loadFeed(feed);
         if (!mounted) return;
         final companion = data?.episodes
-            .where((e) => e.id.value == guid)
+            .where((e) => ShareUtils.guidHash(e.id.value) == guidHash)
             .firstOrNull;
         if (companion != null) {
           await db.insertTempEpisode(companion);
-          episode = await db.getEpisode(guid);
+          episode = await db.getEpisode(companion.id.value);
         }
       }
 
       if (subscribed != null) {
-        // Subscribed — episode must already be in DB from regular sync.
-        // Navigate to the podcast feed regardless of whether episode was found.
         _enterPodcastFilter(subscribed);
         if (episode != null && mounted) {
           await player.load(episode);
@@ -283,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Podcast-only deep link — navigate to subscribed feed or open preview
+    // Podcast-only link.
     if (subscribed != null) {
       _enterPodcastFilter(subscribed);
     } else {

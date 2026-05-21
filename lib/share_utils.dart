@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
+
 import 'app_database.dart';
 import 'podcast_service.dart';
 
@@ -15,6 +17,13 @@ class ShareUtils {
     if (url.startsWith('https://')) return url.substring(8);
     if (url.startsWith('http://')) return 'h0:${url.substring(7)}';
     return url;
+  }
+
+  // First 8 bytes of MD5 → 11-char base64url. Fixed short ID for any GUID,
+  // regardless of whether the GUID is a UUID, integer, or full URL.
+  static String guidHash(String guid) {
+    final bytes = md5.convert(utf8.encode(guid)).bytes.sublist(0, 8);
+    return base64Url.encode(bytes).replaceAll('=', '');
   }
 
   // Minimal query-value encoding: only encode chars that truly break URL parsing.
@@ -56,10 +65,8 @@ class ShareUtils {
   }
 
   static String episodeUrl(Episode episode) {
-    // Strip protocol from guid too — GUIDs are often audio URLs, which would
-    // appear as a second hyperlink in messaging apps if left as https://...
     final b = StringBuffer('$_base?f=${_enc(_stripProto(episode.podcastId))}'
-        '&g=${_enc(_stripProto(episode.id))}');
+        '&h=${guidHash(episode.id)}');
     if (episode.title.isNotEmpty) b.write('&t=${_enc(_clip(episode.title, 20))}');
     return b.toString();
   }
