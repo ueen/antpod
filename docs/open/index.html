@@ -38,7 +38,12 @@
     }
 
     .cover-wrap { position: relative; background: #F0E4D4; }
-    .cover-wrap img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; }
+    .cover-wrap img {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover; display: block;
+      opacity: 0; transition: opacity 0.35s ease;
+    }
     .cover-placeholder {
       width: 100%; aspect-ratio: 1;
       display: flex; align-items: center; justify-content: center;
@@ -212,7 +217,7 @@
             <path d="M6.17 18a6 6 0 0 1 11.66 0"/>
           </svg>
         </div>
-        <img id="cover-img" src="" alt="" style="display:none;" onload="this.style.display='block'; document.getElementById('cover-placeholder').style.display='none';" onerror="this.style.display='none';" />
+        <img id="cover-img" src="" alt="" />
       </div>
 
       <div class="body">
@@ -369,30 +374,25 @@
     document.getElementById('footer-dl').textContent          = t.download;
 
     // ── URL params ────────────────────────────────────────────────────────────
-    // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5), t = title
-    const p = new URLSearchParams(location.search);
+    // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5),
+    // t = title (episode title or podcast name), p = podcast name (episodes only)
+    const params = new URLSearchParams(location.search);
     function restoreProto(s) {
       if (!s || s.startsWith('https://') || s.startsWith('http://')) return s;
       return s.startsWith('h0:') ? 'http://' + s.slice(3) : 'https://' + s;
     }
-    const feed   = restoreProto(p.get('f') || '');
-    const h      = p.get('h') || '';
-    const pTitle = p.get('t') || '';
-
-function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
+    const feed   = restoreProto(params.get('f') || '');
+    const h      = params.get('h') || '';
+    const pTitle = params.get('t') || '';
+    const pPod   = params.get('p') || '';
 
     function render(rFeed, rTitle, rPodcast, rCover, rAudio) {
       const isEpisode = !!h;
-      rTitle   = clip(rTitle,   20);
-      rPodcast = clip(rPodcast, 20);
 
       document.title = (rTitle || (isEpisode ? t.episode : 'Podcast')) +
         (rPodcast ? ' · ' + rPodcast : '') + ' — AntPod';
 
-      if (rCover) {
-        const img = document.getElementById('cover-img');
-        img.src = rCover; img.alt = rTitle;
-      }
+      if (rCover) _showCover(rCover);
 
       if (isEpisode) document.getElementById('badge').style.display = 'inline-flex';
       if (rPodcast)  document.getElementById('podcast-name').textContent = rPodcast;
@@ -464,6 +464,8 @@ function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
     // ── Cover image: RSS-first, iTunes fallback ───────────────────────────────
     function _showCover(src) {
       const el = document.getElementById('cover-img');
+      el.onload = () => { el.style.opacity = '1'; };
+      el.onerror = () => {};
       el.src = src; el.alt = '';
     }
 
@@ -479,27 +481,55 @@ function clip(s, max) { return s.length <= max ? s : s.slice(0, max) + '…'; }
         .catch(() => {});
     }
 
-    // Try RSS feed for cover art; fall back to iTunes Search API on CORS failure or missing image.
-    function tryFetchCover(feedUrl, searchTerm) {
-      fetch(feedUrl)
-        .then(r => r.text())
-        .then(xml => {
-          const doc = new DOMParser().parseFromString(xml, 'text/xml');
-          const img =
-            doc.querySelector('image[href]')?.getAttribute('href') ||
-            doc.querySelector('image url')?.textContent?.trim();
-          if (img) { _showCover(img); return; }
-          _itunesCover(searchTerm);
-        })
-        .catch(() => _itunesCover(searchTerm));
+    // SHA-1 first 8 bytes → base64url (same as Dart guidHash in share_utils.dart).
+    async function guidHash(guid) {
+      const data = new TextEncoder().encode(guid);
+      const buf  = await crypto.subtle.digest('SHA-1', data);
+      const b64  = btoa(String.fromCharCode(...new Uint8Array(buf, 0, 8)));
+      return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+
+    // Fetch RSS, extract cover art and (if episode) match audio by GUID hash.
+    // Falls back to iTunes for cover on CORS failure / missing image.
+    async function tryFetchRSS(feedUrl, searchTerm) {
+      try {
+        const xml = await fetch(feedUrl).then(r => r.text());
+        const doc = new DOMParser().parseFromString(xml, 'text/xml');
+
+        // Cover art
+        const img =
+          doc.querySelector('image[href]')?.getAttribute('href') ||
+          doc.querySelector('image url')?.textContent?.trim();
+        if (img) _showCover(img); else _itunesCover(searchTerm);
+
+        // Episode audio: only when h= is set
+        if (!h) return;
+        const items = doc.querySelectorAll('item');
+        for (const item of items) {
+          const guid = item.querySelector('guid')?.textContent?.trim() || '';
+          if (!guid) continue;
+          const itemHash = await guidHash(guid);
+          if (itemHash !== h) continue;
+          const audio = item.querySelector('enclosure')?.getAttribute('url') || '';
+          if (audio) {
+            document.getElementById('player').style.display = 'block';
+            const audioEl = document.getElementById('audio-el');
+            audioEl.src = audio;
+            wirePlayer(audioEl);
+          }
+          break;
+        }
+      } catch (_) {
+        _itunesCover(searchTerm);
+      }
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
     window._openQuery = location.search;
 
     if (feed) {
-      render(feed, pTitle, '', '', '');
-      tryFetchCover(feed, pTitle);
+      render(feed, pTitle, pPod, '', '');
+      tryFetchRSS(feed, pPod || pTitle);
     } else {
       document.getElementById('ep-title').textContent = t.failedToLoad;
     }

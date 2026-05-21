@@ -8,15 +8,18 @@ import 'podcast_service.dart';
 class ShareUtils {
   static const _base = 'https://antpod.eu/open';
 
-  // Clip title at a natural separator (': ', ' - ', ' – ', etc.) if it falls
-  // within the first 20 chars; otherwise hard-clip at 20.
-  static String _clip(String s) {
+  // Podcast name: clip at natural separator within 20 chars, else hard-clip at 20.
+  static String _clipPodcast(String s) {
     for (final sep in [': ', ' - ', ' – ', ' — ', ' | ']) {
       final i = s.indexOf(sep);
       if (i > 0 && i < 20) return s.substring(0, i);
     }
     return s.length <= 20 ? s : '${s.substring(0, 20)}…';
   }
+
+  // Episode title: plain 50-char clip.
+  static String _clipTitle(String s) =>
+      s.length <= 50 ? s : '${s.substring(0, 50)}…';
 
   // Strip https:// to save 8 chars; mark http:// feeds with "h0:" prefix.
   static String _stripProto(String url) {
@@ -25,10 +28,10 @@ class ShareUtils {
     return url;
   }
 
-  // First 8 bytes of MD5 → 11-char base64url. Fixed short ID for any GUID,
-  // regardless of whether the GUID is a UUID, integer, or full URL.
+  // First 8 bytes of SHA-1 → 11-char base64url. Fixed short ID for any GUID.
+  // SHA-1 used because browsers support it natively via Web Crypto (MD5 does not).
   static String guidHash(String guid) {
-    final bytes = md5.convert(utf8.encode(guid)).bytes.sublist(0, 8);
+    final bytes = sha1.convert(utf8.encode(guid)).bytes.sublist(0, 8);
     return base64Url.encode(bytes).replaceAll('=', '');
   }
 
@@ -60,20 +63,21 @@ class ShareUtils {
 
   static String podcastUrl(Podcast podcast) {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(podcast.feedUrl))}');
-    if (podcast.title.isNotEmpty) b.write('&t=${_enc(_clip(podcast.title))}');
+    if (podcast.title.isNotEmpty) b.write('&t=${_enc(_clipPodcast(podcast.title))}');
     return b.toString();
   }
 
   static String podcastResultUrl(PodcastResult result) {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(result.feedUrl))}');
-    if (result.title.isNotEmpty) b.write('&t=${_enc(_clip(result.title))}');
+    if (result.title.isNotEmpty) b.write('&t=${_enc(_clipPodcast(result.title))}');
     return b.toString();
   }
 
   static String episodeUrl(Episode episode) {
     final b = StringBuffer('$_base?f=${_enc(_stripProto(episode.podcastId))}'
         '&h=${guidHash(episode.id)}');
-    if (episode.title.isNotEmpty) b.write('&t=${_enc(_clip(episode.title))}');
+    if (episode.title.isNotEmpty) b.write('&t=${_enc(_clipTitle(episode.title))}');
+    if (episode.podcastTitle.isNotEmpty) b.write('&p=${_enc(_clipPodcast(episode.podcastTitle))}');
     return b.toString();
   }
 }
