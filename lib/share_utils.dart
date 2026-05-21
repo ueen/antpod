@@ -8,18 +8,19 @@ import 'podcast_service.dart';
 class ShareUtils {
   static const _base = 'https://antpod.eu/open';
 
-  // Podcast name: clip at natural separator within 20 chars, else hard-clip at 20.
+  // Podcast name: clip at natural separator within 30 chars, else hard-clip at 30.
+  // Uses ASCII ... (not …) — dots are URL-safe, no %E2%80%A6 encoding.
   static String _clipPodcast(String s) {
     for (final sep in [': ', ' - ', ' – ', ' — ', ' | ']) {
       final i = s.indexOf(sep);
-      if (i > 0 && i < 20) return s.substring(0, i);
+      if (i > 0 && i < 30) return s.substring(0, i);
     }
-    return s.length <= 20 ? s : '${s.substring(0, 20)}…';
+    return s.length <= 30 ? s : '${s.substring(0, 30)}...';
   }
 
-  // Episode title: plain 50-char clip.
+  // Episode title: plain 50-char clip with ASCII dots.
   static String _clipTitle(String s) =>
-      s.length <= 50 ? s : '${s.substring(0, 50)}…';
+      s.length <= 50 ? s : '${s.substring(0, 50)}...';
 
   // Strip https:// to save 8 chars; mark http:// feeds with "h0:" prefix.
   static String _stripProto(String url) {
