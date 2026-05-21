@@ -19,10 +19,13 @@ class ShareUtils {
 
   // Minimal query-value encoding: only encode chars that truly break URL parsing.
   // Leaves : and / unencoded — the biggest savings vs Uri.encodeQueryComponent.
+  // Spaces → + (1 char vs %20's 3 chars).
   static String _enc(String s) {
     final buf = StringBuffer();
     for (final b in utf8.encode(s)) {
-      if (_safe(b)) {
+      if (b == 32) {
+        buf.write('+');
+      } else if (_safe(b)) {
         buf.writeCharCode(b);
       } else {
         buf.write('%${b.toRadixString(16).toUpperCase().padLeft(2, '0')}');
@@ -54,8 +57,10 @@ class ShareUtils {
   }
 
   static String episodeUrl(Episode episode) {
+    // Strip protocol from guid too — GUIDs are often audio URLs, which would
+    // appear as a second hyperlink in messaging apps if left as https://...
     final b = StringBuffer('$_base?f=${_enc(_stripProto(episode.podcastId))}'
-        '&g=${_enc(episode.id)}');
+        '&g=${_enc(_stripProto(episode.id))}');
     if (episode.title.isNotEmpty) b.write('&t=${_enc(_clip(episode.title, 20))}');
     return b.toString();
   }

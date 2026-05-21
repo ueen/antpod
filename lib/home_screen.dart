@@ -235,7 +235,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (feed == null || !mounted) return;
     final db = context.read<AppDatabase>();
     final player = context.read<PlayerProvider>();
-    final guid = uri.queryParameters['g'] ?? uri.queryParameters['guid'];
+    final rawGuid = uri.queryParameters['g'] ?? uri.queryParameters['guid'];
+    final guid = rawGuid != null && rawGuid.isNotEmpty ? _restoreProto(rawGuid) : null;
 
     // Check subscription status first — used by both episode and podcast paths.
     final all = await db.getAllPodcasts();

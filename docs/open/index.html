@@ -376,7 +376,7 @@
       return s.startsWith('h0:') ? 'http://' + s.slice(3) : 'https://' + s;
     }
     const feed   = restoreProto(p.get('f') || p.get('feed') || '');
-    const guid   = p.get('g') || p.get('guid') || '';
+    const guid   = restoreProto(p.get('g') || p.get('guid') || '');
     const pTitle = p.get('t') || '';
     const pPod   = p.get('p') || p.get('pod') || '';
     // i/img kept for backward compat with old links only
