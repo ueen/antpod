@@ -1780,7 +1780,10 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
 
   void _diffUpdate(List<Episode> next) {
     final state = _listKey.currentState;
+    debugPrint('[diff] state=${state != null ? "ok" : "NULL"} '
+        'displayed=${_displayed.length} next=${next.length}');
     if (state == null) {
+      debugPrint('[diff] no state — direct replace');
       setState(() => _displayed = List.of(next));
       return;
     }
@@ -1791,6 +1794,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     int removedCount = 0;
     for (int i = _displayed.length - 1; i >= 0; i--) {
       if (!nextIds.contains(_displayed[i].id)) {
+        debugPrint('[diff] remove idx=$i id=${_displayed[i].id.substring(0, math.min(12, _displayed[i].id.length))}');
         final ep = _displayed.removeAt(i);
         state.removeItem(i, (ctx, anim) => _exitTile(ep, anim),
             duration: const Duration(milliseconds: 250));
@@ -1801,6 +1805,7 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
     int addedCount = 0;
     for (int i = 0; i < next.length; i++) {
       if (!displayedIds.contains(next[i].id)) {
+        debugPrint('[diff] insert idx=$i id=${next[i].id.substring(0, math.min(12, next[i].id.length))}');
         _displayed.insert(i, next[i]);
         state.insertItem(i, duration: const Duration(milliseconds: 250));
         addedCount++;
@@ -1813,15 +1818,19 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       _displayed[i] = byId[_displayed[i].id] ?? _displayed[i];
     }
 
+    debugPrint('[diff] removed=$removedCount added=$addedCount '
+        'displayed→${_displayed.length}');
+
     if (removedCount + addedCount == 0) {
-      // Pure filter/sort change — re-sort and rebuild. No animations were
-      // triggered so there's no mid-flight reorder to worry about.
+      // Pure data/sort update — re-sort and rebuild via setState.
       final nextPos = {for (int i = 0; i < next.length; i++) next[i].id: i};
       _displayed.sort((a, b) => (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
       setState(() {});
+    } else {
+      // removeItem/insertItem already updated the internal count; call setState
+      // so the parent rebuilds footers and the empty-state sliver correctly.
+      setState(() {});
     }
-    // When items were added/removed the insert/remove loops already placed them
-    // at the correct positions — no sort needed, SliverAnimatedList drives the rebuild.
   }
 
   Widget _tile(Episode ep) => RepaintBoundary(
@@ -1842,9 +1851,9 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
       );
 
   Widget _exitTile(Episode ep, Animation<double> anim) => SizeTransition(
-        sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+        sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeIn),
         child: FadeTransition(
-          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeIn),
           child: RepaintBoundary(
             child: Column(
               children: [
@@ -1879,123 +1888,112 @@ class _EpisodeFeedState extends State<_EpisodeFeed> {
         !_showMarked &&
         _markedCount > 0;
 
-    final isEmpty = _displayed.isEmpty;
-
-    final child = isEmpty
-        ? RefreshIndicator(
-            key: const ValueKey('empty'),
-            onRefresh: widget.onRefresh,
-            child: CustomScrollView(
-              physics: const _SmoothScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 320,
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.podcasts_rounded, size: 52,
-                              color: widget.cs.onSurfaceVariant),
-                          const SizedBox(height: 16),
-                          Text(
-                            isSearching || widget.filter.hasAny
-                                ? widget.l10n.emptySearchTitle
-                                : widget.l10n.emptyFeedTitle,
+    // Single widget tree — SliverAnimatedList is always alive so a setState from
+    // _markedSub/_downloadedCountSub can never dispose it mid-animation.
+    final child = RefreshIndicator(
+      onRefresh: widget.onRefresh,
+      child: CustomScrollView(
+        controller: _scrollCtrl,
+        physics: const _SmoothScrollPhysics(),
+        slivers: [
+          SliverAnimatedList(
+            key: _listKey,
+            initialItemCount: _displayed.length,
+            itemBuilder: (ctx, i, anim) => _animatedTile(_displayed[i], anim),
+          ),
+          // Empty state: shown as a sliver below the (now-empty) animated list
+          // so in-flight remove animations still play before the message appears.
+          if (_displayed.isEmpty)
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 320,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.podcasts_rounded, size: 52,
+                          color: widget.cs.onSurfaceVariant),
+                      const SizedBox(height: 16),
+                      Text(
+                        isSearching || widget.filter.hasAny
+                            ? widget.l10n.emptySearchTitle
+                            : widget.l10n.emptyFeedTitle,
+                        style: TextStyle(
+                            fontSize: 16, color: widget.cs.onSurfaceVariant),
+                      ),
+                      if (!isSearching && !widget.filter.hasAny) ...[
+                        const SizedBox(height: 6),
+                        Text(widget.l10n.emptyFeedSub,
                             style: TextStyle(
-                                fontSize: 16, color: widget.cs.onSurfaceVariant),
-                          ),
-                          if (!isSearching && !widget.filter.hasAny) ...[
-                            const SizedBox(height: 6),
-                            Text(widget.l10n.emptyFeedSub,
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: widget.cs.onSurfaceVariant)),
-                          ],
-                          if (hasSearchFooter) ...[
-                            const SizedBox(height: 20),
-                            FilledButton.icon(
-                              onPressed: widget.onSearchOnline,
-                              icon: const Icon(Icons.search_rounded, size: 18),
-                              label: Text(widget.l10n.searchOnline),
-                            ),
-                          ],
-                          if (hasDownloadFooter) ...[
-                            const SizedBox(height: 20),
-                            OutlinedButton.icon(
-                              onPressed: widget.onShowAllDownloads,
-                              icon: const Icon(Icons.download_done_rounded, size: 18),
-                              label: Text(widget.l10n.showAllDownloads),
-                            ),
-                          ],
-                          if (hasMarkedFooter) ...[
-                            const SizedBox(height: 12),
-                            OutlinedButton.icon(
-                              onPressed: _revealMarked,
-                              icon: const Icon(Icons.download_rounded, size: 18),
-                              label: Text(widget.l10n.showMarkedForDownload),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                                fontSize: 13,
+                                color: widget.cs.onSurfaceVariant)),
+                      ],
+                      if (hasSearchFooter) ...[
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          onPressed: widget.onSearchOnline,
+                          icon: const Icon(Icons.search_rounded, size: 18),
+                          label: Text(widget.l10n.searchOnline),
+                        ),
+                      ],
+                      if (hasDownloadFooter) ...[
+                        const SizedBox(height: 20),
+                        OutlinedButton.icon(
+                          onPressed: widget.onShowAllDownloads,
+                          icon: const Icon(Icons.download_done_rounded, size: 18),
+                          label: Text(widget.l10n.showAllDownloads),
+                        ),
+                      ],
+                      if (hasMarkedFooter) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _revealMarked,
+                          icon: const Icon(Icons.download_rounded, size: 18),
+                          label: Text(widget.l10n.showMarkedForDownload),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 88)),
-              ],
+              ),
             ),
-          )
-        : RefreshIndicator(
-            key: const ValueKey('list'),
-            onRefresh: widget.onRefresh,
-            // Footers are separate slivers — never mixed into the animated list's
-            // item count, so no RangeError when search/filter state changes.
-            child: CustomScrollView(
-              controller: _scrollCtrl,
-              physics: const _SmoothScrollPhysics(),
-              slivers: [
-                SliverAnimatedList(
-                  key: _listKey,
-                  initialItemCount: _displayed.length,
-                  itemBuilder: (ctx, i, anim) => _animatedTile(_displayed[i], anim),
+          if (hasSearchFooter && _displayed.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: OutlinedButton.icon(
+                  onPressed: widget.onSearchOnline,
+                  icon: const Icon(Icons.travel_explore, size: 18),
+                  label: Text(widget.l10n.searchOnline),
                 ),
-                if (hasSearchFooter)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      child: OutlinedButton.icon(
-                        onPressed: widget.onSearchOnline,
-                        icon: const Icon(Icons.travel_explore, size: 18),
-                        label: Text(widget.l10n.searchOnline),
-                      ),
-                    ),
-                  ),
-                if (hasDownloadFooter)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      child: OutlinedButton.icon(
-                        onPressed: widget.onShowAllDownloads,
-                        icon: const Icon(Icons.download_done_rounded, size: 18),
-                        label: Text(widget.l10n.showAllDownloads),
-                      ),
-                    ),
-                  ),
-                if (hasMarkedFooter)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      child: OutlinedButton.icon(
-                        onPressed: _revealMarked,
-                        icon: const Icon(Icons.download_rounded, size: 18),
-                        label: Text(widget.l10n.showMarkedForDownload),
-                      ),
-                    ),
-                  ),
-                const SliverToBoxAdapter(child: SizedBox(height: 88)),
-              ],
+              ),
             ),
-          );
+          if (hasDownloadFooter && _displayed.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: OutlinedButton.icon(
+                  onPressed: widget.onShowAllDownloads,
+                  icon: const Icon(Icons.download_done_rounded, size: 18),
+                  label: Text(widget.l10n.showAllDownloads),
+                ),
+              ),
+            ),
+          if (hasMarkedFooter && _displayed.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: OutlinedButton.icon(
+                  onPressed: _revealMarked,
+                  icon: const Icon(Icons.download_rounded, size: 18),
+                  label: Text(widget.l10n.showMarkedForDownload),
+                ),
+              ),
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 88)),
+        ],
+      ),
+    );
 
     final cs = Theme.of(context).colorScheme;
     final hasMiniPlayer = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
