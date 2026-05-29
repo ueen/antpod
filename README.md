@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="antpodlogo.svg" width="96" alt="AntPod logo" />
+  <img src="antpodlogo.svg" style="border-radius: 15%;" width="123" alt="AntPod logo" />
 </p>
 
 # AntPod
