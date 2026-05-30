@@ -68,3 +68,7 @@ android {
 flutter {
     source = "../.."
 }
+
+configurations.configureEach {
+    exclude(group = "com.google.android.play", module = "core")
+}
