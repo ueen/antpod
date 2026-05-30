@@ -17,6 +17,8 @@ jobs:
           channel: stable
 
       - run: flutter pub get
+      - name: Strip build-id from jni (reproducible builds)
+        run: sed -i -e 's/-Wl,/-Wl,--build-id=none,/' ~/.pub-cache/hosted/pub.dev/jni-*/src/CMakeLists.txt || true
       - run: flutter build apk --release --target-platform=android-arm64
       - run: flutter build appbundle --release
 
