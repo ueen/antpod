@@ -38,7 +38,7 @@ Or download the latest apk from [releases](https://github.com/ueen/antpod/releas
 
 ## Humane Design
 
-AntPod is built to respect your time and attention. Inspired by the [Finite](https://humanebydesign.com/principles/finite/) principle of Humane by Design:
+AntPod is built to respect your time and attention. Inspired by [Humane by Design](https://humanebydesign.com/principles/):
 
 - **No notifications** — AntPod never interrupts you
 - **No autoplay** — episodes don't continue automatically; you choose what's next
