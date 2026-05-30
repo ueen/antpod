@@ -42,8 +42,7 @@ AntPod is built to respect your time and attention. Inspired by [Humane by Desig
 
 - **No notifications** — AntPod never interrupts you
 - **No autoplay** — episodes don't continue automatically; you choose what's next
-- **No pull-to-refresh** — new episodes are loaded once on app startup, not on demand
-- No algorithm pushing content at you
+- **No algorithm** — no content pushed at you to keep you scrolling
 
 ---
 
