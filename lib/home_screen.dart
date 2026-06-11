@@ -74,10 +74,10 @@ List<Episode> _sortEpisodes(List<Episode> eps, _SortMode sort, {bool inProgress 
       result = List.of(eps);
   }
   if (!inProgress) return result;
-  // Float started episodes to top while preserving base sort within each group
+  // Float started (but not finished) episodes to top while preserving base sort
   return [
-    ...result.where((e) => e.lastPositionMs > 0),
-    ...result.where((e) => e.lastPositionMs <= 0),
+    ...result.where((e) => e.lastPositionMs > 0 && !e.isFinished),
+    ...result.where((e) => e.lastPositionMs <= 0 || e.isFinished),
   ];
 }
 
@@ -210,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (pods.isEmpty) {
         _enterDiscover();
       } else {
-        _refresh(db); // async background sync on startup
+        _refresh(db, startup: true); // async background sync on startup
         player.restoreLastEpisode();
       }
       // Process initial deep link after the app has finished initializing
@@ -881,8 +881,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Refresh ───────────────────────────────────────────────────────────────
 
-  Future<void> _refresh(AppDatabase db) async {
+  Future<void> _refresh(AppDatabase db, {bool startup = false}) async {
+    if (startup) await _cleanupInterruptedDownloads();
     await db.cleanupStaleTempEpisodes();
+    await db.deleteFinishedDownloads();
     final pods = await db.getAllPodcasts();
     // Fetch all feeds in parallel, then write once — one DB write = one stream event.
     final results = await Future.wait(pods.map((pod) async {
@@ -899,7 +901,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }));
     final all = results.expand((e) => e).toList();
     if (all.isNotEmpty) await db.insertEpisodes(all);
-    await _cleanupInterruptedDownloads();
     _downloadMarkedEpisodes();
   }
 

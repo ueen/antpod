@@ -281,8 +281,8 @@ class AppDatabase extends _$AppDatabase {
     required int durationMs,
   }) async {
     final posSeconds = positionMs ~/ 1000;
-    // Consider finished if within last 5 % of total duration
-    final finished = durationMs > 0 && positionMs >= durationMs * 0.95;
+    // Consider finished if within last 60 seconds of total duration
+    final finished = durationMs > 0 && positionMs >= durationMs - 60000;
 
     await (update(episodes)..where((e) => e.id.equals(id))).write(
       EpisodesCompanion(
@@ -402,6 +402,28 @@ class AppDatabase extends _$AppDatabase {
       if (f.existsSync()) f.deleteSync();
     }
     await (update(episodes)..where((e) => e.id.equals(id))).write(
+      const EpisodesCompanion(
+        isDownloaded: Value(false),
+        localPath: Value(null),
+        downloadTaskId: Value(null),
+      ),
+    );
+  }
+
+  /// Delete local files for all finished episodes that are still downloaded.
+  Future<void> deleteFinishedDownloads() async {
+    final finished = await (select(episodes)
+          ..where((e) => e.isFinished.equals(true) & e.isDownloaded.equals(true)))
+        .get();
+    if (finished.isEmpty) return;
+    for (final ep in finished) {
+      if (ep.localPath != null) {
+        final f = File(ep.localPath!);
+        if (f.existsSync()) f.deleteSync();
+      }
+    }
+    final ids = finished.map((e) => e.id).toList();
+    await (update(episodes)..where((e) => e.id.isIn(ids))).write(
       const EpisodesCompanion(
         isDownloaded: Value(false),
         localPath: Value(null),

@@ -106,6 +106,9 @@ class _WifiDownloadSheet extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
               onPressed: onSaveForWifi,
               child: Text(l10n.saveForWifi),
             ),
