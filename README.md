@@ -3,7 +3,7 @@
 </p>
 
 # AntPod
-**Six legs. Zero ads.**
+**A Means To An Ant.**
 
 Open-source podcast app for Android and iOS — built with Flutter, powered by [PodcastIndex](https://podcastindex.org).
 
