@@ -392,7 +392,8 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Episode>> getMarkedForDownloadEpisodes() =>
       (select(episodes)
-            ..where((e) => e.markedForDownload.equals(true)))
+            ..where((e) => e.markedForDownload.equals(true))
+            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
           .get();
 
   Stream<List<Episode>> watchMarkedForDownloadEpisodes() =>

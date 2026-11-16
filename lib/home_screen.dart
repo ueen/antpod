@@ -292,6 +292,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!connectivity.contains(ConnectivityResult.wifi) &&
           !connectivity.contains(ConnectivityResult.ethernet)) { return; }
       if (!mounted) return;
+      await DownloadService.requestNotificationPermission();
+      if (!mounted) return;
       final db = context.read<AppDatabase>();
       final downloads = context.read<DownloadProvider>();
       final marked = await db.getMarkedForDownloadEpisodes();

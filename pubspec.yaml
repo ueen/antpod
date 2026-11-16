@@ -54,6 +54,9 @@ dependencies:
   # Network connectivity detection (WiFi vs mobile data)
   connectivity_plus: ^6.1.4
 
+  # Runtime permission requests (POST_NOTIFICATIONS for download notifications)
+  permission_handler: ^11.3.1
+
   # Utilities
   cached_network_image: ^3.4.1
   flutter_svg: ^2.0.10+1

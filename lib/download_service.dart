@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'app_database.dart';
 
 const _kDownloadPort = 'antpod_downloads';
@@ -44,6 +45,14 @@ class DownloadService {
 
   // ── Download episode ──────────────────────────────────────────────────────
 
+  /// Request POST_NOTIFICATIONS permission on Android 13+.
+  /// No-op on older Android or iOS. Safe to call repeatedly.
+  static Future<void> requestNotificationPermission() async {
+    if (!Platform.isAndroid) return;
+    final status = await Permission.notification.status;
+    if (status.isDenied) await Permission.notification.request();
+  }
+
   static Future<String?> downloadEpisode({
     required String episodeId,
     required String audioUrl,
@@ -60,7 +69,7 @@ class DownloadService {
       url: audioUrl,
       savedDir: saveDir.path,
       fileName: fileName,
-      showNotification: false, // avoids POST_NOTIFICATIONS runtime prompt
+      showNotification: true,
       openFileFromNotification: false,
     );
 
