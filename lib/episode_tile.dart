@@ -26,6 +26,9 @@ Future<void> triggerDownload({
   final result = await Connectivity().checkConnectivity();
   final isWifi = result.contains(ConnectivityResult.wifi) ||
       result.contains(ConnectivityResult.ethernet);
+  final hasMobile = result.contains(ConnectivityResult.mobile) ||
+      result.contains(ConnectivityResult.vpn);
+  final hasConnection = isWifi || hasMobile;
 
   if (!context.mounted) return;
 
@@ -35,6 +38,22 @@ Future<void> triggerDownload({
       episodeTitle: episode.title, db: db,
     );
     if (taskId != null && context.mounted) downloads.trackDownload(taskId);
+    return;
+  }
+
+  // No connection at all — only offer WiFi queue
+  if (!hasConnection) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _NoConnectionSheet(
+        onSaveForWifi: () {
+          Navigator.pop(ctx);
+          db.markForDownload(episode.id);
+        },
+        onCancel: () => Navigator.pop(ctx),
+      ),
+    );
     return;
   }
 
@@ -126,6 +145,56 @@ class _WifiDownloadSheet extends StatelessWidget {
             onPressed: onCancel,
             child: Text(l10n.cancel),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoConnectionSheet extends StatelessWidget {
+  final VoidCallback onSaveForWifi;
+  final VoidCallback onCancel;
+
+  const _NoConnectionSheet({required this.onSaveForWifi, required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          24, 16, 24, MediaQuery.of(context).padding.bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36, height: 4, margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+                color: cs.outlineVariant, borderRadius: BorderRadius.circular(2)),
+          ),
+          Icon(Icons.signal_wifi_off_rounded, size: 40, color: cs.onSurfaceVariant),
+          const SizedBox(height: 10),
+          Text(l10n.noWifi,
+              style: TextStyle(
+                  fontSize: 17, fontWeight: FontWeight.w700, color: cs.onSurface)),
+          const SizedBox(height: 4),
+          Text(l10n.onMobileData,
+              style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              onPressed: onSaveForWifi,
+              child: Text(l10n.saveForWifi),
+            ),
+          ),
+          const SizedBox(height: 4),
+          TextButton(onPressed: onCancel, child: Text(l10n.cancel)),
         ],
       ),
     );
@@ -246,7 +315,9 @@ class EpisodeTile extends StatelessWidget {
           episode: episode, cs: cs, l10n: l10n,
           isDownloading: isDownloading, isMarked: isMarked),
       onSwipeStart: () async {
-        if (episode.isFinished) {
+        if (!episode.isSubscribed) {
+          await db.cleanupTempEpisode(episode.id);
+        } else if (episode.isFinished) {
           await db.markUnfinished(episode.id);
         } else {
           await db.markFinished(episode.id);
@@ -445,6 +516,24 @@ class _PlayedSwipeBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!episode.isSubscribed) {
+      return Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 24),
+        color: cs.errorContainer,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.delete_rounded, color: cs.onErrorContainer, size: 28),
+            const SizedBox(height: 4),
+            Text(l10n.deleteDownload,
+                style: TextStyle(
+                    color: cs.onErrorContainer,
+                    fontSize: 11, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+    }
     final finished = episode.isFinished;
     return Container(
       alignment: Alignment.centerLeft,

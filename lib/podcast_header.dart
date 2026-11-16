@@ -93,9 +93,16 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                     child: CachedNetworkImage(
                       imageUrl: widget.imageUrl,
                       width: 60, height: 60, fit: BoxFit.cover,
+                      fadeInDuration: const Duration(milliseconds: 300),
+                      fadeOutDuration: const Duration(milliseconds: 150),
+                      placeholder: (_, __) => Container(
+                          color: cs.surfaceContainerHighest,
+                          child: Icon(Icons.podcasts_rounded, size: 28,
+                              color: cs.onSurfaceVariant)),
                       errorWidget: (_, __, ___) => Container(
                           color: cs.surfaceContainerHighest,
-                          child: const Icon(Icons.podcasts_rounded, size: 28)),
+                          child: Icon(Icons.podcasts_rounded, size: 28,
+                              color: cs.onSurfaceVariant)),
                     ),
                   ),
                   const SizedBox(width: 12),
