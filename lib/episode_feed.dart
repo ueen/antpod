@@ -53,12 +53,10 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
   List<Episode> _displayed = [];
   Timer? _diffDebounce;
-  Timer? _markedDebounce;
-  Timer? _downloadedCountDebounce;
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
-  StreamSubscription<List<Episode>>? _markedSub;
-  StreamSubscription<List<Episode>>? _downloadedCountSub;
+  StreamSubscription<int>? _markedSub;
+  StreamSubscription<int>? _downloadedCountSub;
   bool _initialLoad = true;
   bool _showMarked = false;
   int _markedCount = 0;
@@ -70,21 +68,11 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   void initState() {
     super.initState();
     _subscribe();
-    _markedSub = widget.db.watchMarkedForDownloadEpisodes().listen((eps) {
-      _markedDebounce?.cancel();
-      _markedDebounce = Timer(const Duration(milliseconds: 200), () {
-        if (!mounted) return;
-        final c = eps.length;
-        if (c != _markedCount) setState(() => _markedCount = c);
-      });
+    _markedSub = widget.db.watchMarkedForDownloadCount().listen((c) {
+      if (c != _markedCount) setState(() => _markedCount = c);
     });
-    _downloadedCountSub = widget.db.watchAllFeedEpisodes(downloadedOnly: true).listen((eps) {
-      _downloadedCountDebounce?.cancel();
-      _downloadedCountDebounce = Timer(const Duration(milliseconds: 200), () {
-        if (!mounted) return;
-        final c = eps.length;
-        if (c != _totalDownloadedCount) setState(() => _totalDownloadedCount = c);
-      });
+    _downloadedCountSub = widget.db.watchDownloadedEpisodeCount().listen((c) {
+      if (c != _totalDownloadedCount) setState(() => _totalDownloadedCount = c);
     });
     _scrollCtrl.addListener(() {
       final show = _scrollCtrl.offset > 300;
@@ -115,8 +103,6 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   @override
   void dispose() {
     _diffDebounce?.cancel();
-    _markedDebounce?.cancel();
-    _downloadedCountDebounce?.cancel();
     _sub?.cancel();
     _markedSub?.cancel();
     _downloadedCountSub?.cancel();

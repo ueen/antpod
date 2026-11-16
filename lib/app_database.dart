@@ -83,6 +83,25 @@ class Episodes extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+// ─── Stream helpers ───────────────────────────────────────────────────────────
+
+// Structural equality for episode lists: propagates changes to fields that affect
+// filtering or display, but ignores lastPositionMs / playbackPositionSeconds so
+// the 5-second position-save writes don't trigger downstream rebuilds.
+bool _episodeListEqual(List<Episode> a, List<Episode> b) {
+  if (a.length != b.length) return false;
+  for (int i = 0; i < a.length; i++) {
+    final x = a[i]; final y = b[i];
+    if (x.id != y.id ||
+        x.isFinished != y.isFinished ||
+        x.isDownloaded != y.isDownloaded ||
+        x.markedForDownload != y.markedForDownload ||
+        x.durationSeconds != y.durationSeconds ||
+        x.localPath != y.localPath) return false;
+  }
+  return true;
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
 @DriftDatabase(tables: [Podcasts, Episodes])
@@ -191,7 +210,8 @@ class AppDatabase extends _$AppDatabase {
             return downloadedOnly ? base & e.isDownloaded.equals(true) : base;
           })
           ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-        .watch();
+        .watch()
+        .distinct(_episodeListEqual);
   }
 
   /// Finished/played episodes (history view). Includes temp episodes still within
@@ -217,7 +237,8 @@ class AppDatabase extends _$AppDatabase {
       (select(episodes)
             ..where((e) => e.podcastId.equals(podcastId))
             ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-          .watch();
+          .watch()
+          .distinct(_episodeListEqual);
 
   Future<void> insertEpisode(EpisodesCompanion ep) =>
       into(episodes).insertOnConflictUpdate(ep);
@@ -399,10 +420,25 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
           .get();
 
-  Stream<List<Episode>> watchMarkedForDownloadEpisodes() =>
-      (select(episodes)
-            ..where((e) => e.markedForDownload.equals(true)))
-          .watch();
+  Stream<int> watchMarkedForDownloadCount() {
+    final count = episodes.id.count();
+    return (selectOnly(episodes)
+          ..addColumns([count])
+          ..where(episodes.markedForDownload.equals(true)))
+        .watchSingle()
+        .map((row) => row.read(count) ?? 0)
+        .distinct();
+  }
+
+  Stream<int> watchDownloadedEpisodeCount() {
+    final count = episodes.id.count();
+    return (selectOnly(episodes)
+          ..addColumns([count])
+          ..where(episodes.isDownloaded.equals(true)))
+        .watchSingle()
+        .map((row) => row.read(count) ?? 0)
+        .distinct();
+  }
 
   /// Episodes that are downloaded OR queued for WiFi download.
   /// Used when the user taps "Show marked for download" in the downloaded filter.
@@ -414,7 +450,8 @@ class AppDatabase extends _$AppDatabase {
                e.isDownloaded.equals(true) |
                e.lastPositionMs.isBiggerThanValue(0)))
           ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-        .watch();
+        .watch()
+        .distinct(_episodeListEqual);
   }
 
   Future<void> deleteLocalFile(String id) async {
