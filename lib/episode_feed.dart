@@ -191,6 +191,19 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     });
   }
 
+  // Returns full animation duration for items in the visible viewport,
+  // zero for off-screen items (instant, no visual impact or jank).
+  Duration _animDuration(int index) {
+    if (!_scrollCtrl.hasClients) return const Duration(milliseconds: 250);
+    final pos = _scrollCtrl.position;
+    const h = 90.0;
+    final first = (pos.pixels / h).floor() - 1;
+    final last = ((pos.pixels + pos.viewportDimension) / h).ceil() + 1;
+    return index >= first && index <= last
+        ? const Duration(milliseconds: 250)
+        : Duration.zero;
+  }
+
   void _diffUpdate(List<Episode> next) {
     final state = _listKey.currentState;
     if (state == null) {
@@ -201,13 +214,11 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     final nextIds = {for (final e in next) e.id};
     final displayedIds = {for (final e in _displayed) e.id};
 
+    // Pathological case: hundreds of inserts+removes at once (e.g. switching
+    // podcast context on a huge list). Reset the key for an instant replace.
     final removeCount = _displayed.where((e) => !nextIds.contains(e.id)).length;
     final addCount = next.where((e) => !displayedIds.contains(e.id)).length;
-
-    // Large structural change (e.g. switching filter modes removes hundreds of
-    // items). Animating each one with insertItem/removeItem blocks the UI thread
-    // and causes ANR. Reset the list key for an instant replace instead.
-    if (removeCount + addCount > 20) {
+    if (removeCount + addCount > 300) {
       setState(() {
         _displayed = List.of(next);
         _listKey = GlobalKey<SliverAnimatedListState>();
@@ -220,7 +231,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
       if (!nextIds.contains(_displayed[i].id)) {
         final ep = _displayed.removeAt(i);
         state.removeItem(i, (ctx, anim) => _exitTile(ep, anim),
-            duration: const Duration(milliseconds: 250));
+            duration: _animDuration(i));
         removedCount++;
       }
     }
@@ -229,7 +240,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     for (int i = 0; i < next.length; i++) {
       if (!displayedIds.contains(next[i].id)) {
         _displayed.insert(i, next[i]);
-        state.insertItem(i, duration: const Duration(milliseconds: 250));
+        state.insertItem(i, duration: _animDuration(i));
         addedCount++;
       }
     }

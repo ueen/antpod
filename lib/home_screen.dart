@@ -1325,32 +1325,42 @@ class _Toolbar extends StatelessWidget {
     final inPodcast = mode == _FeedMode.podcastFilter || mode == _FeedMode.previewPodcast;
     return Row(
       children: [
-        if (inPodcast)
-          IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: onBack)
-        else ...[
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: onLogoTap,
-            child: ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: onLogoTap,
-            child: Text('AntPod', style: TextStyle(
-              fontWeight: FontWeight.w800, fontSize: 20,
-              color: cs.onSurface, letterSpacing: -0.5)),
-          ),
-          Tooltip(
-            message: 'Guide',
-            child: GestureDetector(
-              onTap: onInfoPressed,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 16, 28, 16),
-                child: Icon(Icons.info_rounded, size: 18, color: cs.onSurfaceVariant),
-              ),
-            ),
-          ),
-        ],
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: inPodcast
+              ? IconButton(
+                  key: const ValueKey('back'),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: onBack)
+              : Row(
+                  key: const ValueKey('brand'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: onLogoTap,
+                      child: ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: onLogoTap,
+                      child: Text('AntPod', style: TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 20,
+                        color: cs.onSurface, letterSpacing: -0.5)),
+                    ),
+                    Tooltip(
+                      message: 'Guide',
+                      child: GestureDetector(
+                        onTap: onInfoPressed,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 16, 28, 16),
+                          child: Icon(Icons.info_rounded, size: 18, color: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
         const Spacer(),
         Stack(
           clipBehavior: Clip.none,
