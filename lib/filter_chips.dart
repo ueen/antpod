@@ -33,10 +33,10 @@ class FilterChipsRow extends StatelessWidget {
       onTap: () => onToggle('podcasts'),
     );
     return SizedBox(
-      height: 48,
+      height: 56,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         children: [
           if (showPodcastsChip && podcastsFirst) ...[
             podcastsChip,
@@ -121,22 +121,18 @@ class _FeedChip extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: EdgeInsets.symmetric(horizontal: active ? 10 : 14),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (icon != null) ...[
+                if (icon != null)
                   Icon(icon, size: 14,
                       color: active ? cs.onPrimary : cs.onSurfaceVariant),
-                  const SizedBox(width: 5),
-                ],
-                Text(label, style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600,
-                    color: active ? cs.onPrimary : cs.onSurfaceVariant)),
-                if (active) ...[
-                  const SizedBox(width: 6),
-                  Icon(Icons.close_rounded, size: 14, color: cs.onPrimary),
-                ],
+                if (!active && icon != null) const SizedBox(width: 5),
+                if (!active)
+                  Text(label, style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant)),
               ],
             ),
           ),

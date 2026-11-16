@@ -74,13 +74,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _piSearchTimer;
 
   List<PodcastResult> _trending = [];
-  List<PodcastResult> _recommended = [];
   List<_UnifiedResult> _unifiedSearchResults = [];
   int _searchOffset = 0;
   bool _searchHasMore = true;
   bool _loadingMoreSearch = false;
   bool _loadingTrending = false;
-  bool _loadingRec = false;
   bool _searchingPI = false;
   String? _trendingError;
 
@@ -325,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _unifiedSearchResults = [];
     });
     // Only reload if we have no data yet
-    if (_trending.isEmpty && _recommended.isEmpty) _loadDiscover();
+    if (_trending.isEmpty) _loadDiscover();
   }
 
   void _searchOnline() {
@@ -337,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     if (q.isNotEmpty) {
       _debouncedPISearch(q);
-    } else if (_trending.isEmpty && _recommended.isEmpty) {
+    } else if (_trending.isEmpty) {
       _loadDiscover();
     }
   }
@@ -705,55 +703,30 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Discover data ─────────────────────────────────────────────────────────
 
   Future<void> _loadDiscover() async {
-    final db = context.read<AppDatabase>();
     final locale = Localizations.localeOf(context);
     final country = (locale.countryCode ?? locale.languageCode).toLowerCase();
     final lang = locale.languageCode == 'en' ? 'en' : '${locale.languageCode},en';
-    setState(() { _loadingTrending = true; _loadingRec = true; _trendingError = null; });
+    setState(() { _loadingTrending = true; _trendingError = null; });
 
-    // Fetch Apple charts, subscriptions, and PI recommendations in parallel.
-    final parallel = await Future.wait([
-      PodcastService.appleCharts(country, limit: 10),
-      db.getAllPodcasts(),
-    ]);
+    List<PodcastResult> charts;
+    try {
+      charts = await PodcastService.appleCharts(country, limit: 10);
+    } catch (_) {
+      charts = [];
+    }
     if (!mounted) return;
-    var charts = parallel[0] as List<PodcastResult>;
-    final subs = parallel[1] as List<Podcast>;
 
     if (charts.isEmpty) {
-      // Apple Charts unavailable — fall back to PI trending.
       try {
         charts = await PodcastService.trending(max: 10, lang: lang);
       } catch (e) {
-        if (mounted) setState(() { _trendingError = e.toString(); _loadingTrending = false; _loadingRec = false; });
+        if (mounted) setState(() { _trendingError = e.toString(); _loadingTrending = false; });
         return;
       }
     }
     if (!mounted) return;
 
-    // Suggestions: PI category-aware recommendations (personalized to subscriptions,
-    // falls back to broad PI trending when no subscriptions). Different source from
-    // Apple Charts trending, so the two tabs show distinct content.
-    List<PodcastResult> suggestions;
-    try {
-      suggestions = await PodcastService.recommendations(
-          subscribed: subs, max: 10, lang: lang);
-    } catch (_) {
-      // Fallback: filter subscribed podcasts out of the chart.
-      final subscribedUrls = subs.map((p) => p.feedUrl).toSet();
-      suggestions = charts
-          .where((p) => !subscribedUrls.contains(p.feedUrl))
-          .take(10)
-          .toList();
-    }
-    if (!mounted) return;
-
-    setState(() {
-      _trending = charts;
-      _recommended = suggestions;
-      _loadingTrending = false;
-      _loadingRec = false;
-    });
+    setState(() { _trending = charts; _loadingTrending = false; });
   }
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
@@ -1198,9 +1171,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case _FeedMode.discover:
         return _DiscoverList(
           searchQuery: _searchQuery,
-          trending: _trending, recommended: _recommended,
+          trending: _trending,
           unifiedSearchResults: _unifiedSearchResults,
-          loadingTrending: _loadingTrending, loadingRec: _loadingRec,
+          loadingTrending: _loadingTrending,
           searchingPI: _searchingPI,
           searchHasMore: _searchHasMore,
           loadingMoreSearch: _loadingMoreSearch,
@@ -1583,9 +1556,8 @@ class _UnifiedResult {
 class _DiscoverList extends StatefulWidget {
   final String searchQuery;
   final List<PodcastResult> trending;
-  final List<PodcastResult> recommended;
   final List<_UnifiedResult> unifiedSearchResults;
-  final bool loadingTrending, loadingRec, searchingPI;
+  final bool loadingTrending, searchingPI;
   final bool searchHasMore, loadingMoreSearch;
   final String? trendingError;
   final ColorScheme cs;
@@ -1596,9 +1568,9 @@ class _DiscoverList extends StatefulWidget {
   final void Function(PodcastResult) onCoverTap;
 
   const _DiscoverList({
-    required this.searchQuery, required this.trending, required this.recommended,
+    required this.searchQuery, required this.trending,
     required this.unifiedSearchResults,
-    required this.loadingTrending, required this.loadingRec, required this.searchingPI,
+    required this.loadingTrending, required this.searchingPI,
     required this.searchHasMore, required this.loadingMoreSearch,
     this.trendingError,
     required this.cs, required this.l10n,
@@ -1610,15 +1582,12 @@ class _DiscoverList extends StatefulWidget {
   State<_DiscoverList> createState() => _DiscoverListState();
 }
 
-class _DiscoverListState extends State<_DiscoverList>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabCtrl;
+class _DiscoverListState extends State<_DiscoverList> {
   final _searchScrollCtrl = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
     _searchScrollCtrl.addListener(_onSearchScroll);
   }
 
@@ -1631,7 +1600,6 @@ class _DiscoverListState extends State<_DiscoverList>
 
   @override
   void dispose() {
-    _tabCtrl.dispose();
     _searchScrollCtrl.dispose();
     super.dispose();
   }
@@ -1784,7 +1752,7 @@ class _DiscoverListState extends State<_DiscoverList>
       );
     }
 
-    // ── Two-tab view ────────────────────────────────────────────────────────
+    // ── Trending list ────────────────────────────────────────────────────────
     return Column(
       children: [
         InkWell(
@@ -1805,60 +1773,33 @@ class _DiscoverListState extends State<_DiscoverList>
           ),
         ),
         Divider(height: 1, color: cs.outlineVariant),
-        TabBar(
-          controller: _tabCtrl,
-          labelColor: cs.primary,
-          unselectedLabelColor: cs.onSurfaceVariant,
-          indicatorColor: cs.primary,
-          tabs: [
-            Tab(text: l10n.discoverTabTrending),
-            Tab(text: l10n.discoverTabSuggestions),
-          ],
-        ),
         Expanded(
-          child: TabBarView(
-            controller: _tabCtrl,
-            children: [
-              // ── Trending ──────────────────────────────────────────────────
-              RefreshIndicator(
-                onRefresh: widget.onRefresh,
-                child: widget.loadingTrending
-                    ? const Center(child: CircularProgressIndicator())
-                    : widget.trendingError != null
-                        ? ListView(children: [
-                            Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Column(children: [
-                                Icon(Icons.wifi_off_rounded,
-                                    size: 40, color: cs.onSurfaceVariant),
-                                const SizedBox(height: 12),
-                                Text('Could not load trending podcasts',
-                                    style: TextStyle(color: cs.onSurfaceVariant)),
-                                const SizedBox(height: 4),
-                                Text(widget.trendingError!,
-                                    style: TextStyle(fontSize: 12,
-                                        color: cs.onSurfaceVariant),
-                                    textAlign: TextAlign.center),
-                              ]),
-                            ),
-                          ])
-                        : widget.trending.isEmpty
-                            ? Center(child: Text('No trending podcasts available.',
-                                style: TextStyle(color: cs.onSurfaceVariant)))
-                            : _podcastList(widget.trending),
-              ),
-
-              // ── Suggestions ───────────────────────────────────────────────
-              RefreshIndicator(
-                onRefresh: widget.onRefresh,
-                child: widget.loadingRec
-                    ? const Center(child: CircularProgressIndicator())
-                    : widget.recommended.isEmpty
-                        ? Center(child: Text(l10n.emptyFeedSub,
+          child: RefreshIndicator(
+            onRefresh: widget.onRefresh,
+            child: widget.loadingTrending
+                ? const Center(child: CircularProgressIndicator())
+                : widget.trendingError != null
+                    ? ListView(children: [
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(children: [
+                            Icon(Icons.wifi_off_rounded,
+                                size: 40, color: cs.onSurfaceVariant),
+                            const SizedBox(height: 12),
+                            Text('Could not load trending podcasts',
+                                style: TextStyle(color: cs.onSurfaceVariant)),
+                            const SizedBox(height: 4),
+                            Text(widget.trendingError!,
+                                style: TextStyle(fontSize: 12,
+                                    color: cs.onSurfaceVariant),
+                                textAlign: TextAlign.center),
+                          ]),
+                        ),
+                      ])
+                    : widget.trending.isEmpty
+                        ? Center(child: Text('No trending podcasts available.',
                             style: TextStyle(color: cs.onSurfaceVariant)))
-                        : _podcastList(widget.recommended),
-              ),
-            ],
+                        : _podcastList(widget.trending),
           ),
         ),
       ],
