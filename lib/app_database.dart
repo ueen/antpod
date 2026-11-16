@@ -309,6 +309,9 @@ class AppDatabase extends _$AppDatabase {
         playbackPositionSeconds: Value(posSeconds),
         isFinished: Value(finished),
         lastPlayed: Value(DateTime.now()),
+        // Keep durationSeconds in sync with actual audio — RSS values are often
+        // rounded or wrong, causing the progress bar to exceed 100%.
+        durationSeconds: durationMs > 0 ? Value(durationMs ~/ 1000) : const Value.absent(),
         // Clear the WiFi queue mark once the episode is finished
         markedForDownload: finished ? const Value(false) : const Value.absent(),
       ),

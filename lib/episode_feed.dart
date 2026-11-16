@@ -200,7 +200,6 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
       return;
     }
 
-    final wasEmpty = _displayed.isEmpty;
     final nextIds = {for (final e in next) e.id};
     final displayedIds = {for (final e in _displayed) e.id};
 
@@ -231,10 +230,11 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     if (removedCount + addedCount == 0) {
       final nextPos = {for (int i = 0; i < next.length; i++) next[i].id: i};
       _displayed.sort((a, b) => (nextPos[a.id] ?? 0).compareTo(nextPos[b.id] ?? 0));
-      setState(() {});
-    } else if (wasEmpty != _displayed.isEmpty) {
-      setState(() {});
     }
+    // Always rebuild so updated Episode data (lastPositionMs, isFinished, etc.)
+    // is pushed to existing tiles — SliverAnimatedList only refreshes the
+    // specific inserted/removed slot, not the rest of the visible list.
+    setState(() {});
   }
 
   Widget _tile(Episode ep) => RepaintBoundary(
