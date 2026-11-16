@@ -104,37 +104,31 @@ class _FeedChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 180),
+    final fg = active ? cs.onPrimary : cs.onSurfaceVariant;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
       curve: Curves.easeInOut,
-      clipBehavior: Clip.none,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(
-          color: active ? cs.primary : cs.surfaceContainerHighest.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: active ? cs.primary : cs.outlineVariant, width: 1),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: active ? 10 : 14),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (icon != null)
-                  Icon(icon, size: 14,
-                      color: active ? cs.onPrimary : cs.onSurfaceVariant),
-                if (!active && icon != null) const SizedBox(width: 5),
-                if (!active)
-                  Text(label, style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600,
-                      color: cs.onSurfaceVariant)),
+      decoration: BoxDecoration(
+        color: active ? cs.primary : cs.surfaceContainerHighest.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: active ? cs.primary : cs.outlineVariant, width: 1),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 14, color: fg),
+                const SizedBox(width: 5),
               ],
-            ),
+              Text(label, style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600, color: fg)),
+            ],
           ),
         ),
       ),

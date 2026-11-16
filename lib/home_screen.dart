@@ -110,7 +110,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _loadFilterPrefs();
+      // Load stored filter prefs without blocking — the feed renders immediately
+      // with defaults (newOnly: true) and updates when prefs arrive.
+      _loadFilterPrefs();
       if (!mounted) return;
       final db = context.read<AppDatabase>();
       final player = context.read<PlayerProvider>();
@@ -119,7 +121,11 @@ class _HomeScreenState extends State<HomeScreen> {
       if (pods.isEmpty) {
         _enterDiscover();
       } else {
-        _refresh(db, startup: true); // async background sync on startup
+        // Defer refresh by 300 ms so the initial frame fully paints before
+        // RSS network work starts competing on the main thread.
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) _refresh(db, startup: true);
+        });
         player.restoreLastEpisode();
       }
       // Process initial deep link after the app has finished initializing
