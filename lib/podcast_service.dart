@@ -9,6 +9,7 @@
 //   /api/1.0/search/byterm        → Empfehlungen: Suche nach Kategoriebegriffen
 
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show Value;
@@ -393,24 +394,27 @@ class PodcastService {
     String feedUrl,
   ) async {
     try {
-      final podcast = await ps.Feed.loadFeed(url: feedUrl);
-      final episodes = podcast.episodes.map((ep) {
-        final chapUrl = ep.chapters?.url;
-        return EpisodesCompanion(
-          id: Value(ep.guid.isNotEmpty ? ep.guid : '${feedUrl}_${ep.title}'),
-          podcastId: Value(feedUrl),
-          podcastTitle: Value(podcast.title ?? ''),
-          podcastImageUrl: Value(podcast.image ?? ''),
-          title: Value(ep.title),
-          description: Value(ep.description),
-          audioUrl: Value(ep.contentUrl ?? ''),
-          durationSeconds:
-              Value((ep.duration ?? Duration.zero).inSeconds),
-          publishDate: Value(ep.publicationDate ?? DateTime.now()),
-          chaptersUrl: Value(chapUrl != null && chapUrl.isNotEmpty ? chapUrl : null),
-        );
-      }).toList();
-      return (podcast: podcast, episodes: episodes);
+      // Run HTTP fetch + XML parse on a background isolate so the main thread
+      // is never blocked by RssFeed.parse() on large feeds.
+      return await Isolate.run(() async {
+        final podcast = await ps.Feed.loadFeed(url: feedUrl);
+        final episodes = podcast.episodes.map((ep) {
+          final chapUrl = ep.chapters?.url;
+          return EpisodesCompanion(
+            id: Value(ep.guid.isNotEmpty ? ep.guid : '${feedUrl}_${ep.title}'),
+            podcastId: Value(feedUrl),
+            podcastTitle: Value(podcast.title ?? ''),
+            podcastImageUrl: Value(podcast.image ?? ''),
+            title: Value(ep.title),
+            description: Value(ep.description),
+            audioUrl: Value(ep.contentUrl ?? ''),
+            durationSeconds: Value((ep.duration ?? Duration.zero).inSeconds),
+            publishDate: Value(ep.publicationDate ?? DateTime.now()),
+            chaptersUrl: Value(chapUrl != null && chapUrl.isNotEmpty ? chapUrl : null),
+          );
+        }).toList();
+        return (podcast: podcast, episodes: episodes);
+      });
     } catch (_) {
       return null;
     }

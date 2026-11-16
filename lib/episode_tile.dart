@@ -524,9 +524,9 @@ class _PlayedSwipeBackground extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.delete_rounded, color: cs.onErrorContainer, size: 28),
+            Icon(Icons.close_rounded, color: cs.onErrorContainer, size: 28),
             const SizedBox(height: 4),
-            Text(l10n.deleteDownload,
+            Text(l10n.removeEpisode,
                 style: TextStyle(
                     color: cs.onErrorContainer,
                     fontSize: 11, fontWeight: FontWeight.w600)),
