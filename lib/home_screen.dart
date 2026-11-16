@@ -92,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<Uri>? _linkSub;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Uri? _pendingDeepLink;
+  bool _downloadingMarked = false;
 
   @override
   void initState() {
@@ -284,22 +285,30 @@ class _HomeScreenState extends State<HomeScreen> {
   // Trigger WiFi downloads — called on startup (after cleanup) and on WiFi
   // reconnect. Does NOT touch in-progress downloads from the current session.
   Future<void> _downloadMarkedEpisodes() async {
-    if (!mounted) return;
-    final connectivity = await Connectivity().checkConnectivity();
-    if (!connectivity.contains(ConnectivityResult.wifi) &&
-        !connectivity.contains(ConnectivityResult.ethernet)) { return; }
-    if (!mounted) return;
-    final db = context.read<AppDatabase>();
-    final downloads = context.read<DownloadProvider>();
-    final marked = await db.getMarkedForDownloadEpisodes();
-    if (marked.isEmpty) return;
-    for (final ep in marked) {
-      await db.clearMarkedForDownload(ep.id);
-      final taskId = await DownloadService.downloadEpisode(
-        episodeId: ep.id, audioUrl: ep.audioUrl,
-        episodeTitle: ep.title, db: db,
-      );
-      if (taskId != null) downloads.trackDownload(taskId);
+    if (_downloadingMarked || !mounted) return;
+    _downloadingMarked = true;
+    try {
+      final connectivity = await Connectivity().checkConnectivity();
+      if (!connectivity.contains(ConnectivityResult.wifi) &&
+          !connectivity.contains(ConnectivityResult.ethernet)) { return; }
+      if (!mounted) return;
+      final db = context.read<AppDatabase>();
+      final downloads = context.read<DownloadProvider>();
+      final marked = await db.getMarkedForDownloadEpisodes();
+      for (final ep in marked) {
+        try {
+          final taskId = await DownloadService.downloadEpisode(
+            episodeId: ep.id, audioUrl: ep.audioUrl,
+            episodeTitle: ep.title, db: db,
+          );
+          if (taskId != null) downloads.trackDownload(taskId);
+          // If taskId is null, mark is preserved for retry on next WiFi connect.
+        } catch (_) {
+          // Keep mark set so the episode retries on next WiFi connect.
+        }
+      }
+    } finally {
+      _downloadingMarked = false;
     }
   }
 
