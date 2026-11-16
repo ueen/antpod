@@ -357,12 +357,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openPodcastResult(PodcastResult result) async {
     final db = context.read<AppDatabase>();
+    final player = context.read<PlayerProvider>();
     final all = await db.getAllPodcasts();
     if (!mounted) return;
     final subscribed = all
         .where((p) => p.feedUrl == result.feedUrl || p.id == result.feedUrl)
         .firstOrNull;
     if (subscribed != null) {
+      // Migrate any apple-* stubs the user may have played from search results
+      // for this already-subscribed podcast. No-op if no stubs exist.
+      final migrated = await db.migrateAppleEpisodeStubs(subscribed.id);
+      if (migrated.containsKey(player.currentEpisode?.id) && mounted) {
+        final rssEp = await db.getEpisode(migrated[player.currentEpisode!.id]!);
+        if (rssEp != null && mounted) await player.load(rssEp);
+      }
+      if (!mounted) return;
       _enterPodcastFilter(subscribed);
     } else {
       _openPreview(result);
@@ -762,10 +771,12 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Cover tap → podcast filter (or preview for temp episodes) ───────────
 
   Future<void> _onCoverTap(Episode episode, AppDatabase db) async {
+    final player = context.read<PlayerProvider>();
     final all = await db.getAllPodcasts();
     final pod = all.where((p) => p.id == episode.podcastId).firstOrNull;
     if (pod == null) {
       // Temp episode — open preview so user can subscribe
+      if (!mounted) return;
       _openPreview(PodcastResult(
         id: episode.podcastId,
         title: episode.podcastTitle,
@@ -776,6 +787,12 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
       return;
     }
+    final migrated = await db.migrateAppleEpisodeStubs(pod.id);
+    if (migrated.containsKey(player.currentEpisode?.id) && mounted) {
+      final rssEp = await db.getEpisode(migrated[player.currentEpisode!.id]!);
+      if (rssEp != null && mounted) await player.load(rssEp);
+    }
+    if (!mounted) return;
     _enterPodcastFilter(pod);
   }
 
