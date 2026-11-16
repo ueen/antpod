@@ -65,11 +65,20 @@ class DownloadService {
 
     final fileName = '${episodeId.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
 
+    // On Android 14+ a foreground-service notification requires POST_NOTIFICATIONS.
+    // If permission is not granted, disable the OS notification so the WorkManager
+    // task still runs — the in-app progress rings are the fallback.
+    bool showNotif = true;
+    if (Platform.isAndroid) {
+      final status = await Permission.notification.status;
+      showNotif = status.isGranted;
+    }
+
     final taskId = await FlutterDownloader.enqueue(
       url: audioUrl,
       savedDir: saveDir.path,
       fileName: fileName,
-      showNotification: true,
+      showNotification: showNotif,
       openFileFromNotification: false,
     );
 

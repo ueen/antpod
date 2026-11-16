@@ -1,5 +1,6 @@
 // lib/audio_handler.dart
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
 /// Globale Instanz – wird in main.dart über AudioService.init() gesetzt.
@@ -62,6 +63,9 @@ class AntPodAudioHandler extends BaseAudioHandler
       if (andPlay) await _player.play();
     } on PlayerInterruptedException {
       // A newer _setup() call interrupted this one — expected, ignore.
+    } catch (e) {
+      debugPrint('[audio] _setup error: $e');
+      rethrow;
     }
   }
 

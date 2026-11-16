@@ -1,5 +1,6 @@
 // lib/player_provider.dart
 import 'dart:async';
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:podcast_search/podcast_search.dart' as ps;
@@ -227,22 +228,39 @@ class PlayerProvider extends ChangeNotifier {
     _chapters = [];
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
     _position = Duration(milliseconds: startMs);
-    _isLoading = episode.localPath == null;
+    final localPath = _resolveLocalPath(episode.localPath);
+    _isLoading = localPath == null;
     notifyListeners();
     _loadChapters(episode.chaptersUrl, episode.audioUrl);
     _episodeWatchSub?.cancel();
     _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
-    await (audioHandler as AntPodAudioHandler).loadEpisode(
-      id: episode.id,
-      title: episode.title,
-      podcast: episode.podcastTitle,
-      artUri: episode.podcastImageUrl,
-      audioUrl: episode.audioUrl,
-      localPath: episode.localPath,
-      startPosition: Duration(milliseconds: startMs),
-    );
-    _isLoading = false;
-    notifyListeners();
+    try {
+      await (audioHandler as AntPodAudioHandler).loadEpisode(
+        id: episode.id,
+        title: episode.title,
+        podcast: episode.podcastTitle,
+        artUri: episode.podcastImageUrl,
+        audioUrl: episode.audioUrl,
+        localPath: localPath,
+        startPosition: Duration(milliseconds: startMs),
+      );
+    } catch (e) {
+      debugPrint('[player] load error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Returns localPath only if the file exists on disk; null otherwise.
+  /// Guards against DB entries pointing to files cleared by the OS or user.
+  String? _resolveLocalPath(String? path) {
+    if (path == null || path.isEmpty) return null;
+    if (!File(path).existsSync()) {
+      debugPrint('[player] localPath missing on disk, falling back to stream: $path');
+      return null;
+    }
+    return path;
   }
 
   Future<void> play(Episode episode) async {
@@ -256,10 +274,9 @@ class PlayerProvider extends ChangeNotifier {
     _chapters = [];
 
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
-    // Pre-fill position so progress bar doesn't flash from zero
     _position = Duration(milliseconds: startMs);
-    // Local file loads instantly — no spinner needed
-    _isLoading = episode.localPath == null;
+    final localPath = _resolveLocalPath(episode.localPath);
+    _isLoading = localPath == null && episode.audioUrl.isNotEmpty;
     notifyListeners();
 
     _loadChapters(episode.chaptersUrl, episode.audioUrl);
@@ -268,15 +285,28 @@ class PlayerProvider extends ChangeNotifier {
     _episodeWatchSub?.cancel();
     _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
 
-    await (audioHandler as AntPodAudioHandler).playEpisode(
-      id: episode.id,
-      title: episode.title,
-      podcast: episode.podcastTitle,
-      artUri: episode.podcastImageUrl,
-      audioUrl: episode.audioUrl,
-      localPath: episode.localPath,
-      startPosition: Duration(milliseconds: startMs),
-    );
+    if (episode.audioUrl.isEmpty && localPath == null) {
+      debugPrint('[player] no audio source for episode ${episode.id}');
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+
+    try {
+      await (audioHandler as AntPodAudioHandler).playEpisode(
+        id: episode.id,
+        title: episode.title,
+        podcast: episode.podcastTitle,
+        artUri: episode.podcastImageUrl,
+        audioUrl: episode.audioUrl,
+        localPath: localPath,
+        startPosition: Duration(milliseconds: startMs),
+      );
+    } catch (e) {
+      debugPrint('[player] play error: $e');
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   void _onEpisodeUpdated(Episode? updated) {
