@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -120,11 +121,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (pods.isEmpty) {
         _enterDiscover();
       } else {
-        // Defer refresh by 300 ms so the initial frame fully paints before
-        // RSS network work starts competing on the main thread.
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) _refresh(db, startup: true);
-        });
+        // Schedule the RSS refresh at idle priority so it only starts after
+        // the first frame is fully painted and the scheduler has no pending work.
+        SchedulerBinding.instance.scheduleTask(
+          () { if (mounted) _refresh(db, startup: true); },
+          Priority.idle,
+        );
         player.restoreLastEpisode();
       }
       // Process initial deep link after the app has finished initializing
