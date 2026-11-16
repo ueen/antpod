@@ -22,8 +22,8 @@ dependencies:
   provider: ^6.1.2
 
   # Audio + Background Playback
-  just_audio: ^0.10.5
-  audio_service: ^0.18.15
+  just_audio: ^0.10.6
+  audio_service: ^0.18.19
   # Podcast RSS-Parsing (only for loadFeed)
   podcast_search: ^0.7.15
 

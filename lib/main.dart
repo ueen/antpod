@@ -23,6 +23,8 @@ Future<void> main() async {
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'de.ueen.antpod.channel.audio',
       androidNotificationChannelName: 'AntPod Audio',
+      androidNotificationChannelDescription: 'Podcast playback controls',
+      androidNotificationIcon: 'drawable/ic_notification',
       androidNotificationOngoing: true,
     ),
   );
