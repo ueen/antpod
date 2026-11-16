@@ -110,9 +110,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Load stored filter prefs without blocking — the feed renders immediately
-      // with defaults (newOnly: true) and updates when prefs arrive.
-      _loadFilterPrefs();
+      // SharedPreferences is pre-warmed in main(), so this returns instantly.
+      await _loadFilterPrefs();
       if (!mounted) return;
       final db = context.read<AppDatabase>();
       final player = context.read<PlayerProvider>();

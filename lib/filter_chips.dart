@@ -33,10 +33,10 @@ class FilterChipsRow extends StatelessWidget {
       onTap: () => onToggle('podcasts'),
     );
     return SizedBox(
-      height: 56,
+      height: 50,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         children: [
           if (showPodcastsChip && podcastsFirst) ...[
             podcastsChip,

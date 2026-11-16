@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'app_database.dart';
 import 'audio_handler.dart';
 import 'download_provider.dart';
@@ -14,6 +16,9 @@ import 'player_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Pre-warm SharedPreferences so _loadFilterPrefs() is instant on first use.
+  await SharedPreferences.getInstance();
 
   await DownloadService.init();
   DownloadService.registerCallback();
