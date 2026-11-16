@@ -49,10 +49,12 @@ class EpisodeFeed extends StatefulWidget {
 }
 
 class _EpisodeFeedState extends State<EpisodeFeed> {
-  final GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
+  GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
   final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
   List<Episode> _displayed = [];
   Timer? _diffDebounce;
+  Timer? _markedDebounce;
+  Timer? _downloadedCountDebounce;
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
   StreamSubscription<List<Episode>>? _markedSub;
@@ -69,12 +71,20 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     super.initState();
     _subscribe();
     _markedSub = widget.db.watchMarkedForDownloadEpisodes().listen((eps) {
-      final c = eps.length;
-      if (c != _markedCount) setState(() => _markedCount = c);
+      _markedDebounce?.cancel();
+      _markedDebounce = Timer(const Duration(milliseconds: 200), () {
+        if (!mounted) return;
+        final c = eps.length;
+        if (c != _markedCount) setState(() => _markedCount = c);
+      });
     });
     _downloadedCountSub = widget.db.watchAllFeedEpisodes(downloadedOnly: true).listen((eps) {
-      final c = eps.length;
-      if (c != _totalDownloadedCount) setState(() => _totalDownloadedCount = c);
+      _downloadedCountDebounce?.cancel();
+      _downloadedCountDebounce = Timer(const Duration(milliseconds: 200), () {
+        if (!mounted) return;
+        final c = eps.length;
+        if (c != _totalDownloadedCount) setState(() => _totalDownloadedCount = c);
+      });
     });
     _scrollCtrl.addListener(() {
       final show = _scrollCtrl.offset > 300;
@@ -105,6 +115,8 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   @override
   void dispose() {
     _diffDebounce?.cancel();
+    _markedDebounce?.cancel();
+    _downloadedCountDebounce?.cancel();
     _sub?.cancel();
     _markedSub?.cancel();
     _downloadedCountSub?.cancel();
@@ -202,6 +214,20 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
 
     final nextIds = {for (final e in next) e.id};
     final displayedIds = {for (final e in _displayed) e.id};
+
+    final removeCount = _displayed.where((e) => !nextIds.contains(e.id)).length;
+    final addCount = next.where((e) => !displayedIds.contains(e.id)).length;
+
+    // Large structural change (e.g. switching filter modes removes hundreds of
+    // items). Animating each one with insertItem/removeItem blocks the UI thread
+    // and causes ANR. Reset the list key for an instant replace instead.
+    if (removeCount + addCount > 20) {
+      setState(() {
+        _displayed = List.of(next);
+        _listKey = GlobalKey<SliverAnimatedListState>();
+      });
+      return;
+    }
 
     int removedCount = 0;
     for (int i = _displayed.length - 1; i >= 0; i--) {
