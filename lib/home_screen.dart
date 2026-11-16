@@ -1802,6 +1802,19 @@ class _DiscoverListState extends State<_DiscoverList> {
           ),
         ),
         Divider(height: 1, color: cs.outlineVariant),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Row(
+            children: [
+              Icon(Icons.trending_up_rounded, size: 18, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(l10n.sectionTrending,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                      color: cs.onSurfaceVariant,
+                      letterSpacing: 0.3)),
+            ],
+          ),
+        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: widget.onRefresh,
