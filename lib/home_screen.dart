@@ -743,11 +743,18 @@ class _HomeScreenState extends State<HomeScreen> {
     await db.markEpisodesSubscribed(result.feedUrl);
     final data = await PodcastService.loadFeed(result.feedUrl);
     if (data != null) {
+      final rssImage = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
+      // If RSS has a better image than what PodcastIndex gave us, update the podcast record.
+      if (rssImage.isNotEmpty && rssImage != result.imageUrl) {
+        await db.updatePodcastImageUrl(result.feedUrl, rssImage);
+      }
+      final episodeImage = rssImage.isNotEmpty ? rssImage : result.imageUrl;
       await db.insertEpisodes(
         data.episodes
             .map((e) => e.copyWith(
                   podcastId: Value(result.feedUrl),
                   isSubscribed: const Value(true),
+                  podcastImageUrl: Value(episodeImage),
                 ))
             .toList(),
       );
@@ -798,9 +805,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final results = await Future.wait(pods.map((pod) async {
       final data = await PodcastService.loadFeed(pod.feedUrl);
       if (data == null) return <EpisodesCompanion>[];
+      final rssImage = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
+      // Keep Podcasts.imageUrl in sync when RSS provides a cover.
+      if (rssImage.isNotEmpty && rssImage != pod.imageUrl) {
+        await db.updatePodcastImageUrl(pod.id, rssImage);
+      }
+      // Fall back to the stored podcast cover when RSS omits the image so we
+      // never overwrite a working URL with an empty string.
+      final episodeImage = rssImage.isNotEmpty ? rssImage : pod.imageUrl;
       return data.episodes.map((e) => EpisodesCompanion(
         id: e.id, podcastId: Value(pod.id),
-        podcastTitle: e.podcastTitle, podcastImageUrl: e.podcastImageUrl,
+        podcastTitle: e.podcastTitle, podcastImageUrl: Value(episodeImage),
         title: e.title, description: e.description, audioUrl: e.audioUrl,
         durationSeconds: e.durationSeconds, publishDate: e.publishDate,
         chaptersUrl: e.chaptersUrl,

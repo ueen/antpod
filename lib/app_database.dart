@@ -490,6 +490,12 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// Update the podcast cover URL. Called during refresh when RSS provides a
+  /// non-empty image so the grid/header stays in sync with the feed.
+  Future<void> updatePodcastImageUrl(String podcastId, String newUrl) =>
+      (update(podcasts)..where((p) => p.id.equals(podcastId)))
+          .write(PodcastsCompanion(imageUrl: Value(newUrl)));
+
   Future<Episode?> getEpisode(String id) =>
       (select(episodes)..where((e) => e.id.equals(id))).getSingleOrNull();
 
