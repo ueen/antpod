@@ -1092,7 +1092,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
 
-              // Filter chips — visible in feed and episode-search modes
+              // Filter chips — visible in feed and episode-search modes.
+              // The 10px top spacer is inside the collapse so it folds away too.
               ClipRect(
                 child: AnimatedAlign(
                   duration: const Duration(milliseconds: 250),
@@ -1110,11 +1111,17 @@ class _HomeScreenState extends State<HomeScreen> {
                              _mode == _FeedMode.searchEpisodes))
                         ? 1.0
                         : 0.0,
-                    child: FilterChipsRow(
-                      filter: _effectiveFilter, l10n: l10n, cs: cs,
-                      onToggle: _onFilterToggle,
-                      showPodcastsChip: !_isSearchMode || _searchPodcastId != null,
-                      podcastsFirst: _searchPodcastId != null,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 10),
+                        FilterChipsRow(
+                          filter: _effectiveFilter, l10n: l10n, cs: cs,
+                          onToggle: _onFilterToggle,
+                          showPodcastsChip: !_isSearchMode || _searchPodcastId != null,
+                          podcastsFirst: _searchPodcastId != null,
+                        ),
+                      ],
                     ),
                   ),
                 ),
