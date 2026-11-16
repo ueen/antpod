@@ -1,12 +1,13 @@
 // lib/app_database.dart
 //
-// Schema version: 6
+// Schema version: 7
 //   v1 → v2: Episodes.isSubscribed added
 //   v2 → v3: Episodes.isFinished added (true = fully listened)
 //            Episodes.lastPositionMs added (millisecond precision resume point)
 //   v3 → v4: Episodes.chaptersUrl added
 //   v4 → v5: Episodes.lastPlayed added (timestamp of most recent playback)
 //   v5 → v6: Episodes.markedForDownload added (queued for WiFi download)
+//   v6 → v7: Podcasts.isSubscribed added (false = temporary preview feed)
 //
 // Regenerate after schema changes:
 //   dart run build_runner build --delete-conflicting-outputs
@@ -29,6 +30,8 @@ class Podcasts extends Table {
   TextColumn get website => text().nullable()();
   DateTimeColumn get subscribedAt =>
       dateTime().withDefault(currentDateAndTime)();
+  /// true = active subscription; false = temporary preview (not yet subscribed)
+  BoolColumn get isSubscribed => boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -87,7 +90,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'antpod'));
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -111,18 +114,34 @@ class AppDatabase extends _$AppDatabase {
         await m.database.customStatement(
             'ALTER TABLE episodes ADD COLUMN marked_for_download INTEGER NOT NULL DEFAULT 0');
       }
+      if (from < 7) {
+        await m.database.customStatement(
+            'ALTER TABLE podcasts ADD COLUMN is_subscribed INTEGER NOT NULL DEFAULT 1');
+      }
     },
   );
 
   // ── Podcasts ──────────────────────────────────────────────────────────────
 
   Stream<List<Podcast>> watchAllPodcasts() =>
-      (select(podcasts)..orderBy([(p) => OrderingTerm.asc(p.title)])).watch();
+      (select(podcasts)
+            ..where((p) => p.isSubscribed.equals(true))
+            ..orderBy([(p) => OrderingTerm.asc(p.title)]))
+          .watch();
 
-  Future<List<Podcast>> getAllPodcasts() => select(podcasts).get();
+  Future<List<Podcast>> getAllPodcasts() =>
+      (select(podcasts)..where((p) => p.isSubscribed.equals(true))).get();
 
   Future<void> insertPodcast(PodcastsCompanion pod) =>
       into(podcasts).insertOnConflictUpdate(pod);
+
+  /// Insert a temporary preview podcast. Uses insertOrIgnore so a real
+  /// subscription is never downgraded to isSubscribed=false.
+  Future<void> insertTempPodcast(PodcastsCompanion pod) =>
+      into(podcasts).insert(
+        pod.copyWith(isSubscribed: const Value(false)),
+        mode: InsertMode.insertOrIgnore,
+      );
 
   Future<void> deletePodcast(String id) async {
     // Fetch the podcast first so we can delete episodes by feedUrl (the canonical

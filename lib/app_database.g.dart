@@ -55,6 +55,16 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
       type: DriftSqlType.dateTime,
       requiredDuringInsert: false,
       defaultValue: currentDateAndTime);
+  static const VerificationMeta _isSubscribedMeta =
+      const VerificationMeta('isSubscribed');
+  @override
+  late final GeneratedColumn<bool> isSubscribed = GeneratedColumn<bool>(
+      'is_subscribed', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("is_subscribed" IN (0, 1))'),
+      defaultValue: const Constant(true));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -64,7 +74,8 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
         feedUrl,
         author,
         website,
-        subscribedAt
+        subscribedAt,
+        isSubscribed
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -123,6 +134,12 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
           subscribedAt.isAcceptableOrUnknown(
               data['subscribed_at']!, _subscribedAtMeta));
     }
+    if (data.containsKey('is_subscribed')) {
+      context.handle(
+          _isSubscribedMeta,
+          isSubscribed.isAcceptableOrUnknown(
+              data['is_subscribed']!, _isSubscribedMeta));
+    }
     return context;
   }
 
@@ -148,6 +165,8 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
           .read(DriftSqlType.string, data['${effectivePrefix}website']),
       subscribedAt: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}subscribed_at'])!,
+      isSubscribed: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_subscribed'])!,
     );
   }
 
@@ -166,6 +185,9 @@ class Podcast extends DataClass implements Insertable<Podcast> {
   final String author;
   final String? website;
   final DateTime subscribedAt;
+
+  /// true = active subscription; false = temporary preview (not yet subscribed)
+  final bool isSubscribed;
   const Podcast(
       {required this.id,
       required this.title,
@@ -174,7 +196,8 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       required this.feedUrl,
       required this.author,
       this.website,
-      required this.subscribedAt});
+      required this.subscribedAt,
+      required this.isSubscribed});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -188,6 +211,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       map['website'] = Variable<String>(website);
     }
     map['subscribed_at'] = Variable<DateTime>(subscribedAt);
+    map['is_subscribed'] = Variable<bool>(isSubscribed);
     return map;
   }
 
@@ -203,6 +227,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           ? const Value.absent()
           : Value(website),
       subscribedAt: Value(subscribedAt),
+      isSubscribed: Value(isSubscribed),
     );
   }
 
@@ -218,6 +243,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       author: serializer.fromJson<String>(json['author']),
       website: serializer.fromJson<String?>(json['website']),
       subscribedAt: serializer.fromJson<DateTime>(json['subscribedAt']),
+      isSubscribed: serializer.fromJson<bool>(json['isSubscribed']),
     );
   }
   @override
@@ -232,6 +258,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       'author': serializer.toJson<String>(author),
       'website': serializer.toJson<String?>(website),
       'subscribedAt': serializer.toJson<DateTime>(subscribedAt),
+      'isSubscribed': serializer.toJson<bool>(isSubscribed),
     };
   }
 
@@ -243,7 +270,8 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           String? feedUrl,
           String? author,
           Value<String?> website = const Value.absent(),
-          DateTime? subscribedAt}) =>
+          DateTime? subscribedAt,
+          bool? isSubscribed}) =>
       Podcast(
         id: id ?? this.id,
         title: title ?? this.title,
@@ -253,6 +281,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
         author: author ?? this.author,
         website: website.present ? website.value : this.website,
         subscribedAt: subscribedAt ?? this.subscribedAt,
+        isSubscribed: isSubscribed ?? this.isSubscribed,
       );
   Podcast copyWithCompanion(PodcastsCompanion data) {
     return Podcast(
@@ -267,6 +296,9 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       subscribedAt: data.subscribedAt.present
           ? data.subscribedAt.value
           : this.subscribedAt,
+      isSubscribed: data.isSubscribed.present
+          ? data.isSubscribed.value
+          : this.isSubscribed,
     );
   }
 
@@ -280,14 +312,15 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           ..write('feedUrl: $feedUrl, ')
           ..write('author: $author, ')
           ..write('website: $website, ')
-          ..write('subscribedAt: $subscribedAt')
+          ..write('subscribedAt: $subscribedAt, ')
+          ..write('isSubscribed: $isSubscribed')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, title, description, imageUrl, feedUrl, author, website, subscribedAt);
+  int get hashCode => Object.hash(id, title, description, imageUrl, feedUrl,
+      author, website, subscribedAt, isSubscribed);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -299,7 +332,8 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           other.feedUrl == this.feedUrl &&
           other.author == this.author &&
           other.website == this.website &&
-          other.subscribedAt == this.subscribedAt);
+          other.subscribedAt == this.subscribedAt &&
+          other.isSubscribed == this.isSubscribed);
 }
 
 class PodcastsCompanion extends UpdateCompanion<Podcast> {
@@ -311,6 +345,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
   final Value<String> author;
   final Value<String?> website;
   final Value<DateTime> subscribedAt;
+  final Value<bool> isSubscribed;
   final Value<int> rowid;
   const PodcastsCompanion({
     this.id = const Value.absent(),
@@ -321,6 +356,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     this.author = const Value.absent(),
     this.website = const Value.absent(),
     this.subscribedAt = const Value.absent(),
+    this.isSubscribed = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PodcastsCompanion.insert({
@@ -332,6 +368,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     required String author,
     this.website = const Value.absent(),
     this.subscribedAt = const Value.absent(),
+    this.isSubscribed = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         title = Value(title),
@@ -348,6 +385,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     Expression<String>? author,
     Expression<String>? website,
     Expression<DateTime>? subscribedAt,
+    Expression<bool>? isSubscribed,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -359,6 +397,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       if (author != null) 'author': author,
       if (website != null) 'website': website,
       if (subscribedAt != null) 'subscribed_at': subscribedAt,
+      if (isSubscribed != null) 'is_subscribed': isSubscribed,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -372,6 +411,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       Value<String>? author,
       Value<String?>? website,
       Value<DateTime>? subscribedAt,
+      Value<bool>? isSubscribed,
       Value<int>? rowid}) {
     return PodcastsCompanion(
       id: id ?? this.id,
@@ -382,6 +422,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       author: author ?? this.author,
       website: website ?? this.website,
       subscribedAt: subscribedAt ?? this.subscribedAt,
+      isSubscribed: isSubscribed ?? this.isSubscribed,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -413,6 +454,9 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     if (subscribedAt.present) {
       map['subscribed_at'] = Variable<DateTime>(subscribedAt.value);
     }
+    if (isSubscribed.present) {
+      map['is_subscribed'] = Variable<bool>(isSubscribed.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -430,6 +474,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
           ..write('author: $author, ')
           ..write('website: $website, ')
           ..write('subscribedAt: $subscribedAt, ')
+          ..write('isSubscribed: $isSubscribed, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1404,6 +1449,7 @@ typedef $$PodcastsTableCreateCompanionBuilder = PodcastsCompanion Function({
   required String author,
   Value<String?> website,
   Value<DateTime> subscribedAt,
+  Value<bool> isSubscribed,
   Value<int> rowid,
 });
 typedef $$PodcastsTableUpdateCompanionBuilder = PodcastsCompanion Function({
@@ -1415,6 +1461,7 @@ typedef $$PodcastsTableUpdateCompanionBuilder = PodcastsCompanion Function({
   Value<String> author,
   Value<String?> website,
   Value<DateTime> subscribedAt,
+  Value<bool> isSubscribed,
   Value<int> rowid,
 });
 
@@ -1450,6 +1497,9 @@ class $$PodcastsTableFilterComposer
 
   ColumnFilters<DateTime> get subscribedAt => $composableBuilder(
       column: $table.subscribedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isSubscribed => $composableBuilder(
+      column: $table.isSubscribed, builder: (column) => ColumnFilters(column));
 }
 
 class $$PodcastsTableOrderingComposer
@@ -1485,6 +1535,10 @@ class $$PodcastsTableOrderingComposer
   ColumnOrderings<DateTime> get subscribedAt => $composableBuilder(
       column: $table.subscribedAt,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isSubscribed => $composableBuilder(
+      column: $table.isSubscribed,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$PodcastsTableAnnotationComposer
@@ -1519,6 +1573,9 @@ class $$PodcastsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get subscribedAt => $composableBuilder(
       column: $table.subscribedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSubscribed => $composableBuilder(
+      column: $table.isSubscribed, builder: (column) => column);
 }
 
 class $$PodcastsTableTableManager extends RootTableManager<
@@ -1552,6 +1609,7 @@ class $$PodcastsTableTableManager extends RootTableManager<
             Value<String> author = const Value.absent(),
             Value<String?> website = const Value.absent(),
             Value<DateTime> subscribedAt = const Value.absent(),
+            Value<bool> isSubscribed = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PodcastsCompanion(
@@ -1563,6 +1621,7 @@ class $$PodcastsTableTableManager extends RootTableManager<
             author: author,
             website: website,
             subscribedAt: subscribedAt,
+            isSubscribed: isSubscribed,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1574,6 +1633,7 @@ class $$PodcastsTableTableManager extends RootTableManager<
             required String author,
             Value<String?> website = const Value.absent(),
             Value<DateTime> subscribedAt = const Value.absent(),
+            Value<bool> isSubscribed = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PodcastsCompanion.insert(
@@ -1585,6 +1645,7 @@ class $$PodcastsTableTableManager extends RootTableManager<
             author: author,
             website: website,
             subscribedAt: subscribedAt,
+            isSubscribed: isSubscribed,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

@@ -389,6 +389,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final data = await PodcastService.loadFeed(result.feedUrl);
     if (!mounted) return;
     if (data != null) {
+      final podcastImage = data.podcast.image?.isNotEmpty == true
+          ? data.podcast.image!
+          : result.imageUrl;
+      await db.insertTempPodcast(PodcastsCompanion(
+        id: Value(result.feedUrl),
+        title: Value(data.podcast.title?.isNotEmpty == true
+            ? data.podcast.title!
+            : result.title),
+        description: Value(data.podcast.description ?? result.description),
+        imageUrl: Value(podcastImage),
+        feedUrl: Value(result.feedUrl),
+        author: Value(result.author),
+      ));
       await db.insertTempEpisodes(data.episodes);
       // Resolve Apple stubs (id: 'apple-*') to real RSS episodes by title-match.
       // Migrates any saved playback progress to the RSS episode, then removes the stub.
