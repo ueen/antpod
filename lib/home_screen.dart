@@ -852,6 +852,66 @@ class _HomeScreenState extends State<HomeScreen> {
     _downloadMarkedEpisodes();
   }
 
+  // Re-fetch a single feed's RSS and update episodes/metadata.
+  // Used as the pull-to-refresh action in podcast view and preview view.
+  Future<void> _refreshSinglePodcast(String feedId, {bool isSubscribed = true}) async {
+    if (!mounted) return;
+    final db = context.read<AppDatabase>();
+    final data = await PodcastService.loadFeed(feedId);
+    if (data == null || !mounted) return;
+
+    final rssImage = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
+
+    if (isSubscribed) {
+      final pod = await (db.select(db.podcasts)
+            ..where((p) => p.id.equals(feedId)))
+          .getSingleOrNull();
+      if (!mounted) return;
+      final storedImage = pod?.imageUrl ?? '';
+      if (rssImage.isNotEmpty && rssImage != storedImage) {
+        await db.updatePodcastImageUrl(feedId, rssImage);
+      }
+      final episodeImage = rssImage.isNotEmpty ? rssImage : storedImage;
+      final episodes = data.episodes.map((e) => EpisodesCompanion(
+        id: e.id, podcastId: Value(feedId),
+        podcastTitle: e.podcastTitle, podcastImageUrl: Value(episodeImage),
+        title: e.title, description: e.description, audioUrl: e.audioUrl,
+        durationSeconds: e.durationSeconds, publishDate: e.publishDate,
+        chaptersUrl: e.chaptersUrl,
+        isSubscribed: const Value(true),
+      )).toList();
+      if (episodes.isNotEmpty) await db.insertEpisodes(episodes);
+    } else {
+      // Preview: refresh temp episodes and update in-memory metadata.
+      final podcastImage = rssImage.isNotEmpty ? rssImage : (_previewResult?.imageUrl ?? '');
+      await db.insertTempPodcast(PodcastsCompanion(
+        id: Value(feedId),
+        title: Value(data.podcast.title?.isNotEmpty == true
+            ? data.podcast.title!
+            : (_previewResult?.title ?? '')),
+        description: Value(data.podcast.description ?? (_previewResult?.description ?? '')),
+        imageUrl: Value(podcastImage),
+        feedUrl: Value(feedId),
+        author: Value(_previewResult?.author ?? ''),
+      ));
+      await db.insertTempEpisodes(data.episodes);
+      if (mounted && _previewResult != null) {
+        setState(() {
+          _previewResult = PodcastResult(
+            id: _previewResult!.id,
+            title: data.podcast.title?.isNotEmpty == true
+                ? data.podcast.title!
+                : _previewResult!.title,
+            author: _previewResult!.author,
+            description: data.podcast.description ?? _previewResult!.description,
+            imageUrl: podcastImage,
+            feedUrl: feedId,
+          );
+        });
+      }
+    }
+  }
+
   // ─── Filter chip handler ──────────────────────────────────────────────────
 
   void _onFilterToggle(String key) {
@@ -1107,6 +1167,7 @@ class _HomeScreenState extends State<HomeScreen> {
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
           onFilterToggle: _onFilterToggle,
+          onRefresh: () => _refreshSinglePodcast(_previewResult!.feedUrl, isSubscribed: false),
           onSubscribe: () {
             final result = _previewResult!;
             _exitToFeed();
@@ -1129,6 +1190,7 @@ class _HomeScreenState extends State<HomeScreen> {
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
           onFilterToggle: _onFilterToggle,
+          onRefresh: () => _refreshSinglePodcast(_filterPodcastId!),
           onCoverTap: _onCoverTap,
           onUnsubscribe: _filterPodcast != null ? () => _unsubscribe(_filterPodcast!) : null,
         );
@@ -1448,6 +1510,7 @@ class _PodcastFeed extends StatelessWidget {
   final Future<void> Function(Episode, AppDatabase)? onCoverTap;
   final VoidCallback? onSubscribe;
   final VoidCallback? onUnsubscribe;
+  final Future<void> Function()? onRefresh;
   final bool isLoading;
 
   const _PodcastFeed({
@@ -1458,7 +1521,7 @@ class _PodcastFeed extends StatelessWidget {
     required this.filter, required this.filterChipsVisible,
     required this.onFilterToggle,
     this.onCoverTap, this.onSubscribe, this.onUnsubscribe,
-    this.isLoading = false,
+    this.onRefresh, this.isLoading = false,
   });
 
   @override
@@ -1468,7 +1531,7 @@ class _PodcastFeed extends StatelessWidget {
       filter: filter,
       podcastIdFilter: feedId,
       onCoverTap: onCoverTap ?? (_, __) async {},
-      onRefresh: () async {},
+      onRefresh: onRefresh ?? () async {},
       isLoading: isLoading,
       headerSlivers: [
         PodcastHeader(
