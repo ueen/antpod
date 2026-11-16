@@ -324,6 +324,11 @@ class PlayerProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    // Episode marked as played externally (swipe or menu) — dismiss mini player.
+    if (!_currentEpisode!.isFinished && updated.isFinished) {
+      stopAndClear();
+      return;
+    }
     final prevLocal = _currentEpisode!.localPath;
     final newLocal = updated.localPath;
     _currentEpisode = updated;
