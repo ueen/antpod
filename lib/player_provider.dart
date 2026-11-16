@@ -324,9 +324,15 @@ class PlayerProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    // Episode marked as played externally (swipe or menu) — dismiss mini player.
+    // Episode marked as played externally (swipe or menu) — stop and clear,
+    // same as the temp-episode-removed path above.
     if (!_currentEpisode!.isFinished && updated.isFinished) {
-      stopAndClear();
+      audioHandler.stop();
+      _episodeWatchSub?.cancel();
+      _episodeWatchSub = null;
+      _currentEpisode = null;
+      _chapters = [];
+      notifyListeners();
       return;
     }
     final prevLocal = _currentEpisode!.localPath;
