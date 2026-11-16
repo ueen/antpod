@@ -41,11 +41,14 @@ class PlayerProvider extends ChangeNotifier {
     handler.playbackState.listen((state) {
       _isPlaying = state.playing;
       _position = state.updatePosition;
-      // Suppress loading indicator for local files — seek + load is near-instant
-      final isLocal = _currentEpisode?.localPath != null;
-      _isLoading = !isLocal &&
-          (state.processingState == AudioProcessingState.loading ||
-           state.processingState == AudioProcessingState.buffering);
+      // Skip idle — fired transiently by _player.stop() before setUrl(), which
+      // would clear _isLoading and cause the spinner to flash off and back on.
+      if (state.processingState != AudioProcessingState.idle) {
+        final isLocal = _currentEpisode?.localPath != null;
+        _isLoading = !isLocal &&
+            (state.processingState == AudioProcessingState.loading ||
+             state.processingState == AudioProcessingState.buffering);
+      }
 
       if (state.processingState == AudioProcessingState.completed) {
         _isPlaying = false;
