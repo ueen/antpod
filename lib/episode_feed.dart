@@ -426,6 +426,13 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
                 ),
               ),
             ),
+          if (widget.isLoading && _displayed.isNotEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ),
           const SliverToBoxAdapter(child: SizedBox(height: 88)),
         ],
       ),
