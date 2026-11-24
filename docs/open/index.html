@@ -376,6 +376,11 @@
     document.getElementById('footer-oss').textContent         = t.openSource;
     document.getElementById('footer-dl').textContent          = t.download;
 
+    // ── RSS proxy ─────────────────────────────────────────────────────────────
+    // Set to your Cloudflare Worker URL after deploying workers/rss-proxy.js.
+    // Leave empty to fall back to direct fetch (CORS-blocked on many feeds).
+    const RSS_PROXY = 'https://antpod-rss.ueen.workers.dev';
+
     // ── URL params ────────────────────────────────────────────────────────────
     // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5),
     // t = title (episode title or podcast name), p = podcast name (episodes only)
@@ -548,11 +553,15 @@
     }
 
     // Fetch RSS, extract cover art and (if episode) match audio by GUID hash.
-    // Falls back to PodcastIndex when RSS is CORS-blocked or no match found.
+    // Uses the RSS proxy when configured to avoid CORS blocks; falls back to
+    // a direct fetch, then PodcastIndex if both fail or find no match.
     async function tryFetchRSS(feedUrl) {
       let xml;
       try {
-        xml = await fetch(feedUrl).then(r => r.text());
+        const fetchUrl = RSS_PROXY
+          ? RSS_PROXY + '?url=' + encodeURIComponent(feedUrl)
+          : feedUrl;
+        xml = await fetch(fetchUrl).then(r => r.text());
       } catch (_) {
         tryPodcastIndex(feedUrl);
         return;
