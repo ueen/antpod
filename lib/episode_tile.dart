@@ -275,7 +275,14 @@ class EpisodeTile extends StatelessWidget {
               }
             : null,
         onDeleteDownload: episode.isDownloaded
-            ? () { Navigator.pop(context); db.deleteLocalFile(episode.id); }
+            ? () {
+                Navigator.pop(context);
+                db.deleteLocalFile(episode.id).then((_) {
+                  if (!episode.isSubscribed) {
+                    db.cleanupTempFeedIfDone(episode.podcastId);
+                  }
+                });
+              }
             : null,
         onRemoveEpisode: !episode.isSubscribed
             ? () { Navigator.pop(context); db.cleanupTempEpisode(episode.id); }
@@ -332,6 +339,9 @@ class EpisodeTile extends StatelessWidget {
           await downloads.cancelDownload(activeTaskId, episode.id);
         } else if (episode.isDownloaded) {
           await db.deleteLocalFile(episode.id);
+          if (!episode.isSubscribed) {
+            await db.cleanupTempFeedIfDone(episode.podcastId);
+          }
         } else if (isMarked) {
           await db.clearMarkedForDownload(episode.id);
         } else {

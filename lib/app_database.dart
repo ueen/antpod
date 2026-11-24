@@ -521,26 +521,48 @@ class AppDatabase extends _$AppDatabase {
               )))
         .get();
 
-    if (stale.isEmpty) return;
-
-    for (final ep in stale) {
-      if (ep.localPath != null) {
-        final f = File(ep.localPath!);
-        if (f.existsSync()) f.deleteSync();
+    if (stale.isNotEmpty) {
+      for (final ep in stale) {
+        if (ep.localPath != null) {
+          final f = File(ep.localPath!);
+          if (f.existsSync()) f.deleteSync();
+        }
       }
+      final ids = stale.map((e) => e.id).toList();
+      await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
     }
 
-    final ids = stale.map((e) => e.id).toList();
-    await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
-
-    final affectedPodcastIds = stale.map((e) => e.podcastId).toSet();
-    for (final podId in affectedPodcastIds) {
-      final remaining =
-          await (select(episodes)..where((e) => e.podcastId.equals(podId)))
-              .get();
-      if (remaining.isEmpty) {
-        await (delete(podcasts)..where((p) => p.id.equals(podId))).go();
+    // Feed-level cleanup: for each temp podcast, delete the whole feed if
+    // all episodes are finished and the most recent play was > 7 days ago.
+    final tempPods = await (select(podcasts)
+          ..where((p) => p.isSubscribed.equals(false)))
+        .get();
+    for (final pod in tempPods) {
+      final eps = await (select(episodes)
+            ..where((e) => e.podcastId.equals(pod.id)))
+          .get();
+      if (eps.isEmpty) {
+        await (delete(podcasts)..where((p) => p.id.equals(pod.id))).go();
+        continue;
       }
+      // Keep feed if any episode is unfinished (in-progress or never started)
+      if (eps.any((e) => !e.isFinished)) continue;
+      // Keep feed if the most recently played episode is still recent
+      final lastPlay = eps
+          .where((e) => e.lastPlayed != null)
+          .map((e) => e.lastPlayed!)
+          .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
+      if (lastPlay == null || lastPlay.isAfter(cutoff)) continue;
+      // All finished and idle for 7+ days — remove the feed
+      for (final ep in eps) {
+        if (ep.localPath != null) {
+          final f = File(ep.localPath!);
+          if (f.existsSync()) f.deleteSync();
+        }
+      }
+      final ids = eps.map((e) => e.id).toList();
+      await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
+      await (delete(podcasts)..where((p) => p.id.equals(pod.id))).go();
     }
   }
 
@@ -554,7 +576,39 @@ class AppDatabase extends _$AppDatabase {
         if (f.existsSync()) f.deleteSync();
       }
       await (delete(episodes)..where((e) => e.id.equals(id))).go();
+      await cleanupTempFeedIfDone(ep.podcastId);
     }
+  }
+
+  /// Delete a temp podcast and all its episodes if no episode is still active
+  /// (in-progress or downloaded). Called after a temp episode's download is
+  /// deleted or the episode is manually removed.
+  Future<void> cleanupTempFeedIfDone(String podcastId) async {
+    final pod = await (select(podcasts)
+          ..where((p) => p.id.equals(podcastId)))
+        .getSingleOrNull();
+    if (pod == null || pod.isSubscribed) return;
+
+    final eps = await (select(episodes)
+          ..where((e) => e.podcastId.equals(podcastId)))
+        .get();
+
+    // Keep feed if any episode is in-progress or still has a local file
+    final hasActive = eps.any((e) =>
+        e.isDownloaded || (!e.isFinished && e.lastPositionMs > 0));
+    if (hasActive) return;
+
+    for (final ep in eps) {
+      if (ep.localPath != null) {
+        final f = File(ep.localPath!);
+        if (f.existsSync()) f.deleteSync();
+      }
+    }
+    if (eps.isNotEmpty) {
+      final ids = eps.map((e) => e.id).toList();
+      await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
+    }
+    await (delete(podcasts)..where((p) => p.id.equals(podcastId))).go();
   }
 
   /// Update the podcast cover URL. Called during refresh when RSS provides a
