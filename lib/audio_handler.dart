@@ -52,14 +52,17 @@ class AntPodAudioHandler extends BaseAudioHandler
     mediaItem.add(MediaItem(
       id: id, title: title, artist: podcast, artUri: Uri.tryParse(artUri),
     ));
-    await _player.stop();
+    // Skip stop() when the player is already idle — saves a round-trip on
+    // first play after launch.
+    if (_player.processingState != ProcessingState.idle) await _player.stop();
     try {
+      // Pass initialPosition so just_audio seeks during load instead of after,
+      // saving a separate seek() round-trip.
       if (localPath != null) {
-        await _player.setFilePath(localPath);
+        await _player.setFilePath(localPath, initialPosition: startPosition);
       } else {
-        await _player.setUrl(audioUrl);
+        await _player.setUrl(audioUrl, initialPosition: startPosition);
       }
-      if (startPosition > Duration.zero) await _player.seek(startPosition);
       if (andPlay) await _player.play();
     } on PlayerInterruptedException {
       // A newer _setup() call interrupted this one — expected, ignore.

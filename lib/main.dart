@@ -17,13 +17,11 @@ import 'player_provider.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Pre-warm SharedPreferences so _loadFilterPrefs() is instant on first use.
-  await SharedPreferences.getInstance();
-
-  await DownloadService.init();
-  DownloadService.registerCallback();
-
-  audioHandler = await AudioService.init(
+  // Fire all slow one-time inits in parallel — AudioService.init alone can
+  // take 1–2 s on first launch (spawns a background isolate).
+  final spFuture = SharedPreferences.getInstance();
+  final dlFuture = DownloadService.init();
+  final audioFuture = AudioService.init(
     builder: () => AntPodAudioHandler(),
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'de.ueen.antpod.channel.audio',
@@ -33,6 +31,10 @@ Future<void> main() async {
       androidNotificationOngoing: true,
     ),
   );
+  await spFuture;
+  await dlFuture;
+  DownloadService.registerCallback();
+  audioHandler = await audioFuture;
 
   final db = AppDatabase();
   runApp(
