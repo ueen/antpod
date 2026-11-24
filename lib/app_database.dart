@@ -593,9 +593,9 @@ class AppDatabase extends _$AppDatabase {
           ..where((e) => e.podcastId.equals(podcastId)))
         .get();
 
-    // Keep feed if any episode is in-progress or still has a local file
-    final hasActive = eps.any((e) =>
-        e.isDownloaded || (!e.isFinished && e.lastPositionMs > 0));
+    // Keep feed if any episode is unfinished (never started, in-progress, or
+    // still downloaded — the user might still want to listen to it)
+    final hasActive = eps.any((e) => e.isDownloaded || !e.isFinished);
     if (hasActive) return;
 
     for (final ep in eps) {
