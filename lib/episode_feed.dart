@@ -50,8 +50,14 @@ class EpisodeFeed extends StatefulWidget {
 
 class _EpisodeFeedState extends State<EpisodeFeed> {
   GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
-  final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
   List<Episode> _displayed = [];
+
+  // Pull-to-refresh state
+  bool _pullEligible = false;
+  bool _pullTriggered = false;
+  double _pullDrag = 0.0;
+  static const double _pullThreshold = 55.0;
+  static const double _pullMax = 70.0;
   Timer? _diffDebounce;
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
@@ -94,7 +100,10 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
       _diffUpdate(_applyFilters(_raw));
     }
-    if (old.refreshing != widget.refreshing) setState(() {});
+    if (old.refreshing != widget.refreshing) {
+      if (widget.refreshing) _pullTriggered = false;
+      setState(() {});
+    }
 
   }
 
@@ -291,6 +300,11 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
         ),
       );
 
+  double get _bannerHeight {
+    if (widget.refreshing || _pullTriggered) return 52.0;
+    return (_pullDrag / _pullMax * 52.0).clamp(0.0, 52.0);
+  }
+
   // Scroll-to-top FAB, positioned inside a Stack above the feed.
   Widget _scrollTopFab(ColorScheme cs) {
     final hasMiniPlayer = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
@@ -334,9 +348,37 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
         !_showMarked &&
         _markedCount > 0;
 
-    final child = RefreshIndicator(
-      key: _refreshKey,
-      onRefresh: widget.onRefresh,
+    final child = Listener(
+      onPointerDown: (e) {
+        _pullEligible = _scrollCtrl.hasClients && _scrollCtrl.offset <= 0;
+        if (_pullEligible) _pullDrag = 0;
+      },
+      onPointerMove: (e) {
+        if (!_pullEligible) return;
+        if (!_scrollCtrl.hasClients || _scrollCtrl.offset > 1) {
+          _pullEligible = false;
+          if (_pullDrag > 0) setState(() => _pullDrag = 0);
+          return;
+        }
+        final dy = e.delta.dy;
+        if (dy == 0) return;
+        final newDrag = (_pullDrag + dy * 0.5).clamp(0.0, _pullMax);
+        if ((newDrag - _pullDrag).abs() > 0.5) setState(() => _pullDrag = newDrag);
+      },
+      onPointerUp: (e) {
+        if (!_pullEligible) return;
+        _pullEligible = false;
+        if (_pullDrag >= _pullThreshold && !widget.refreshing) {
+          setState(() { _pullDrag = 0; _pullTriggered = true; });
+          widget.onRefresh();
+        } else {
+          setState(() => _pullDrag = 0);
+        }
+      },
+      onPointerCancel: (e) {
+        _pullEligible = false;
+        if (_pullDrag > 0) setState(() => _pullDrag = 0);
+      },
       child: CustomScrollView(
         controller: _scrollCtrl,
         physics: const _SmoothScrollPhysics(),
@@ -345,41 +387,25 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
             for (final w in widget.headerSlivers!)
               SliverToBoxAdapter(child: w),
           SliverToBoxAdapter(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOut,
-              height: widget.refreshing && _displayed.isNotEmpty ? 52.0 : 0.0,
-              child: widget.refreshing && _displayed.isNotEmpty
-                  ? Builder(builder: (ctx) {
-                      final cs = Theme.of(ctx).colorScheme;
-                      return Container(
-                        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: cs.primary),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Refreshing…',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: cs.onSurfaceVariant,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
+            child: Builder(builder: (ctx) {
+              final cs = Theme.of(ctx).colorScheme;
+              final h = _bannerHeight;
+              return AnimatedContainer(
+                duration: _pullDrag > 0 ? Duration.zero : const Duration(milliseconds: 350),
+                curve: Curves.easeOut,
+                height: h,
+                color: cs.surfaceContainerHighest,
+                child: h > 20
+                    ? Center(
+                        child: SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: cs.primary),
                         ),
-                      );
-                    })
-                  : const SizedBox.shrink(),
-            ),
+                      )
+                    : null,
+              );
+            }),
           ),
           SliverAnimatedList(
             key: _listKey,

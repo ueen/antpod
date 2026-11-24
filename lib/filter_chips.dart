@@ -106,9 +106,7 @@ class _FeedChip extends StatelessWidget {
         color: active ? cs.primary : cs.surfaceContainerHighest.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-            color: active
-                ? cs.onPrimary.withValues(alpha: 0.45)
-                : cs.outlineVariant,
+            color: active ? cs.primary : cs.outlineVariant,
             width: 1.5),
       ),
       child: InkWell(
