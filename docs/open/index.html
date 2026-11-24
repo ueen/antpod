@@ -109,7 +109,7 @@
     .podcast-name a:hover { color: #FF9A30; }
 
     /* Episode list on podcast share */
-    .ep-list { margin-top: 0.875rem; padding-top: 0.875rem; padding-bottom: 0.25rem; border-top: 1px solid #F0E4D4; display: none; }
+    .ep-list { margin-top: 0.5rem; padding-bottom: 0.25rem; display: none; }
     .ep-list-label { font-size: 0.72rem; font-weight: 600; color: #9E7056; margin-bottom: 0.35rem; }
     .ep-item {
       display: flex; align-items: center; gap: 0.5rem;
@@ -492,7 +492,7 @@
       _desc = text ? stripHtml(text) : '';
       if (_desc) {
         document.getElementById('desc-btn').style.display = 'flex';
-        document.getElementById('desc-btn-label').textContent = _isEpisodePage ? 'Shownotes' : 'Description';
+        document.getElementById('desc-btn-label').textContent = 'Shownotes';
       }
     }
     function toggleDesc() {
