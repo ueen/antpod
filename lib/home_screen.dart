@@ -2227,15 +2227,15 @@ class _DiscoverListState extends State<_DiscoverList> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              // The active filter chip's color: as the border, and as a
-              // light tint behind the (orange) title.
+              // The active filter chip's color: border and title, over a
+              // light tint of it.
               color: cs.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: cs.primary, width: 1.5),
             ),
-            child: const Text('Apple Trends',
+            child: Text('Apple Trends',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
-                    color: Color(0xFFFF9A30))),
+                    color: cs.primary)),
           ),
         ),
       );
