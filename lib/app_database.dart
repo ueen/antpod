@@ -470,11 +470,14 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  /// Delete local files for finished episodes downloaded more than 2 days ago.
+  /// Delete local files for finished subscribed episodes downloaded more than
+  /// 2 days ago. Temp episodes are always deleted immediately via
+  /// cleanupTempEpisode() and never reach this routine.
   Future<void> deleteFinishedDownloads() async {
     final cutoff = DateTime.now().subtract(const Duration(days: 2));
     final finished = await (select(episodes)
           ..where((e) =>
+              e.isSubscribed.equals(true) &
               e.isFinished.equals(true) &
               e.isDownloaded.equals(true) &
               e.lastPlayed.isSmallerThanValue(cutoff)))
