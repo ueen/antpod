@@ -63,7 +63,7 @@ class PlayerProvider extends ChangeNotifier {
           );
           _db.markFinished(_currentEpisode!.id);
           _db.cleanupTempEpisode(_currentEpisode!.id);
-          _db.deleteLocalFile(_currentEpisode!.id);
+          // Local file kept — startup cleanup deletes it 2 days after lastPlayed.
         }
       }
       notifyListeners();
@@ -404,7 +404,7 @@ class PlayerProvider extends ChangeNotifier {
         durationMs: _duration.inMilliseconds);
     _db.markFinished(_currentEpisode!.id);
     _db.cleanupTempEpisode(_currentEpisode!.id);
-    _db.deleteLocalFile(_currentEpisode!.id);
+    // Local file kept — startup cleanup deletes it 2 days after lastPlayed.
   }
 
   Future<void> seekTo(Duration pos) async {

@@ -470,10 +470,14 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  /// Delete local files for all finished episodes that are still downloaded.
+  /// Delete local files for finished episodes downloaded more than 2 days ago.
   Future<void> deleteFinishedDownloads() async {
+    final cutoff = DateTime.now().subtract(const Duration(days: 2));
     final finished = await (select(episodes)
-          ..where((e) => e.isFinished.equals(true) & e.isDownloaded.equals(true)))
+          ..where((e) =>
+              e.isFinished.equals(true) &
+              e.isDownloaded.equals(true) &
+              e.lastPlayed.isSmallerThanValue(cutoff)))
         .get();
     if (finished.isEmpty) return;
     for (final ep in finished) {
