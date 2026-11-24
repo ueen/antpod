@@ -109,6 +109,7 @@ class PodcastResult {
         imageUrl: Value(imageUrl),
         feedUrl: Value(feedUrl),
         author: Value(author),
+        isSubscribed: const Value(true),
       );
 }
 

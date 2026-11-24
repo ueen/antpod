@@ -103,7 +103,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final isLoading = context.select<PlayerProvider, bool>((p) => p.isLoading);
     final rewindSec = context.select<PlayerProvider, int>((p) => p.rewindSeconds);
     final forwardSec = context.select<PlayerProvider, int>((p) => p.forwardSeconds);
+    final isOffline = context.select<PlayerProvider, bool>((p) => p.isOffline);
+    final isDownloaded = context.select<PlayerProvider, bool>(
+        (p) => p.currentEpisode?.localPath != null);
     final cs = Theme.of(context).colorScheme;
+    final canPlay = !isOffline || isDownloaded;
 
     return Transform.translate(
       offset: Offset(0, -_dragProgress * 50),
@@ -201,14 +205,17 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: cs.inversePrimary),
                             )
-                          : IconButton(
-                              onPressed: () => context.read<PlayerProvider>().togglePlayPause(),
-                              icon: Icon(
-                                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                color: cs.inversePrimary, size: 28),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
+                          : !canPlay
+                              ? Icon(Icons.wifi_off_rounded,
+                                  color: cs.inversePrimary.withValues(alpha: 0.5), size: 22)
+                              : IconButton(
+                                  onPressed: () => context.read<PlayerProvider>().togglePlayPause(),
+                                  icon: Icon(
+                                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                    color: cs.inversePrimary, size: 28),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
                     ),
                     _iconBtn(cs,
                         _skipForwardIconDirect(forwardSec) ?? _skipRewindIcon(forwardSec),
@@ -329,6 +336,26 @@ class _PlayerSheet extends StatelessWidget {
     SharePlus.instance.share(ShareParams(text: text, subject: ep.title));
   }
 
+  void _showCoverFullscreen(BuildContext context, PlayerProvider player, String fallbackUrl) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => GestureDetector(
+        onTap: () => Navigator.of(ctx).pop(),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: _ChapterCover(player: player, fallbackUrl: fallbackUrl),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showSkipDialog(BuildContext context, PlayerProvider player,
       {required bool isForward}) {
     final options = [5, 10, 15, 30, 60, 90];
@@ -396,12 +423,14 @@ class _PlayerSheet extends StatelessWidget {
 
             Center(
               child: GestureDetector(
-                onTap: onPodcastTap != null
-                    ? () {
-                        Navigator.of(context).pop();
-                        onPodcastTap!();
-                      }
-                    : null,
+                onTap: player.chapters.isNotEmpty
+                    ? () => _showCoverFullscreen(context, player, ep.podcastImageUrl)
+                    : (onPodcastTap != null
+                        ? () {
+                            Navigator.of(context).pop();
+                            onPodcastTap!();
+                          }
+                        : null),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: _ChapterCover(
@@ -422,11 +451,10 @@ class _PlayerSheet extends StatelessWidget {
             Text(ep.podcastTitle,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 24),
+            SizedBox(height: player.chapters.isNotEmpty ? 4 : 24),
 
             // Chapter navigation — only shown when the episode has chapters
             if (player.chapters.isNotEmpty) ...[
-              const SizedBox(height: 4),
               _ChapterNavRow(player: player),
               const SizedBox(height: 4),
             ],
@@ -504,13 +532,16 @@ class _PlayerSheet extends StatelessWidget {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: cs.onPrimary),
                         )
-                      : IconButton(
-                          onPressed: player.togglePlayPause,
-                          icon: Icon(
-                            player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                            color: cs.onPrimary, size: 34,
-                          ),
-                        ),
+                      : (player.isOffline && ep.localPath == null)
+                          ? Icon(Icons.wifi_off_rounded,
+                              color: cs.onPrimary.withValues(alpha: 0.6), size: 30)
+                          : IconButton(
+                              onPressed: player.togglePlayPause,
+                              icon: Icon(
+                                player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                color: cs.onPrimary, size: 34,
+                              ),
+                            ),
                 ),
 
                 // Skip forward (long press to choose seconds)

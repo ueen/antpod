@@ -94,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Uri? _pendingDeepLink;
   bool _downloadingMarked = false;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -104,8 +105,11 @@ class _HomeScreenState extends State<HomeScreen> {
     links.getInitialLink().then((uri) { if (uri != null) _pendingDeepLink = uri; });
     _linkSub = links.uriLinkStream.listen((uri) => _handleDeepLink(uri));
 
-    // Auto-download queued episodes when WiFi becomes available
+    // Auto-download queued episodes when WiFi becomes available; track offline state.
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final offline = results.every((r) =>
+          r == ConnectivityResult.none || r == ConnectivityResult.bluetooth);
+      if (offline != _isOffline) setState(() => _isOffline = offline);
       if (results.contains(ConnectivityResult.wifi) ||
           results.contains(ConnectivityResult.ethernet)) {
         _downloadMarkedEpisodes();
@@ -1174,7 +1178,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           filter: _effectiveFilter, l10n: l10n, cs: cs,
                           onToggle: _onFilterToggle,
                           showPodcastsChip: !_isSearchMode || _searchPodcastId != null,
-                          podcastsFirst: false,
                         ),
                       ],
                     ),
@@ -1261,6 +1264,7 @@ class _HomeScreenState extends State<HomeScreen> {
           searchingPI: _searchingPI,
           searchHasMore: _searchHasMore,
           loadingMoreSearch: _loadingMoreSearch,
+          isOffline: _isOffline,
           trendingError: _trendingError,
           cs: cs, l10n: l10n,
           onPreview: _openPodcastResult,
@@ -1623,7 +1627,6 @@ class _PodcastFeed extends StatelessWidget {
                 filter: filter, l10n: l10n, cs: cs,
                 onToggle: onFilterToggle,
                 showPodcastsChip: true,
-                podcastsFirst: true,
               ),
             ),
           ),
@@ -1653,6 +1656,7 @@ class _DiscoverList extends StatefulWidget {
   final List<_UnifiedResult> unifiedSearchResults;
   final bool loadingTrending, searchingPI;
   final bool searchHasMore, loadingMoreSearch;
+  final bool isOffline;
   final String? trendingError;
   final ColorScheme cs;
   final AppLocalizations l10n;
@@ -1666,6 +1670,7 @@ class _DiscoverList extends StatefulWidget {
     required this.unifiedSearchResults,
     required this.loadingTrending, required this.searchingPI,
     required this.searchHasMore, required this.loadingMoreSearch,
+    this.isOffline = false,
     this.trendingError,
     required this.cs, required this.l10n,
     required this.onPreview, required this.onRefresh,
@@ -1840,8 +1845,21 @@ class _DiscoverListState extends State<_DiscoverList> {
         child: widget.searchingPI
             ? const Center(child: CircularProgressIndicator())
             : widget.unifiedSearchResults.isEmpty
-                ? Center(child: Text(l10n.searchNoResults,
-                      style: TextStyle(color: cs.onSurfaceVariant)))
+                ? Center(
+                    child: widget.isOffline
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.wifi_off_rounded, size: 36,
+                                  color: cs.onSurfaceVariant),
+                              const SizedBox(height: 8),
+                              Text(l10n.offlineSub,
+                                  style: TextStyle(color: cs.onSurfaceVariant)),
+                            ],
+                          )
+                        : Text(l10n.searchNoResults,
+                            style: TextStyle(color: cs.onSurfaceVariant)),
+                  )
                 : _unifiedList(widget.unifiedSearchResults),
       );
     }
@@ -1870,9 +1888,9 @@ class _DiscoverListState extends State<_DiscoverList> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
           child: Center(
-            child: Text(l10n.sectionTrending,
+            child: Text('Apple Trends',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-                    color: cs.onSurface)),
+                    color: const Color(0xFFFF9A30))),
           ),
         ),
         Expanded(

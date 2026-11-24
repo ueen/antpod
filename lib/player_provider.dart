@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:audio_service/audio_service.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:podcast_search/podcast_search.dart' as ps;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,12 +34,30 @@ class PlayerProvider extends ChangeNotifier {
   Map<int, Uint8List> _id3ChapterImages = {};
 
   StreamSubscription<Episode?>? _episodeWatchSub;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  bool _isOffline = false;
 
   static const _saveIntervalMs = 5000;
   static const _prefLastEpisodeId = 'player_last_episode_id';
   int _lastSavedMs = 0;
 
+  bool get isOffline => _isOffline;
+
   PlayerProvider(this._db) {
+    // Track connectivity for offline indicators in UI.
+    Connectivity().checkConnectivity().then((results) {
+      _isOffline = results.every((r) =>
+          r == ConnectivityResult.none || r == ConnectivityResult.bluetooth);
+    });
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final offline = results.every((r) =>
+          r == ConnectivityResult.none || r == ConnectivityResult.bluetooth);
+      if (offline != _isOffline) {
+        _isOffline = offline;
+        notifyListeners();
+      }
+    });
+
     final handler = audioHandler as AntPodAudioHandler;
 
     handler.playbackState.listen((state) {
@@ -204,6 +223,7 @@ class PlayerProvider extends ChangeNotifier {
       // The audio handler is configured lazily in play().
       _currentEpisode = ep;
       _position = Duration(milliseconds: ep.lastPositionMs);
+      _duration = Duration(seconds: ep.durationSeconds);
       _audioReady = false;
       _episodeWatchSub?.cancel();
       _episodeWatchSub = _db.watchEpisode(ep.id).listen(_onEpisodeUpdated);
@@ -386,6 +406,10 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> togglePlayPause() async {
+    if (!_audioReady && _currentEpisode != null) {
+      await play(_currentEpisode!);
+      return;
+    }
     if (_isPlaying) {
       await audioHandler.pause();
       _flushPosition();
@@ -463,6 +487,7 @@ class PlayerProvider extends ChangeNotifier {
   @override
   void dispose() {
     _episodeWatchSub?.cancel();
+    _connectivitySub?.cancel();
     _flushPosition();
     super.dispose();
   }

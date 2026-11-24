@@ -14,20 +14,18 @@ class FilterChipsRow extends StatelessWidget {
   final ColorScheme cs;
   final ValueChanged<String> onToggle;
   final bool showPodcastsChip;
-  final bool podcastsFirst;
 
   const FilterChipsRow({
     super.key,
     required this.filter, required this.l10n,
     required this.cs, required this.onToggle,
     this.showPodcastsChip = true,
-    this.podcastsFirst = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final podcastsChip = _FeedChip(
-      label: podcastsFirst ? l10n.filterPodcast : l10n.filterPodcasts,
+      label: l10n.filterPodcasts,
       active: filter.podcasts, cs: cs,
       icon: Icons.library_music_rounded,
       onTap: () => onToggle('podcasts'),
@@ -38,10 +36,6 @@ class FilterChipsRow extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         children: [
-          if (showPodcastsChip && podcastsFirst) ...[
-            podcastsChip,
-            const SizedBox(width: 8),
-          ],
           _FeedChip(label: l10n.filterNew,
               active: filter.newOnly,
               cs: cs, icon: Icons.headphones_rounded,
@@ -61,7 +55,7 @@ class FilterChipsRow extends StatelessWidget {
               active: filter.history,
               cs: cs, icon: Icons.check_circle_outline,
               onTap: () => onToggle('history')),
-          if (showPodcastsChip && !podcastsFirst) ...[
+          if (showPodcastsChip) ...[
             const SizedBox(width: 8),
             podcastsChip,
           ],

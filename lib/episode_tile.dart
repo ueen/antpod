@@ -302,6 +302,7 @@ class EpisodeTile extends StatelessWidget {
         (p) => p.currentEpisode?.id == episode.id && p.isPlaying);
     final isLoading = context.select<PlayerProvider, bool>(
         (p) => p.currentEpisode?.id == episode.id && p.isLoading && episode.localPath == null);
+    final isOffline = context.select<PlayerProvider, bool>((p) => p.isOffline);
 
     // select() instead of watch(): only rebuilds when THIS episode's download progress changes,
     // not on every progress tick from any other episode's download.
@@ -316,7 +317,7 @@ class EpisodeTile extends StatelessWidget {
 
     final ringProgress = episode.isDownloaded ? 1.0 : dlProgress;
     final activeTaskId = episode.downloadTaskId;
-    final isDownloading = activeTaskId != null && dlProgress != null;
+    final isDownloading = activeTaskId != null && !episode.isDownloaded;
     final isMarked = episode.markedForDownload;
 
     return _StickySwipeable(
@@ -409,7 +410,9 @@ class EpisodeTile extends StatelessWidget {
                   isMarked: isMarked,
                   dimmed: dimmed,
                   cs: cs,
+                  isOffline: isOffline,
                   onPlayTap: () {
+                    if (isOffline && !episode.isDownloaded) return;
                     final p = context.read<PlayerProvider>();
                     if (isCurrent) {
                       p.togglePlayPause();
@@ -713,7 +716,7 @@ class _EpisodeMetadata extends StatelessWidget {
 
 class _ActionArea extends StatefulWidget {
   final Episode episode;
-  final bool isCurrent, isPlaying, isLoading, dimmed, isMarked;
+  final bool isCurrent, isPlaying, isLoading, dimmed, isMarked, isOffline;
   final double? ringProgress;
   final ColorScheme cs;
   final VoidCallback onPlayTap;
@@ -722,6 +725,7 @@ class _ActionArea extends StatefulWidget {
     required this.episode, required this.isCurrent, required this.isPlaying,
     required this.isLoading, required this.ringProgress, required this.isMarked,
     required this.dimmed, required this.cs, required this.onPlayTap,
+    this.isOffline = false,
   });
 
   @override
@@ -921,6 +925,9 @@ class _ActionAreaState extends State<_ActionArea>
                       padding: const EdgeInsets.all(12),
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: widget.cs.primary))
+                  else if (widget.isOffline && !widget.episode.isDownloaded)
+                    Icon(Icons.wifi_off_rounded, size: 18,
+                        color: widget.cs.onSurfaceVariant.withValues(alpha: 0.5))
                   else
                     Icon(
                       widget.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,

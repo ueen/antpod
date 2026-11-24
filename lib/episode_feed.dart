@@ -348,12 +348,36 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeOut,
-              height: widget.refreshing && _displayed.isNotEmpty ? 56.0 : 0.0,
+              height: widget.refreshing && _displayed.isNotEmpty ? 52.0 : 0.0,
               child: widget.refreshing && _displayed.isNotEmpty
-                  ? const Center(child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
-                    ))
+                  ? Builder(builder: (ctx) {
+                      final cs = Theme.of(ctx).colorScheme;
+                      return Container(
+                        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: cs.primary),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Refreshing…',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: cs.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    })
                   : const SizedBox.shrink(),
             ),
           ),
