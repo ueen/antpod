@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Guide — AntPod</title>
-  <meta name="description" content="How to use AntPod — subscribe, filter, play, download, and share." />
+  <title data-i18n="title">Guide — AntPod</title>
+  <meta name="description" data-i18n-content="metaDesc" content="How to use AntPod — subscribe, filter, play, download, and share." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="shortcut icon" href="/favicon.svg" />
+  <script src="/i18n.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -54,8 +55,11 @@
       padding: 0.55rem 0.75rem; border-bottom: 1px solid #F7EFE6;
       vertical-align: top;
     }
-    .guide-table td:first-child { padding-left: 0; color: #1A0E07; font-weight: 600; white-space: nowrap; }
+    .guide-table td:first-child { padding-left: 0; color: #1A0E07; font-weight: 600; }
     .guide-table tr:last-child td { border-bottom: none; }
+    @media (min-width: 520px) {
+      .guide-table td:first-child { white-space: nowrap; }
+    }
 
     /* ── Step pill ───────────────────────────────────────────────────────── */
     .step {
@@ -68,7 +72,7 @@
     .step-row { display: flex; align-items: flex-start; margin-bottom: 0.7rem; }
     .step-row p { margin: 0; }
 
-    /* ── Icon chip ───────────────────────────────────────────────────────── */
+    /* ── Icon chip (the icon comes from data-icon, see the end of <body>) ─ */
     .icon-chip {
       display: inline-flex; align-items: center; gap: 0.3rem;
       background: #F7EFE6; border: 1px solid #E8D9C8;
@@ -77,6 +81,7 @@
       white-space: nowrap; vertical-align: middle;
     }
     .icon-chip svg { flex-shrink: 0; }
+    .icon-chip.danger { color: #C0392B; border-color: #F5C6C0; }
 
     /* ── Nav / buttons ───────────────────────────────────────────────────── */
     .btn-back {
@@ -85,6 +90,12 @@
       text-decoration: none; transition: color 0.15s;
     }
     .btn-back:hover { color: #FF9A30; }
+    .lang-select {
+      margin-left: auto; background: transparent; border: 1.5px solid #F0E4D4;
+      border-radius: 0.375rem; padding: 0.2rem 0.5rem;
+      font-size: 0.72rem; color: #9E7056; cursor: pointer; font-family: inherit;
+    }
+    .lang-select:hover { border-color: #FF9A30; color: #FF9A30; }
   </style>
 </head>
 <body style="background:#FFFAF5; color:#1A0E07; font-family:system-ui,sans-serif;">
@@ -99,7 +110,13 @@
         antpod.eu
       </a>
       <span style="color:#F0E4D4;">|</span>
-      <span style="font-size:0.85rem; font-weight:600; color:#1A0E07;">Guide</span>
+      <span data-i18n="navGuide" style="font-size:0.85rem; font-weight:600; color:#1A0E07;">Guide</span>
+      <select id="lang-select" class="lang-select" aria-label="Language" onchange="setLang(this.value)">
+        <option value="en">EN</option>
+        <option value="de">DE</option>
+        <option value="es">ES</option>
+        <option value="fr">FR</option>
+      </select>
     </div>
   </nav>
 
@@ -113,169 +130,438 @@
       </div>
       <div>
         <div style="font-size:0.7rem; font-weight:700; letter-spacing:0.1em; color:#FF9A30; text-transform:uppercase; margin-bottom:0.15rem;">AntPod</div>
-        <h1 style="font-size:1.6rem; font-weight:800; line-height:1.1; letter-spacing:-0.03em; margin:0;">Guide</h1>
+        <h1 data-i18n="navGuide" style="font-size:1.6rem; font-weight:800; line-height:1.1; letter-spacing:-0.03em; margin:0;">Guide</h1>
       </div>
     </div>
-    <p style="font-size:0.95rem; color:#9E7056; margin:0 0 2rem; line-height:1.6;">Everything from first launch to fine-tuning your feed.</p>
+    <p data-i18n="subtitle" style="font-size:0.95rem; color:#9E7056; margin:0 0 2rem; line-height:1.6;">Everything from first launch to fine-tuning your feed.</p>
   </section>
 
-  <!-- ── Content ──────────────────────────────────────────────────────────── -->
-  <main style="max-width:640px; margin:0 auto; padding:0 1.5rem 3rem;" class="prose">
+  <!-- ══ English ═════════════════════════════════════════════════════════════ -->
+  <main data-lang="en" style="max-width:640px; margin:0 auto; padding:0 1.5rem 3rem;" class="prose">
 
-    <!-- Subscribe -->
     <h2>Subscribe</h2>
-    <p>First launch opens <strong>Discover</strong> automatically. Tap
-      <span class="icon-chip">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Discover
-      </span>
-      in the toolbar any time to get back.</p>
-
-    <div class="step-row">
-      <span class="step">1</span>
-      <p class="prose">Type a podcast name or topic — results come from both Apple Podcasts and PodcastIndex and include podcasts <em>and</em> individual episodes. Or paste an RSS feed URL directly.</p>
-    </div>
-    <div class="step-row">
-      <span class="step">2</span>
-      <p class="prose">Tap any result to open the podcast and browse its full episode list. You can play and download episodes right away without subscribing.</p>
-    </div>
-    <div class="step-row">
-      <span class="step">3</span>
-      <p class="prose">Tap
-        <span class="icon-chip">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-          Subscribe
-        </span>
-        in the podcast header. The feed refreshes in the background and episodes appear immediately.</p>
-    </div>
-
+    <p>First launch opens <strong>Discover</strong> automatically. Tap <span class="icon-chip" data-icon="plus">Discover</span> in the toolbar any time to get back.</p>
+    <div class="step-row"><span class="step">1</span>
+      <p>Type a podcast name or topic — results come from Apple Podcasts and PodcastIndex and include podcasts <em>and</em> single episodes. Or paste an RSS feed URL.</p></div>
+    <div class="step-row"><span class="step">2</span>
+      <p>Tap a result to open the podcast with all its episodes. You can play and download right away, no subscription needed.</p></div>
+    <div class="step-row"><span class="step">3</span>
+      <p>Tap <span class="icon-chip" data-icon="plus-circle">Subscribe</span> in the podcast header. Episodes appear at once and the feed keeps itself fresh in the background.</p></div>
     <p>The <strong>Trending</strong> tab shows the Apple Podcasts top charts for your country.</p>
 
-    <p>To unsubscribe, open the podcast and tap the
-      <span class="icon-chip" style="color:#C0392B; border-color:#F5C6C0;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-        Unsubscribe
-      </span>
-      button (red minus circle) in the podcast header, then pick one:</p>
-
+    <h2>Unsubscribe</h2>
+    <p>Tap <span class="icon-chip danger" data-icon="minus-circle">Unsubscribe</span> in the podcast header and pick an option:</p>
     <table class="guide-table">
       <thead><tr><th>Option</th><th></th></tr></thead>
       <tbody>
-        <tr><td>Unsubscribe &amp; delete</td><td>Removes the podcast and all its episodes, downloads included</td></tr>
-        <tr><td>Keep episodes</td><td>Offered when you've downloaded or started episodes: those stay until you've played them, the rest goes</td></tr>
-        <tr><td>Pause new episodes</td><td>Offered when there's nothing to keep: the podcast stays as it is, but no new episodes are loaded</td></tr>
+        <tr><td>Unsubscribe &amp; delete</td><td>Removes the podcast with its episodes and downloads</td></tr>
+        <tr><td>Finish episodes</td><td>Keeps what you've started until you've heard it</td></tr>
+        <tr><td>Don't load new episodes</td><td>Stays subscribed, just without new episodes</td></tr>
       </tbody>
     </table>
+    <p>Tap <span class="icon-chip" data-icon="plus-circle">Subscribe</span> to resubscribe any time.</p>
 
-    <p>Either way the header shows the subscribe button again; tap it to resume.</p>
-
-    <!-- Feed -->
     <h2>Feed</h2>
     <p>All subscriptions in one chronological list. Filter chips at the top narrow it down.</p>
-
     <table class="guide-table">
       <thead><tr><th>Chip</th><th>Shows</th></tr></thead>
       <tbody>
         <tr><td>New</td><td>Unplayed episodes — on by default</td></tr>
-        <tr><td>Playing</td><td>Started but not finished, floated to top</td></tr>
-        <tr><td>Downloaded</td><td>Saved to device only</td></tr>
-        <tr><td>Listened</td><td>Completed episodes</td></tr>
-        <tr><td>Podcasts</td><td>Switch to cover grid; tap any cover to open that show</td></tr>
-        <tr><td>A–Z / Oldest / Random</td><td>Sort order, combinable with any filter above</td></tr>
+        <tr><td>Playing</td><td>Started but not finished, floated to the top</td></tr>
+        <tr><td>Downloaded</td><td>Only what's saved on your device</td></tr>
+        <tr><td>Listened</td><td>Finished episodes</td></tr>
+        <tr><td>Podcasts</td><td>Switches to a cover grid; tap a cover to open that show</td></tr>
+        <tr><td>A–Z / Oldest first / Random</td><td>Sort order, combinable with any filter above</td></tr>
       </tbody>
     </table>
-
-    <p>Tap
-      <span class="icon-chip">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2.5"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="16" cy="12" r="2.5"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="10" cy="18" r="2.5"/></svg>
-        Filter
-      </span>
-      in the toolbar to collapse or expand the chip bar. A dot signals active filters.</p>
-
-    <p>Tap
-      <span class="icon-chip">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        Search
-      </span>
-      in the toolbar to search by title or podcast name across your whole feed. No results? A button lets you search PodcastIndex without leaving the screen.</p>
-
-    <p>While searching, tap the
-      <span class="icon-chip">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2.5"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="16" cy="12" r="2.5"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="10" cy="18" r="2.5"/></svg>
-        Filter
-      </span>
-      icon to show filter chips — they work the same as in the main feed (e.g. add <strong>Downloaded</strong> to search only offline episodes). Search filters are completely separate from your home feed filters: they reset each time you open search and are never saved.</p>
-
-    <p>Tap any episode cover to jump to that podcast's episode list. Use the back button to return to the feed.</p>
-
-    <p>Pull down to refresh all subscriptions.</p>
-
-    <p><strong>Swipe actions</strong> on any episode tile:</p>
+    <p>Tap <span class="icon-chip" data-icon="filter">Filter</span> in the toolbar to show or hide the chip bar. A dot signals active filters.</p>
+    <p>Tap <span class="icon-chip" data-icon="search">Search</span> to search your whole feed by title or podcast name. No results? A button searches PodcastIndex without leaving the screen.</p>
+    <p>While searching, <span class="icon-chip" data-icon="filter">Filter</span> shows the same chips as the feed (add <strong>Downloaded</strong> to search only offline episodes). They're separate from your feed filters: they start fresh with every search and are never saved.</p>
+    <p>Tap an episode's cover to jump to that podcast's episode list; back returns you to the feed. Pull down to refresh all subscriptions.</p>
+    <p><strong>Swipe</strong> any episode:</p>
     <table class="guide-table">
       <thead><tr><th>Swipe</th><th>Action</th></tr></thead>
       <tbody>
-        <tr><td>→ Right</td><td>Mark as played / Mark as unplayed (toggles)</td></tr>
+        <tr><td>→ Right</td><td>Mark as played / unplayed (toggles)</td></tr>
         <tr><td>← Left</td><td>Download · Cancel download · Delete download · Cancel WiFi queue — depending on state</td></tr>
       </tbody>
     </table>
 
-    <!-- Playback -->
     <h2>Playback</h2>
-    <p>Tap the play button on any episode. A sheet slides up with the full player; a <strong>mini player</strong> stays pinned at the bottom everywhere else.</p>
-
+    <p>Tap play on any episode. The full player slides up; a <strong>mini player</strong> stays at the bottom everywhere else.</p>
     <table class="guide-table">
       <thead><tr><th>Control</th><th></th></tr></thead>
       <tbody>
-        <tr><td>Chapters</td><td>Listed above the timeline when available; cover art updates per chapter</td></tr>
-        <tr><td>Timeline</td><td>Drag to scrub anywhere in the episode</td></tr>
-        <tr><td>Skip back / forward</td><td>10 s and 30 s by default — long-press either button to set your own value</td></tr>
+        <tr><td>Chapters</td><td>Listed above the timeline when available; the cover changes with each chapter</td></tr>
+        <tr><td>Timeline</td><td>Drag to jump anywhere in the episode</td></tr>
+        <tr><td>Skip back / forward</td><td>10 s and 30 s by default — long-press either to set your own</td></tr>
         <tr><td>Speed</td><td>Tap to cycle 1× → 1.5× → 2× → 0.8×</td></tr>
-        <tr><td>Share</td><td>Generates an <code>antpod.eu/open?…</code> link — anyone can tap it to open the same episode</td></tr>
+        <tr><td>Share</td><td>Makes an <code>antpod.eu/open?…</code> link that opens the same episode</td></tr>
       </tbody>
     </table>
+    <p>Audio keeps playing in the background, with controls on the lock screen and in the notification. Next launch, the last episode is waiting at the exact spot you left it.</p>
 
-    <p>Audio continues in the background with lock-screen and notification controls. The last-played episode restores on next launch at the exact same position.</p>
-
-    <!-- Downloads -->
     <h2>Downloads</h2>
-    <p>Swipe left on any episode to download it. A progress ring appears in the action area while downloading — swipe left again to cancel.</p>
-    <p>Once downloaded, playback uses the local file — no streaming.</p>
+    <p>Swipe left on an episode to download it. A progress ring shows how far along it is — swipe left again to cancel.</p>
+    <p>Downloads keep going in the background, even with the app closed, behind a single progress notification. Downloaded episodes play from your device, no streaming.</p>
     <p>To delete a download: swipe left → <strong>Delete download</strong>.</p>
-    <p>On mobile data, swiping left prompts you to download now or <strong>Save for WiFi</strong> — queued episodes download automatically once WiFi is available. To cancel a queued download: swipe left → <strong>Cancel</strong>.</p>
+    <p>On mobile data, AntPod asks whether to download now or <strong>Save for WiFi</strong> — saved episodes download once you're on WiFi. To cancel: swipe left → <strong>Cancel WiFi queue</strong>.</p>
+    <p>Offline, episodes you can't play without a connection are marked.</p>
 
-    <!-- Episode actions -->
     <h2>Episode actions</h2>
-    <p>Long-press any episode tile to open the context menu.</p>
-
+    <p>Long-press an episode to open its menu.</p>
     <table class="guide-table">
       <thead><tr><th>Action</th><th></th></tr></thead>
       <tbody>
-        <tr><td>Mark as played</td><td>Moves to Listened, removes from New</td></tr>
-        <tr><td>Mark as unplayed</td><td>Restores to New, clears progress</td></tr>
-        <tr><td>Download / Delete</td><td>Save to device or remove the local file</td></tr>
-        <tr><td>Share episode</td><td>Deep link that opens the episode directly in AntPod</td></tr>
-        <tr><td>Export file</td><td>Share the downloaded audio file to any app</td></tr>
-        <tr><td>Remove episode</td><td>Delete from feed — unsubscribed podcasts only</td></tr>
+        <tr><td>Mark as played</td><td>Moves it to Listened, out of New</td></tr>
+        <tr><td>Mark as unplayed</td><td>Back to New, progress cleared</td></tr>
+        <tr><td>Download / Delete</td><td>Save it to your device or remove the file</td></tr>
+        <tr><td>Share episode</td><td>A link that opens the episode straight in AntPod</td></tr>
+        <tr><td>Export file</td><td>Hand the downloaded audio file to any app</td></tr>
+        <tr><td>Remove episode</td><td>Take it out of the feed — unsubscribed podcasts only</td></tr>
       </tbody>
     </table>
 
-    <!-- Sharing & deep links -->
-    <h2>Sharing &amp; deep links</h2>
-    <p>Every share action — episode or podcast — produces an <code>antpod.eu/open?…</code> URL. Opening it on a device with AntPod installed jumps directly to the podcast or loads the episode into the player. On other devices it opens the website.</p>
-    <p>Share a podcast from its header; share an episode from the player sheet or episode action menu.</p>
+    <h2>Sharing &amp; links</h2>
+    <p>Every share — episode or podcast — makes an <code>antpod.eu/open?…</code> link. With AntPod installed, it jumps straight to the podcast or loads the episode into the player. Anywhere else it opens a web page where you can listen right away and get AntPod.</p>
+    <p>Share a podcast from its header, an episode from the player or its long-press menu.</p>
+
+  </main>
+
+  <!-- ══ Deutsch ═════════════════════════════════════════════════════════════ -->
+  <main data-lang="de" hidden style="max-width:640px; margin:0 auto; padding:0 1.5rem 3rem;" class="prose">
+
+    <h2>Abonnieren</h2>
+    <p>Beim ersten Start öffnet sich <strong>Entdecken</strong> von selbst. Über <span class="icon-chip" data-icon="plus">Entdecken</span> in der Werkzeugleiste kommst du jederzeit zurück.</p>
+    <div class="step-row"><span class="step">1</span>
+      <p>Gib einen Podcast-Namen oder ein Thema ein — die Ergebnisse kommen von Apple Podcasts und PodcastIndex, mit Podcasts <em>und</em> einzelnen Folgen. Oder füge die URL eines RSS-Feeds ein.</p></div>
+    <div class="step-row"><span class="step">2</span>
+      <p>Tippe auf ein Ergebnis, um den Podcast mit allen Folgen zu öffnen. Abspielen und Herunterladen geht sofort, auch ohne Abo.</p></div>
+    <div class="step-row"><span class="step">3</span>
+      <p>Tippe im Podcast-Kopf auf <span class="icon-chip" data-icon="plus-circle">Abonnieren</span>. Die Folgen sind sofort da, und der Feed hält sich im Hintergrund aktuell.</p></div>
+    <p>Der Tab <strong>Trends</strong> zeigt die Apple-Podcasts-Charts für dein Land.</p>
+
+    <h2>Abo beenden</h2>
+    <p>Tippe im Podcast-Kopf auf <span class="icon-chip danger" data-icon="minus-circle">Abonnement beenden</span> und wähle eine Option:</p>
+    <table class="guide-table">
+      <thead><tr><th>Option</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Abo beenden &amp; löschen</td><td>Entfernt den Podcast samt Folgen und Downloads</td></tr>
+        <tr><td>Zu Ende hören</td><td>Behält, was du angefangen hast, bis du es gehört hast</td></tr>
+        <tr><td>Keine neuen Folgen laden</td><td>Bleibt abonniert, nur ohne neue Folgen</td></tr>
+      </tbody>
+    </table>
+    <p>Mit <span class="icon-chip" data-icon="plus-circle">Abonnieren</span> abonnierst du jederzeit wieder.</p>
+
+    <h2>Feed</h2>
+    <p>Alle Abos in einer chronologischen Liste. Die Filter-Chips oben grenzen sie ein.</p>
+    <table class="guide-table">
+      <thead><tr><th>Chip</th><th>Zeigt</th></tr></thead>
+      <tbody>
+        <tr><td>Neu</td><td>Ungehörte Folgen — standardmäßig an</td></tr>
+        <tr><td>Angefangen</td><td>Begonnen, aber nicht fertig, ganz oben</td></tr>
+        <tr><td>Offline</td><td>Nur, was auf deinem Gerät gespeichert ist</td></tr>
+        <tr><td>Gehört</td><td>Fertig gehörte Folgen</td></tr>
+        <tr><td>Podcasts</td><td>Wechselt zum Cover-Raster; tippe auf ein Cover, um die Sendung zu öffnen</td></tr>
+        <tr><td>A–Z / Älteste zuerst / Zufällig</td><td>Sortierung, mit jedem Filter oben kombinierbar</td></tr>
+      </tbody>
+    </table>
+    <p>Tippe in der Werkzeugleiste auf <span class="icon-chip" data-icon="filter">Filter</span>, um die Chip-Leiste ein- oder auszublenden. Ein Punkt zeigt aktive Filter an.</p>
+    <p>Mit <span class="icon-chip" data-icon="search">Suchen</span> durchsuchst du deinen ganzen Feed nach Titel oder Podcast. Nichts gefunden? Ein Knopf sucht bei PodcastIndex weiter, ohne dass du den Bildschirm verlässt.</p>
+    <p>Beim Suchen blendet <span class="icon-chip" data-icon="filter">Filter</span> dieselben Chips ein wie im Feed (z. B. <strong>Offline</strong>, um nur heruntergeladene Folgen zu durchsuchen). Sie sind von deinen Feed-Filtern getrennt: Jede Suche startet frisch, nichts wird gespeichert.</p>
+    <p>Tippe auf das Cover einer Folge, um zur Folgenliste des Podcasts zu springen; mit Zurück bist du wieder im Feed. Zieh nach unten, um alle Abos zu aktualisieren.</p>
+    <p><strong>Wischen</strong> auf jeder Folge:</p>
+    <table class="guide-table">
+      <thead><tr><th>Wischen</th><th>Aktion</th></tr></thead>
+      <tbody>
+        <tr><td>→ Rechts</td><td>Als gehört / ungehört markieren (wechselt)</td></tr>
+        <tr><td>← Links</td><td>Herunterladen · Download abbrechen · Download löschen · WLAN-Download abbrechen — je nach Zustand</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Wiedergabe</h2>
+    <p>Tippe bei einer Folge auf Play. Der Player gleitet nach oben; überall sonst bleibt unten ein <strong>Mini-Player</strong>.</p>
+    <table class="guide-table">
+      <thead><tr><th>Steuerung</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Kapitel</td><td>Über der Zeitleiste, wenn vorhanden; das Cover wechselt mit jedem Kapitel</td></tr>
+        <tr><td>Zeitleiste</td><td>Ziehen, um an jede Stelle der Folge zu springen</td></tr>
+        <tr><td>Zurück / Vor</td><td>Standardmäßig 10 s und 30 s — lange drücken, um eigene Werte einzustellen</td></tr>
+        <tr><td>Tempo</td><td>Tippen wechselt 1× → 1.5× → 2× → 0.8×</td></tr>
+        <tr><td>Teilen</td><td>Erzeugt einen <code>antpod.eu/open?…</code>-Link, der dieselbe Folge öffnet</td></tr>
+      </tbody>
+    </table>
+    <p>Die Wiedergabe läuft im Hintergrund weiter, mit Steuerung auf dem Sperrbildschirm und in der Benachrichtigung. Beim nächsten Start wartet die letzte Folge genau an der Stelle, an der du aufgehört hast.</p>
+
+    <h2>Downloads</h2>
+    <p>Wisch auf einer Folge nach links, um sie herunterzuladen. Ein Fortschrittsring zeigt den Stand — nochmal nach links wischen bricht ab.</p>
+    <p>Downloads laufen im Hintergrund weiter, auch wenn die App geschlossen ist, mit einer einzigen Fortschrittsbenachrichtigung. Heruntergeladene Folgen spielen direkt vom Gerät, ohne Streaming.</p>
+    <p>Download löschen: nach links wischen → <strong>Download löschen</strong>.</p>
+    <p>Im Mobilfunknetz fragt AntPod, ob du jetzt herunterladen oder <strong>Im WLAN herunterladen</strong> willst — vorgemerkte Folgen laden, sobald du im WLAN bist. Vormerkung aufheben: nach links wischen → <strong>WLAN-Download abbrechen</strong>.</p>
+    <p>Offline sind Folgen markiert, die sich ohne Verbindung nicht abspielen lassen.</p>
+
+    <h2>Folgen-Aktionen</h2>
+    <p>Lange auf eine Folge drücken öffnet ihr Menü.</p>
+    <table class="guide-table">
+      <thead><tr><th>Aktion</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Als gehört markieren</td><td>Wandert zu Gehört, raus aus Neu</td></tr>
+        <tr><td>Als ungehört markieren</td><td>Zurück zu Neu, Fortschritt zurückgesetzt</td></tr>
+        <tr><td>Herunterladen / Löschen</td><td>Aufs Gerät laden oder die Datei entfernen</td></tr>
+        <tr><td>Episode teilen</td><td>Ein Link, der die Folge direkt in AntPod öffnet</td></tr>
+        <tr><td>Datei exportieren</td><td>Die heruntergeladene Audiodatei an eine beliebige App weitergeben</td></tr>
+        <tr><td>Episode entfernen</td><td>Aus dem Feed nehmen — nur bei nicht abonnierten Podcasts</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Teilen &amp; Links</h2>
+    <p>Jedes Teilen — Folge oder Podcast — erzeugt einen <code>antpod.eu/open?…</code>-Link. Ist AntPod installiert, springt er direkt zum Podcast oder lädt die Folge in den Player. Überall sonst öffnet er eine Webseite, auf der man sofort reinhören und AntPod holen kann.</p>
+    <p>Einen Podcast teilst du über seinen Kopf, eine Folge über den Player oder ihr Menü.</p>
+
+  </main>
+
+  <!-- ══ Français ════════════════════════════════════════════════════════════ -->
+  <main data-lang="fr" hidden style="max-width:640px; margin:0 auto; padding:0 1.5rem 3rem;" class="prose">
+
+    <h2>S’abonner</h2>
+    <p>Au premier lancement, <strong>Découvrir</strong> s’ouvre tout seul. Touchez <span class="icon-chip" data-icon="plus">Découvrir</span> dans la barre d’outils pour y revenir à tout moment.</p>
+    <div class="step-row"><span class="step">1</span>
+      <p>Tapez le nom d’un podcast ou un sujet — les résultats viennent d’Apple Podcasts et de PodcastIndex, avec des podcasts <em>et</em> des épisodes. Ou collez l’URL d’un flux RSS.</p></div>
+    <div class="step-row"><span class="step">2</span>
+      <p>Touchez un résultat pour ouvrir le podcast et tous ses épisodes. Vous pouvez écouter et télécharger tout de suite, sans vous abonner.</p></div>
+    <div class="step-row"><span class="step">3</span>
+      <p>Touchez <span class="icon-chip" data-icon="plus-circle">S’abonner</span> dans l’en-tête du podcast. Les épisodes apparaissent aussitôt et le fil se tient à jour en arrière-plan.</p></div>
+    <p>L’onglet <strong>Tendances</strong> affiche le classement Apple Podcasts de votre pays.</p>
+
+    <h2>Se désabonner</h2>
+    <p>Touchez <span class="icon-chip danger" data-icon="minus-circle">Se désabonner</span> dans l’en-tête du podcast et choisissez une option :</p>
+    <table class="guide-table">
+      <thead><tr><th>Option</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Se désabonner et supprimer</td><td>Retire le podcast, ses épisodes et ses téléchargements</td></tr>
+        <tr><td>Finir d’écouter</td><td>Garde ce que vous avez commencé jusqu’à ce que vous l’ayez écouté</td></tr>
+        <tr><td>Ne plus charger d’épisodes</td><td>Reste abonné, simplement sans nouveaux épisodes</td></tr>
+      </tbody>
+    </table>
+    <p>Touchez <span class="icon-chip" data-icon="plus-circle">S’abonner</span> pour vous réabonner à tout moment.</p>
+
+    <h2>Fil</h2>
+    <p>Tous vos abonnements dans une seule liste chronologique. Les filtres en haut l’affinent.</p>
+    <table class="guide-table">
+      <thead><tr><th>Filtre</th><th>Affiche</th></tr></thead>
+      <tbody>
+        <tr><td>Nouveau</td><td>Épisodes non écoutés — actif par défaut</td></tr>
+        <tr><td>Commencé</td><td>Commencés mais pas terminés, remontés en haut</td></tr>
+        <tr><td>Téléchargés</td><td>Seulement ce qui est enregistré sur l’appareil</td></tr>
+        <tr><td>Écoutés</td><td>Épisodes terminés</td></tr>
+        <tr><td>Podcasts</td><td>Passe à une grille de pochettes ; touchez-en une pour ouvrir l’émission</td></tr>
+        <tr><td>A–Z / Les plus anciens / Aléatoire</td><td>Ordre de tri, combinable avec chaque filtre ci-dessus</td></tr>
+      </tbody>
+    </table>
+    <p>Touchez <span class="icon-chip" data-icon="filter">Filtres</span> dans la barre d’outils pour afficher ou masquer la barre de filtres. Un point signale des filtres actifs.</p>
+    <p>Touchez <span class="icon-chip" data-icon="search">Rechercher</span> pour chercher dans tout votre fil par titre ou nom de podcast. Aucun résultat ? Un bouton lance la recherche sur PodcastIndex sans quitter l’écran.</p>
+    <p>Pendant une recherche, <span class="icon-chip" data-icon="filter">Filtres</span> affiche les mêmes filtres que le fil (ajoutez <strong>Téléchargés</strong> pour ne chercher que hors ligne). Ils sont indépendants de ceux du fil : chaque recherche repart de zéro et rien n’est enregistré.</p>
+    <p>Touchez la pochette d’un épisode pour aller à la liste du podcast ; le bouton retour vous ramène au fil. Tirez vers le bas pour actualiser tous les abonnements.</p>
+    <p><strong>Glissez</strong> sur un épisode :</p>
+    <table class="guide-table">
+      <thead><tr><th>Glisser</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>→ Droite</td><td>Marquer comme écouté / non écouté (bascule)</td></tr>
+        <tr><td>← Gauche</td><td>Télécharger · Annuler le téléchargement · Supprimer le téléchargement · Annuler la file WiFi — selon l’état</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Lecture</h2>
+    <p>Touchez lecture sur un épisode. Le lecteur complet glisse vers le haut ; partout ailleurs, un <strong>mini-lecteur</strong> reste en bas.</p>
+    <table class="guide-table">
+      <thead><tr><th>Commande</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Chapitres</td><td>Au-dessus de la barre de progression s’il y en a ; la pochette change à chaque chapitre</td></tr>
+        <tr><td>Barre de progression</td><td>Faites glisser pour aller n’importe où dans l’épisode</td></tr>
+        <tr><td>Reculer / Avancer</td><td>10 s et 30 s par défaut — appui long pour choisir vos propres valeurs</td></tr>
+        <tr><td>Vitesse</td><td>Touchez pour passer de 1× → 1.5× → 2× → 0.8×</td></tr>
+        <tr><td>Partager</td><td>Crée un lien <code>antpod.eu/open?…</code> qui ouvre le même épisode</td></tr>
+      </tbody>
+    </table>
+    <p>L’audio continue en arrière-plan, avec les commandes sur l’écran de verrouillage et dans la notification. Au prochain lancement, le dernier épisode vous attend exactement là où vous l’aviez laissé.</p>
+
+    <h2>Téléchargements</h2>
+    <p>Glissez un épisode vers la gauche pour le télécharger. Un anneau montre la progression — glissez à nouveau pour annuler.</p>
+    <p>Les téléchargements continuent en arrière-plan, même app fermée, avec une seule notification de progression. Un épisode téléchargé se lit depuis l’appareil, sans streaming.</p>
+    <p>Pour supprimer un téléchargement : glissez à gauche → <strong>Supprimer le téléchargement</strong>.</p>
+    <p>Sur les données mobiles, AntPod propose de télécharger maintenant ou <strong>Enregistrer pour le WiFi</strong> — les épisodes en attente se téléchargent dès que vous êtes en WiFi. Pour annuler : glissez à gauche → <strong>Annuler la file WiFi</strong>.</p>
+    <p>Hors ligne, les épisodes qu’on ne peut pas lire sans connexion sont signalés.</p>
+
+    <h2>Actions sur un épisode</h2>
+    <p>Un appui long sur un épisode ouvre son menu.</p>
+    <table class="guide-table">
+      <thead><tr><th>Action</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Marquer comme écouté</td><td>Passe dans Écoutés, quitte Nouveau</td></tr>
+        <tr><td>Marquer comme non écouté</td><td>Revient dans Nouveau, progression effacée</td></tr>
+        <tr><td>Télécharger / Supprimer</td><td>L’enregistrer sur l’appareil ou retirer le fichier</td></tr>
+        <tr><td>Partager l’épisode</td><td>Un lien qui ouvre l’épisode directement dans AntPod</td></tr>
+        <tr><td>Exporter le fichier</td><td>Envoyer le fichier audio téléchargé vers n’importe quelle app</td></tr>
+        <tr><td>Supprimer l’épisode</td><td>Le retirer du fil — podcasts non abonnés uniquement</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Partage et liens</h2>
+    <p>Chaque partage — épisode ou podcast — crée un lien <code>antpod.eu/open?…</code>. Avec AntPod installé, il mène droit au podcast ou charge l’épisode dans le lecteur. Ailleurs, il ouvre une page web pour écouter tout de suite et obtenir AntPod.</p>
+    <p>Partagez un podcast depuis son en-tête, un épisode depuis le lecteur ou son menu.</p>
+
+  </main>
+
+  <!-- ══ Español ═════════════════════════════════════════════════════════════ -->
+  <main data-lang="es" hidden style="max-width:640px; margin:0 auto; padding:0 1.5rem 3rem;" class="prose">
+
+    <h2>Suscribirse</h2>
+    <p>En el primer inicio se abre <strong>Descubrir</strong> solo. Toca <span class="icon-chip" data-icon="plus">Descubrir</span> en la barra de herramientas para volver cuando quieras.</p>
+    <div class="step-row"><span class="step">1</span>
+      <p>Escribe el nombre de un podcast o un tema — los resultados vienen de Apple Podcasts y PodcastIndex, con podcasts <em>y</em> episodios sueltos. O pega la URL de un feed RSS.</p></div>
+    <div class="step-row"><span class="step">2</span>
+      <p>Toca un resultado para abrir el podcast con todos sus episodios. Puedes escuchar y descargar al momento, sin suscribirte.</p></div>
+    <div class="step-row"><span class="step">3</span>
+      <p>Toca <span class="icon-chip" data-icon="plus-circle">Suscribirse</span> en la cabecera del podcast. Los episodios aparecen enseguida y el feed se mantiene al día en segundo plano.</p></div>
+    <p>La pestaña <strong>Tendencias</strong> muestra las listas de Apple Podcasts de tu país.</p>
+
+    <h2>Cancelar la suscripción</h2>
+    <p>Toca <span class="icon-chip danger" data-icon="minus-circle">Cancelar suscripción</span> en la cabecera del podcast y elige una opción:</p>
+    <table class="guide-table">
+      <thead><tr><th>Opción</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Cancelar suscripción y borrar</td><td>Quita el podcast con sus episodios y descargas</td></tr>
+        <tr><td>Terminar de escuchar</td><td>Conserva lo que empezaste hasta que lo escuches</td></tr>
+        <tr><td>No cargar episodios nuevos</td><td>Sigues suscrito, solo que sin episodios nuevos</td></tr>
+      </tbody>
+    </table>
+    <p>Toca <span class="icon-chip" data-icon="plus-circle">Suscribirse</span> para volver a suscribirte cuando quieras.</p>
+
+    <h2>Feed</h2>
+    <p>Todas tus suscripciones en una lista cronológica. Los filtros de arriba la acotan.</p>
+    <table class="guide-table">
+      <thead><tr><th>Filtro</th><th>Muestra</th></tr></thead>
+      <tbody>
+        <tr><td>Nuevo</td><td>Episodios sin escuchar — activado por defecto</td></tr>
+        <tr><td>Empezado</td><td>Empezados sin terminar, arriba del todo</td></tr>
+        <tr><td>Descargados</td><td>Solo lo guardado en tu dispositivo</td></tr>
+        <tr><td>Escuchados</td><td>Episodios terminados</td></tr>
+        <tr><td>Podcasts</td><td>Cambia a una cuadrícula de portadas; toca una para abrir el programa</td></tr>
+        <tr><td>A–Z / Más antiguos / Aleatorio</td><td>Orden, combinable con cualquier filtro de arriba</td></tr>
+      </tbody>
+    </table>
+    <p>Toca <span class="icon-chip" data-icon="filter">Filtros</span> en la barra de herramientas para mostrar u ocultar la barra de filtros. Un punto indica filtros activos.</p>
+    <p>Toca <span class="icon-chip" data-icon="search">Buscar</span> para buscar en todo tu feed por título o podcast. ¿Sin resultados? Un botón busca en PodcastIndex sin salir de la pantalla.</p>
+    <p>Al buscar, <span class="icon-chip" data-icon="filter">Filtros</span> muestra los mismos filtros que el feed (añade <strong>Descargados</strong> para buscar solo sin conexión). Son independientes de los del feed: cada búsqueda empieza de cero y nada se guarda.</p>
+    <p>Toca la portada de un episodio para ir a la lista del podcast; atrás te devuelve al feed. Desliza hacia abajo para actualizar todas las suscripciones.</p>
+    <p><strong>Desliza</strong> cualquier episodio:</p>
+    <table class="guide-table">
+      <thead><tr><th>Deslizar</th><th>Acción</th></tr></thead>
+      <tbody>
+        <tr><td>→ Derecha</td><td>Marcar como escuchado / no escuchado (alterna)</td></tr>
+        <tr><td>← Izquierda</td><td>Descargar · Cancelar descarga · Eliminar descarga · Cancelar cola WiFi — según el estado</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Reproducción</h2>
+    <p>Toca play en un episodio. El reproductor completo se desliza hacia arriba; en todo lo demás queda un <strong>minirreproductor</strong> abajo.</p>
+    <table class="guide-table">
+      <thead><tr><th>Control</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Capítulos</td><td>Encima de la línea de tiempo si los hay; la portada cambia con cada capítulo</td></tr>
+        <tr><td>Línea de tiempo</td><td>Arrastra para ir a cualquier punto del episodio</td></tr>
+        <tr><td>Atrás / Adelante</td><td>10 s y 30 s por defecto — mantén pulsado para elegir tus propios valores</td></tr>
+        <tr><td>Velocidad</td><td>Toca para pasar de 1× → 1.5× → 2× → 0.8×</td></tr>
+        <tr><td>Compartir</td><td>Crea un enlace <code>antpod.eu/open?…</code> que abre el mismo episodio</td></tr>
+      </tbody>
+    </table>
+    <p>El audio sigue en segundo plano, con controles en la pantalla de bloqueo y en la notificación. La próxima vez que abras la app, el último episodio te espera justo donde lo dejaste.</p>
+
+    <h2>Descargas</h2>
+    <p>Desliza un episodio a la izquierda para descargarlo. Un anillo muestra el progreso — desliza otra vez para cancelar.</p>
+    <p>Las descargas siguen en segundo plano, incluso con la app cerrada, con una sola notificación de progreso. Lo descargado se reproduce desde tu dispositivo, sin streaming.</p>
+    <p>Para eliminar una descarga: desliza a la izquierda → <strong>Eliminar descarga</strong>.</p>
+    <p>Con datos móviles, AntPod pregunta si descargar ahora o <strong>Guardar para WiFi</strong> — lo guardado se descarga en cuanto estés en WiFi. Para cancelarlo: desliza a la izquierda → <strong>Cancelar cola WiFi</strong>.</p>
+    <p>Sin conexión, se marcan los episodios que no se pueden reproducir.</p>
+
+    <h2>Acciones de episodio</h2>
+    <p>Mantén pulsado un episodio para abrir su menú.</p>
+    <table class="guide-table">
+      <thead><tr><th>Acción</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Marcar como escuchado</td><td>Pasa a Escuchados y sale de Nuevo</td></tr>
+        <tr><td>Marcar como no escuchado</td><td>Vuelve a Nuevo, sin progreso</td></tr>
+        <tr><td>Descargar / Eliminar</td><td>Guardarlo en el dispositivo o quitar el archivo</td></tr>
+        <tr><td>Compartir episodio</td><td>Un enlace que abre el episodio directamente en AntPod</td></tr>
+        <tr><td>Exportar archivo</td><td>Pasar el audio descargado a cualquier app</td></tr>
+        <tr><td>Eliminar episodio</td><td>Quitarlo del feed — solo podcasts sin suscripción</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Compartir y enlaces</h2>
+    <p>Cada vez que compartes — un episodio o un podcast — se crea un enlace <code>antpod.eu/open?…</code>. Con AntPod instalado, lleva directo al podcast o carga el episodio en el reproductor. En cualquier otro sitio abre una página web para escuchar al momento y conseguir AntPod.</p>
+    <p>Comparte un podcast desde su cabecera y un episodio desde el reproductor o su menú.</p>
 
   </main>
 
   <!-- ── Footer ───────────────────────────────────────────────────────────── -->
   <footer style="border-top:1px solid #F0E4D4; padding:1.5rem; text-align:center;">
     <p style="font-size:0.8rem; color:#9E7056; margin:0;">
-      Made with 🐜 by <a href="https://github.com/ueen" style="color:#FF9A30; text-decoration:none; font-weight:600;">ueen</a>
+      <span data-i18n="madeBy">Made with 🐜 by</span> <a href="https://github.com/ueen" style="color:#FF9A30; text-decoration:none; font-weight:600;">ueen</a>
       &nbsp;·&nbsp;
       <a href="https://github.com/ueen/antpod" style="color:#9E7056; text-decoration:none;">GitHub</a>
       &nbsp;·&nbsp;
-      <a href="/privacy.html" style="color:#9E7056; text-decoration:none;">Privacy</a>
+      <a href="/privacy.html" style="color:#9E7056; text-decoration:none;" data-i18n="privacy">Privacy</a>
     </p>
   </footer>
+
+  <script>
+    // Icons for the inline chips: <span class="icon-chip" data-icon="…">.
+    (function () {
+      var ICONS = {
+        'plus':         [2.5, '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'],
+        'plus-circle':  [2.5, '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>'],
+        'minus-circle': [2.5, '<circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/>'],
+        'filter':       [2,   '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2.5"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="16" cy="12" r="2.5"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="10" cy="18" r="2.5"/>'],
+        'search':       [2.5, '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'],
+      };
+      document.querySelectorAll('.icon-chip[data-icon]').forEach(function (el) {
+        var icon = ICONS[el.getAttribute('data-icon')];
+        if (!icon) return;
+        el.insertAdjacentHTML('afterbegin',
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' +
+          icon[0] + '" stroke-linecap="round">' + icon[1] + '</svg>');
+      });
+    })();
+
+    window.I18N = {
+      de: {
+        title: 'Anleitung — AntPod',
+        metaDesc: 'So funktioniert AntPod — abonnieren, filtern, abspielen, herunterladen und teilen.',
+        navGuide: 'Anleitung',
+        subtitle: 'Alles vom ersten Start bis zum fein abgestimmten Feed.',
+        madeBy: 'Gemacht mit 🐜 von',
+        privacy: 'Datenschutz',
+      },
+      fr: {
+        title: 'Guide — AntPod',
+        metaDesc: 'Comment utiliser AntPod — s’abonner, filtrer, écouter, télécharger et partager.',
+        navGuide: 'Guide',
+        subtitle: 'Tout, du premier lancement au réglage fin de votre fil.',
+        madeBy: 'Fait avec 🐜 par',
+        privacy: 'Confidentialité',
+      },
+      es: {
+        title: 'Guía — AntPod',
+        metaDesc: 'Cómo usar AntPod — suscribirse, filtrar, reproducir, descargar y compartir.',
+        navGuide: 'Guía',
+        subtitle: 'Todo, desde el primer inicio hasta dejar tu feed a tu gusto.',
+        madeBy: 'Hecho con 🐜 por',
+        privacy: 'Privacidad',
+      },
+    };
+    AntpodI18n.apply();
+  </script>
 
 </body>
 </html>

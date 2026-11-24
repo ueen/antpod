@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AntPod — Open Source Podcast Player</title>
-  <meta name="description" content="The anthill for your podcasts. A nimble, open-source Android podcast player with no account, no tracking, and no nonsense." />
+  <title data-i18n="title">AntPod — Open Source Podcast Player</title>
+  <meta name="description" data-i18n-content="metaDesc" content="The anthill for your podcasts. A nimble, open-source Android podcast player with no account, no tracking, and no nonsense." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="shortcut icon" href="/favicon.svg" />
+  <script src="/i18n.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -77,6 +78,28 @@
       margin-bottom: 1rem;
     }
 
+    /* Guide button: full width, in the orange of the feature icons */
+    .guide-btn {
+      display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+      width: 100%; padding: 0.95rem 1.25rem;
+      background: rgba(255,154,48,.12); color: #B5580A;
+      border: 1.5px solid rgba(255,154,48,.35); border-radius: 1rem;
+      font-weight: 700; font-size: 1rem; text-decoration: none;
+      transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    }
+    .guide-btn:hover {
+      background: rgba(255,154,48,.2); border-color: #FF9A30;
+      transform: translateY(-1px);
+    }
+    .guide-btn svg { flex-shrink: 0; color: #FF9A30; }
+
+    .lang-select {
+      margin-left: auto; background: transparent; border: 1.5px solid #F0E4D4;
+      border-radius: 0.375rem; padding: 0.2rem 0.5rem;
+      font-size: 0.72rem; color: #9E7056; cursor: pointer; font-family: inherit;
+    }
+    .lang-select:hover { border-color: #FF9A30; color: #FF9A30; }
+
     /* Store badges — desktop: auto-sized; mobile: full-width */
     .store-col {
       display: inline-flex; flex-direction: column;
@@ -107,6 +130,12 @@
       <img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg"
            width="28" height="28" style="border-radius:50%; overflow:hidden;" alt="AntPod logo" />
       <span style="font-weight:800; font-size:1.1rem; letter-spacing:-0.02em; color:#1A0E07;">AntPod</span>
+      <select id="lang-select" class="lang-select" aria-label="Language" onchange="setLang(this.value)">
+        <option value="en">EN</option>
+        <option value="de">DE</option>
+        <option value="es">ES</option>
+        <option value="fr">FR</option>
+      </select>
     </div>
   </nav>
 
@@ -120,11 +149,11 @@
            alt="AntPod icon" />
       <div>
         <div style="font-size:0.75rem; font-weight:600; letter-spacing:0.08em; color:#FF9A30; text-transform:uppercase; margin-bottom:0.2rem;">A Means To An Ant.</div>
-        <h1 style="font-size:1.9rem; font-weight:800; line-height:1.15; letter-spacing:-0.03em; margin:0;">The anthill for<br>your podcasts.</h1>
+        <h1 data-i18n="heroTitle" style="font-size:1.9rem; font-weight:800; line-height:1.15; letter-spacing:-0.03em; margin:0;">The anthill for<br>your podcasts.</h1>
       </div>
     </div>
 
-    <p style="font-size:1.05rem; line-height:1.7; color:#5C3A1E; margin:0 0 2rem;">
+    <p data-i18n="heroText" style="font-size:1.05rem; line-height:1.7; color:#5C3A1E; margin:0 0 2rem;">
       Every episode carried home tirelessly — a nimble scout hatched from the spirit of the grand old AntennaPod. No account. No tracking. Just your podcasts.
     </p>
 
@@ -134,10 +163,11 @@
       <div class="store-badges-row">
 
         <!-- F-Droid (coming soon — greyed out, not a link) -->
-        <div class="store-badge-wrap" style="position:relative; opacity:0.38; cursor:default;" title="Coming soon on F-Droid">
-          <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
+        <div class="store-badge-wrap" style="position:relative; opacity:0.38; cursor:default;"
+             title="Coming soon on F-Droid" data-i18n-title="fdroidSoonTitle">
+          <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" data-i18n-src="fdroidBadge"
                alt="Get it on F-Droid" class="store-badge-img" />
-          <span style="
+          <span data-i18n="soon" style="
             position:absolute; bottom:4px; right:4px;
             background:rgba(0,0,0,0.55); color:#fff;
             font-size:0.55rem; font-weight:700; letter-spacing:0.04em;
@@ -149,6 +179,7 @@
         <a href="https://play.google.com/store/apps/details?id=de.ueen.antpod"
            class="store-badge-wrap" style="display:block; text-decoration:none;">
           <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+               data-i18n-src="playBadge"
                alt="Get it on Google Play" class="store-badge-img" />
         </a>
 
@@ -170,7 +201,7 @@
             1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2
             0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
         </svg>
-        Download APK from GitHub
+        <span data-i18n="apkLink">Download APK from GitHub</span>
       </a>
 
     </div>
@@ -180,8 +211,8 @@
   <div style="border-top:1px solid #F0E4D4;"></div>
 
   <!-- ── Features ────────────────────────────────────────────────────────── -->
-  <section style="max-width:640px; margin:0 auto; padding:2.5rem 1.5rem;">
-    <h2 style="font-size:1.25rem; font-weight:700; margin:0 0 1.25rem; color:#1A0E07;">Less app. More podcast. Beautifully simple.</h2>
+  <section style="max-width:640px; margin:0 auto; padding:2.5rem 1.5rem 2rem;">
+    <h2 data-i18n="featuresTitle" style="font-size:1.25rem; font-weight:700; margin:0 0 1.25rem; color:#1A0E07;">Less app. More podcast. Beautifully simple.</h2>
 
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.875rem;">
 
@@ -191,8 +222,8 @@
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
         </div>
-        <div style="font-weight:700; font-size:0.95rem; margin-bottom:0.3rem;">Discover</div>
-        <div style="font-size:0.85rem; color:#6B4226; line-height:1.5;">Trending charts and smart recommendations via PodcastIndex.</div>
+        <div data-i18n="discoverTitle" style="font-weight:700; font-size:0.95rem; margin-bottom:0.3rem;">Discover</div>
+        <div data-i18n="discoverText" style="font-size:0.85rem; color:#6B4226; line-height:1.5;">Trending charts and smart recommendations via PodcastIndex.</div>
       </div>
 
       <div class="feature-card">
@@ -201,8 +232,8 @@
             <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
           </svg>
         </div>
-        <div style="font-weight:700; font-size:0.95rem; margin-bottom:0.3rem;">Subscribe</div>
-        <div style="font-size:0.85rem; color:#6B4226; line-height:1.5;">Keep your feed fresh. Auto-syncs the latest episodes in the background.</div>
+        <div data-i18n="subscribeTitle" style="font-weight:700; font-size:0.95rem; margin-bottom:0.3rem;">Subscribe</div>
+        <div data-i18n="subscribeText" style="font-size:0.85rem; color:#6B4226; line-height:1.5;">Keep your feed fresh. Auto-syncs the latest episodes in the background.</div>
       </div>
 
       <div class="feature-card">
@@ -211,8 +242,8 @@
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
         </div>
-        <div style="font-weight:700; font-size:0.95rem; margin-bottom:0.3rem;">Download</div>
-        <div style="font-size:0.85rem; color:#6B4226; line-height:1.5;">Take episodes offline. Swipe to download, swipe to mark played.</div>
+        <div data-i18n="downloadTitle" style="font-weight:700; font-size:0.95rem; margin-bottom:0.3rem;">Download</div>
+        <div data-i18n="downloadText" style="font-size:0.85rem; color:#6B4226; line-height:1.5;">Take episodes offline. Swipe to download, swipe to mark played.</div>
       </div>
 
       <div class="feature-card">
@@ -221,29 +252,22 @@
             <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
           </svg>
         </div>
-        <div style="font-weight:700; font-size:0.95rem; margin-bottom:0.3rem;">Private</div>
-        <div style="font-size:0.85rem; color:#6B4226; line-height:1.5;">No account required. No analytics. No ads. Your data stays on your device.</div>
+        <div data-i18n="privateTitle" style="font-weight:700; font-size:0.95rem; margin-bottom:0.3rem;">Private</div>
+        <div data-i18n="privateText" style="font-size:0.85rem; color:#6B4226; line-height:1.5;">No account required. No analytics. No ads. Your data stays on your device.</div>
       </div>
 
     </div>
 
-    <!-- Guide link -->
-    <div style="margin-top:1.5rem; text-align:center;">
-      <a href="https://antpod.eu/guide"
-         style="display:inline-flex; align-items:center; gap:0.45rem;
-                border:1.5px solid #D9C5B2; border-radius:0.6rem;
-                padding:0.45rem 1rem;
-                font-size:0.85rem; font-weight:600; color:#5C3A1E;
-                text-decoration:none; background:#FFFAF5;
-                transition:border-color 0.15s, color 0.15s;"
-         onmouseover="this.style.borderColor='#FF9A30';this.style.color='#FF9A30';"
-         onmouseout="this.style.borderColor='#D9C5B2';this.style.color='#5C3A1E';">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="16" x2="12" y2="12"/>
-          <line x1="12" y1="8" x2="12.01" y2="8"/>
+    <!-- Guide button: the same space above and below -->
+    <div style="margin-top:2rem;">
+      <a href="/guide/" class="guide-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/>
         </svg>
-        App Guide
+        <span data-i18n="guideBtn">App Guide</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+        </svg>
       </a>
     </div>
 
@@ -260,23 +284,23 @@
           <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
         </svg>
       </div>
-      <h2 style="font-size:1.25rem; font-weight:700; margin:0; color:#1A0E07;">Designed to respect your time.</h2>
+      <h2 data-i18n="humaneTitle" style="font-size:1.25rem; font-weight:700; margin:0; color:#1A0E07;">Designed to respect your time.</h2>
     </div>
-    <p style="font-size:0.95rem; color:#5C3A1E; line-height:1.7; margin:0 0 1.25rem;">
+    <p data-i18n="humaneText" style="font-size:0.95rem; color:#5C3A1E; line-height:1.7; margin:0 0 1.25rem;">
       AntPod is built to be less addictive, not more — inspired by <a href="https://humanebydesign.com/principles/" style="color:#FF9A30; text-decoration:none; font-weight:600;">Humane by Design</a>.
     </p>
     <div style="display:flex; flex-direction:column; gap:0.625rem;">
       <div style="display:flex; align-items:flex-start; gap:0.75rem;">
         <svg style="flex-shrink:0; margin-top:2px;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF9A30" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        <span style="font-size:0.9rem; color:#5C3A1E; line-height:1.5;"><strong>No notifications</strong> — AntPod never interrupts you</span>
+        <span data-i18n="humaneNotifications" style="font-size:0.9rem; color:#5C3A1E; line-height:1.5;"><strong>No notifications</strong> — AntPod never interrupts you</span>
       </div>
       <div style="display:flex; align-items:flex-start; gap:0.75rem;">
         <svg style="flex-shrink:0; margin-top:2px;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF9A30" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        <span style="font-size:0.9rem; color:#5C3A1E; line-height:1.5;"><strong>No autoplay</strong> — you choose what's next; nothing plays on its own</span>
+        <span data-i18n="humaneAutoplay" style="font-size:0.9rem; color:#5C3A1E; line-height:1.5;"><strong>No autoplay</strong> — you choose what's next; nothing plays on its own</span>
       </div>
       <div style="display:flex; align-items:flex-start; gap:0.75rem;">
         <svg style="flex-shrink:0; margin-top:2px;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF9A30" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        <span style="font-size:0.9rem; color:#5C3A1E; line-height:1.5;"><strong>No algorithm</strong> — no content pushed at you to keep you scrolling</span>
+        <span data-i18n="humaneAlgorithm" style="font-size:0.9rem; color:#5C3A1E; line-height:1.5;"><strong>No algorithm</strong> — no content pushed at you to keep you scrolling</span>
       </div>
     </div>
   </section>
@@ -291,8 +315,8 @@
         <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
       </svg>
     </div>
-    <h2 style="font-size:1.25rem; font-weight:700; margin:0 0 0.6rem;">Come join the anthill.</h2>
-    <p style="font-size:0.95rem; color:#5C3A1E; line-height:1.7; margin:0 0 1.25rem; max-width:420px; margin-left:auto; margin-right:auto;">
+    <h2 data-i18n="ossTitle" style="font-size:1.25rem; font-weight:700; margin:0 0 0.6rem;">Come join the anthill.</h2>
+    <p data-i18n="ossText" style="font-size:0.95rem; color:#5C3A1E; line-height:1.7; margin:0 0 1.25rem; max-width:420px; margin-left:auto; margin-right:auto;">
       AntPod is fully open source. Read the code, report issues, or contribute — every ant counts.
     </p>
     <a href="https://github.com/ueen/antpod" class="btn-dark">
@@ -312,15 +336,123 @@
   <!-- ── Footer ──────────────────────────────────────────────────────────── -->
   <footer style="border-top:1px solid #F0E4D4; padding:1.5rem; text-align:center;">
     <p style="font-size:0.8rem; color:#9E7056; margin:0;">
-      Made with 🐜 by <a href="https://github.com/ueen" style="color:#FF9A30; text-decoration:none; font-weight:600;">ueen</a>
+      <span data-i18n="madeBy">Made with 🐜 by</span> <a href="https://github.com/ueen" style="color:#FF9A30; text-decoration:none; font-weight:600;">ueen</a>
       &nbsp;·&nbsp;
-      <a href="https://github.com/ueen/antpod/blob/master/LICENSE" style="color:#9E7056; text-decoration:none;">License</a>
+      <a href="/guide/" style="color:#9E7056; text-decoration:none;" data-i18n="guide">Guide</a>
       &nbsp;·&nbsp;
-      <a href="https://github.com/ueen/antpod/issues" style="color:#9E7056; text-decoration:none;">Issues</a>
+      <a href="https://github.com/ueen/antpod/blob/master/LICENSE" style="color:#9E7056; text-decoration:none;" data-i18n="license">License</a>
       &nbsp;·&nbsp;
-      <a href="/privacy.html" style="color:#9E7056; text-decoration:none;">Privacy</a>
+      <a href="https://github.com/ueen/antpod/issues" style="color:#9E7056; text-decoration:none;" data-i18n="issues">Issues</a>
+      &nbsp;·&nbsp;
+      <a href="/privacy.html" style="color:#9E7056; text-decoration:none;" data-i18n="privacy">Privacy</a>
     </p>
   </footer>
+
+  <script>
+    const HUMANE_LINK = '<a href="https://humanebydesign.com/principles/" style="color:#FF9A30; text-decoration:none; font-weight:600;">Humane by Design</a>';
+    window.I18N = {
+      de: {
+        title: 'AntPod — Open-Source-Podcast-Player',
+        metaDesc: 'Der Ameisenhaufen für deine Podcasts. Ein flinker Open-Source-Podcast-Player für Android, ohne Konto, ohne Tracking, ohne Schnickschnack.',
+        heroTitle: 'Der Ameisenhaufen<br>für deine Podcasts.',
+        heroText: 'Jede Folge unermüdlich nach Hause getragen — eine flinke Späherin, geschlüpft aus dem Geist des großen alten AntennaPod. Kein Konto. Kein Tracking. Nur deine Podcasts.',
+        fdroidSoonTitle: 'Bald auf F-Droid',
+        fdroidBadge: 'https://fdroid.gitlab.io/artwork/badge/get-it-on-de.png',
+        soon: 'Bald',
+        playBadge: 'https://play.google.com/intl/de_de/badges/static/images/badges/de_badge_web_generic.png',
+        apkLink: 'APK von GitHub herunterladen',
+        featuresTitle: 'Weniger App. Mehr Podcast. Herrlich einfach.',
+        discoverTitle: 'Entdecken',
+        discoverText: 'Charts und kluge Empfehlungen über PodcastIndex.',
+        subscribeTitle: 'Abonnieren',
+        subscribeText: 'Dein Feed bleibt frisch: neue Folgen kommen von selbst, im Hintergrund.',
+        downloadTitle: 'Herunterladen',
+        downloadText: 'Folgen offline mitnehmen. Wischen zum Laden, wischen zum Abhaken.',
+        privateTitle: 'Privat',
+        privateText: 'Kein Konto nötig. Keine Statistiken. Keine Werbung. Deine Daten bleiben auf deinem Gerät.',
+        guideBtn: 'Anleitung',
+        humaneTitle: 'Gemacht mit Respekt für deine Zeit.',
+        humaneText: 'AntPod soll weniger süchtig machen, nicht mehr — inspiriert von ' + HUMANE_LINK + '.',
+        humaneNotifications: '<strong>Keine Benachrichtigungen</strong> — AntPod unterbricht dich nie',
+        humaneAutoplay: '<strong>Kein Autoplay</strong> — du entscheidest, was als Nächstes kommt; nichts startet von selbst',
+        humaneAlgorithm: '<strong>Kein Algorithmus</strong> — keine Inhalte, die dich am Scrollen halten sollen',
+        ossTitle: 'Komm in den Ameisenhaufen.',
+        ossText: 'AntPod ist komplett Open Source. Lies den Code, melde Fehler oder mach mit — jede Ameise zählt.',
+        madeBy: 'Gemacht mit 🐜 von',
+        guide: 'Anleitung',
+        license: 'Lizenz',
+        issues: 'Fehler melden',
+        privacy: 'Datenschutz',
+      },
+      fr: {
+        title: 'AntPod — Lecteur de podcasts open source',
+        metaDesc: 'La fourmilière de vos podcasts. Un lecteur de podcasts Android agile et open source, sans compte, sans pistage, sans chichis.',
+        heroTitle: 'La fourmilière<br>de vos podcasts.',
+        heroText: 'Chaque épisode rapporté sans relâche — une éclaireuse agile, éclose de l’esprit du grand AntennaPod. Pas de compte. Pas de pistage. Juste vos podcasts.',
+        fdroidSoonTitle: 'Bientôt sur F-Droid',
+        fdroidBadge: 'https://fdroid.gitlab.io/artwork/badge/get-it-on-fr.png',
+        soon: 'Bientôt',
+        playBadge: 'https://play.google.com/intl/fr_fr/badges/static/images/badges/fr_badge_web_generic.png',
+        apkLink: 'Télécharger l’APK sur GitHub',
+        featuresTitle: 'Moins d’appli. Plus de podcast. Tout simplement.',
+        discoverTitle: 'Découvrir',
+        discoverText: 'Classements et recommandations malignes via PodcastIndex.',
+        subscribeTitle: 'S’abonner',
+        subscribeText: 'Un fil toujours à jour : les nouveaux épisodes arrivent tout seuls, en arrière-plan.',
+        downloadTitle: 'Télécharger',
+        downloadText: 'Emportez vos épisodes hors ligne. Un glissement pour télécharger, un autre pour marquer comme écouté.',
+        privateTitle: 'Privé',
+        privateText: 'Aucun compte requis. Aucune statistique. Aucune pub. Vos données restent sur votre appareil.',
+        guideBtn: 'Guide de l’app',
+        humaneTitle: 'Pensée pour respecter votre temps.',
+        humaneText: 'AntPod est conçue pour rendre moins accro, pas plus — inspirée par ' + HUMANE_LINK + '.',
+        humaneNotifications: '<strong>Aucune notification</strong> — AntPod ne vous interrompt jamais',
+        humaneAutoplay: '<strong>Pas de lecture automatique</strong> — vous choisissez la suite ; rien ne démarre tout seul',
+        humaneAlgorithm: '<strong>Pas d’algorithme</strong> — aucun contenu poussé pour vous faire défiler sans fin',
+        ossTitle: 'Rejoignez la fourmilière.',
+        ossText: 'AntPod est entièrement open source. Lisez le code, signalez un problème ou contribuez — chaque fourmi compte.',
+        madeBy: 'Fait avec 🐜 par',
+        guide: 'Guide',
+        license: 'Licence',
+        issues: 'Signaler un problème',
+        privacy: 'Confidentialité',
+      },
+      es: {
+        title: 'AntPod — Reproductor de podcasts de código abierto',
+        metaDesc: 'El hormiguero de tus podcasts. Un reproductor de podcasts para Android ágil y de código abierto, sin cuenta, sin rastreo y sin tonterías.',
+        heroTitle: 'El hormiguero<br>de tus podcasts.',
+        heroText: 'Cada episodio llevado a casa sin descanso — una exploradora ágil nacida del espíritu del gran AntennaPod de siempre. Sin cuenta. Sin rastreo. Solo tus podcasts.',
+        fdroidSoonTitle: 'Pronto en F-Droid',
+        fdroidBadge: 'https://fdroid.gitlab.io/artwork/badge/get-it-on-es.png',
+        soon: 'Pronto',
+        playBadge: 'https://play.google.com/intl/es_es/badges/static/images/badges/es_badge_web_generic.png',
+        apkLink: 'Descargar el APK desde GitHub',
+        featuresTitle: 'Menos app. Más podcast. Maravillosamente simple.',
+        discoverTitle: 'Descubrir',
+        discoverText: 'Listas de tendencias y recomendaciones inteligentes vía PodcastIndex.',
+        subscribeTitle: 'Suscribirse',
+        subscribeText: 'Tu feed siempre al día: los episodios nuevos llegan solos, en segundo plano.',
+        downloadTitle: 'Descargar',
+        downloadText: 'Lleva tus episodios sin conexión. Desliza para descargar, desliza para marcar como escuchado.',
+        privateTitle: 'Privado',
+        privateText: 'Sin cuenta. Sin analíticas. Sin anuncios. Tus datos se quedan en tu dispositivo.',
+        guideBtn: 'Guía de la app',
+        humaneTitle: 'Diseñada para respetar tu tiempo.',
+        humaneText: 'AntPod está hecha para enganchar menos, no más — inspirada en ' + HUMANE_LINK + '.',
+        humaneNotifications: '<strong>Sin notificaciones</strong> — AntPod nunca te interrumpe',
+        humaneAutoplay: '<strong>Sin reproducción automática</strong> — tú eliges qué sigue; nada suena por sí solo',
+        humaneAlgorithm: '<strong>Sin algoritmo</strong> — nada de contenido empujado para que sigas deslizando',
+        ossTitle: 'Únete al hormiguero.',
+        ossText: 'AntPod es totalmente de código abierto. Lee el código, informa de un problema o contribuye: cada hormiga cuenta.',
+        madeBy: 'Hecho con 🐜 por',
+        guide: 'Guía',
+        license: 'Licencia',
+        issues: 'Informar de un problema',
+        privacy: 'Privacidad',
+      },
+    };
+    AntpodI18n.apply();
+  </script>
 
 </body>
 </html>

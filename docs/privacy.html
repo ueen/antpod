@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Privacy Policy — AntPod</title>
-  <meta name="description" content="AntPod does not collect any personal data. Your podcasts stay on your device." />
+  <title data-i18n="title">Privacy Policy — AntPod</title>
+  <meta name="description" data-i18n-content="metaDesc" content="AntPod does not collect any personal data. Your podcasts stay on your device." />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="shortcut icon" href="/favicon.svg" />
+  <script src="/i18n.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #FFFAF5; color: #1A0E07; font-family: system-ui, -apple-system, sans-serif; }
@@ -21,13 +22,29 @@
     p { font-size: 0.95rem; line-height: 1.75; color: #5C3A1E; }
     a { color: #FF9A30; text-decoration: none; }
     a:hover { text-decoration: underline; }
+    code {
+      font-family: ui-monospace, monospace; font-size: 0.82rem;
+      background: #F7EFE6; color: #7B3F00; padding: 0.15em 0.45em; border-radius: 0.3rem;
+    }
     .chip {
       display: inline-flex; align-items: center; gap: 0.4rem;
       background: rgba(255,154,48,.1); color: #7B3F00;
       padding: 0.35rem 0.75rem; border-radius: 2rem;
       font-size: 0.82rem; font-weight: 600; margin: 0.2rem 0.2rem 0 0;
     }
+    .chip::before {
+      content: ''; width: 13px; height: 13px; flex-shrink: 0;
+      background: currentColor;
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center / contain no-repeat;
+              mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center / contain no-repeat;
+    }
     .chips { margin: 1.25rem 0 0; }
+    .lang-select {
+      margin-left: auto; background: transparent; border: 1.5px solid #F0E4D4;
+      border-radius: 0.375rem; padding: 0.2rem 0.5rem;
+      font-size: 0.72rem; color: #9E7056; cursor: pointer; font-family: inherit;
+    }
+    .lang-select:hover { border-color: #FF9A30; color: #FF9A30; }
     footer { border-top: 1px solid #F0E4D4; padding: 1.5rem; text-align: center; }
     footer p { font-size: 0.8rem; color: #9E7056; }
   </style>
@@ -40,32 +57,27 @@
         <img src="/favicon.svg" width="28" height="28" style="border-radius:50%;" alt="AntPod logo" />
         <span>AntPod</span>
       </a>
+      <select id="lang-select" class="lang-select" aria-label="Language" onchange="setLang(this.value)">
+        <option value="en">EN</option>
+        <option value="de">DE</option>
+        <option value="es">ES</option>
+        <option value="fr">FR</option>
+      </select>
     </div>
   </nav>
 
-  <main>
+  <!-- ══ English ═════════════════════════════════════════════════════════════ -->
+  <main data-lang="en">
     <h1>Privacy Policy</h1>
     <p class="subtitle">Last updated: November 2026</p>
 
     <p>AntPod is built on a simple principle: your podcasts are yours. The app does not collect, transmit, or share any personal data.</p>
 
     <div class="chips">
-      <span class="chip">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        No accounts
-      </span>
-      <span class="chip">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        No analytics
-      </span>
-      <span class="chip">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        No ads
-      </span>
-      <span class="chip">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        No third-party SDKs
-      </span>
+      <span class="chip">No accounts</span>
+      <span class="chip">No analytics</span>
+      <span class="chip">No ads</span>
+      <span class="chip">No third-party SDKs</span>
     </div>
 
     <h2>What AntPod does not collect</h2>
@@ -77,11 +89,14 @@
     <h2>PodcastIndex</h2>
     <p>Podcast search and discovery use the <a href="https://podcastindex.org" target="_blank" rel="noopener">PodcastIndex</a> API. Your search queries are sent to their servers. Please refer to the <a href="https://podcastindex.org/privacy" target="_blank" rel="noopener">PodcastIndex privacy policy</a> for details on how they handle requests.</p>
 
-    <h2>Apple Charts</h2>
-    <p>The <strong>Trending</strong> tab fetches the Apple Podcasts top chart for your country using Apple's public charts API. The request includes your device's country/region setting to show the relevant chart. Apple may log this request; refer to <a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">Apple's Privacy Policy</a> for details.</p>
+    <h2>Apple Podcasts</h2>
+    <p>Search queries are also sent to Apple's public podcast search, and the <strong>Trending</strong> tab fetches the Apple Podcasts top chart for your country. These requests include your device's country/region setting to show relevant results. Apple may log them; refer to <a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">Apple's Privacy Policy</a> for details.</p>
 
     <h2>Podcast hosts</h2>
     <p>When you subscribe to a podcast or stream/download an episode, your device connects directly to the podcast host's server to fetch the RSS feed or audio file. Podcast hosts can see and may log your IP address and the requests made to their servers — this is the same as visiting any website. AntPod has no control over what podcast hosts collect or how they use that information.</p>
+
+    <h2>This website and shared links</h2>
+    <p>antpod.eu is hosted on GitHub Pages, which may log visits like any web host. A shared link opens <code>antpod.eu/open</code>, which plays the episode in your browser: it loads the podcast's feed through a small proxy on Cloudflare (which caches feeds for 30 minutes and stores nothing else), falls back to PodcastIndex, and streams the audio straight from the podcast host. If you haven't picked a language, it asks geojs.io for your country, based on your IP address, to choose one. Your language choice is remembered in a <code>lang</code> cookie, the only cookie antpod.eu sets.</p>
 
     <h2>Open source</h2>
     <p>AntPod is fully open source. You can audit every line of code at <a href="https://github.com/ueen/antpod" target="_blank" rel="noopener">github.com/ueen/antpod</a>. If you have questions or concerns, feel free to open an issue.</p>
@@ -90,15 +105,146 @@
     <p>For any privacy-related questions, open an issue on <a href="https://github.com/ueen/antpod/issues" target="_blank" rel="noopener">GitHub</a>.</p>
   </main>
 
+  <!-- ══ Deutsch ═════════════════════════════════════════════════════════════ -->
+  <main data-lang="de" hidden>
+    <h1>Datenschutzerklärung</h1>
+    <p class="subtitle">Zuletzt aktualisiert: November 2026</p>
+
+    <p>AntPod folgt einem einfachen Grundsatz: Deine Podcasts gehören dir. Die App erhebt, überträgt und teilt keinerlei personenbezogene Daten.</p>
+
+    <div class="chips">
+      <span class="chip">Keine Konten</span>
+      <span class="chip">Keine Analyse</span>
+      <span class="chip">Keine Werbung</span>
+      <span class="chip">Keine Drittanbieter-SDKs</span>
+    </div>
+
+    <h2>Was AntPod nicht erhebt</h2>
+    <p>AntPod sammelt keine Informationen über dich, dein Gerät oder dein Hörverhalten. Es gibt keine Absturzberichte, keine Nutzungsanalyse und keine Werbe-IDs. Abos, Verlauf und Wiedergabefortschritt werden nur auf deinem Gerät gespeichert und verlassen es nie.</p>
+
+    <h2>Netzwerkanfragen der App</h2>
+    <p>AntPod spricht direkt mit den Diensten, die du nutzt — ohne zwischengeschalteten Server:</p>
+
+    <h2>PodcastIndex</h2>
+    <p>Suche und Entdecken nutzen die API von <a href="https://podcastindex.org" target="_blank" rel="noopener">PodcastIndex</a>. Deine Suchanfragen gehen an deren Server. Wie sie damit umgehen, steht in der <a href="https://podcastindex.org/privacy" target="_blank" rel="noopener">Datenschutzerklärung von PodcastIndex</a>.</p>
+
+    <h2>Apple Podcasts</h2>
+    <p>Suchanfragen gehen auch an Apples öffentliche Podcast-Suche, und der Tab <strong>Trends</strong> lädt die Apple-Podcasts-Charts für dein Land. Diese Anfragen enthalten die Land-/Regionseinstellung deines Geräts, damit passende Ergebnisse kommen. Apple kann sie protokollieren; Details in der <a href="https://www.apple.com/de/legal/privacy/" target="_blank" rel="noopener">Datenschutzrichtlinie von Apple</a>.</p>
+
+    <h2>Podcast-Hoster</h2>
+    <p>Wenn du einen Podcast abonnierst oder eine Folge streamst bzw. herunterlädst, verbindet sich dein Gerät direkt mit dem Server des Podcast-Hosters, um den RSS-Feed oder die Audiodatei zu laden. Hoster sehen dabei deine IP-Adresse und die Anfragen und können sie protokollieren — wie bei jeder Website. Was Hoster erheben und wie sie es nutzen, liegt außerhalb von AntPod.</p>
+
+    <h2>Diese Website und geteilte Links</h2>
+    <p>antpod.eu liegt auf GitHub Pages, das Besuche wie jeder Webhoster protokollieren kann. Ein geteilter Link öffnet <code>antpod.eu/open</code> und spielt die Folge im Browser ab: Die Seite lädt den Feed über einen kleinen Proxy bei Cloudflare (der Feeds 30 Minuten zwischenspeichert und sonst nichts speichert), weicht notfalls auf PodcastIndex aus und streamt das Audio direkt vom Podcast-Hoster. Hast du keine Sprache gewählt, fragt sie geojs.io anhand deiner IP-Adresse nach deinem Land, um eine auszuwählen. Deine Sprachwahl merkt sich ein <code>lang</code>-Cookie, das einzige Cookie von antpod.eu.</p>
+
+    <h2>Open Source</h2>
+    <p>AntPod ist komplett Open Source. Jede Zeile Code kannst du auf <a href="https://github.com/ueen/antpod" target="_blank" rel="noopener">github.com/ueen/antpod</a> prüfen. Bei Fragen oder Bedenken eröffne gern ein Issue.</p>
+
+    <h2>Kontakt</h2>
+    <p>Für Fragen zum Datenschutz eröffne ein Issue auf <a href="https://github.com/ueen/antpod/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+  </main>
+
+  <!-- ══ Français ════════════════════════════════════════════════════════════ -->
+  <main data-lang="fr" hidden>
+    <h1>Politique de confidentialité</h1>
+    <p class="subtitle">Dernière mise à jour : novembre 2026</p>
+
+    <p>AntPod repose sur un principe simple : vos podcasts vous appartiennent. L’application ne collecte, ne transmet et ne partage aucune donnée personnelle.</p>
+
+    <div class="chips">
+      <span class="chip">Pas de compte</span>
+      <span class="chip">Pas d’analytics</span>
+      <span class="chip">Pas de pub</span>
+      <span class="chip">Pas de SDK tiers</span>
+    </div>
+
+    <h2>Ce qu’AntPod ne collecte pas</h2>
+    <p>AntPod ne collecte aucune information sur vous, votre appareil ou vos habitudes d’écoute. Pas de rapports de plantage, pas de statistiques d’usage, pas d’identifiant publicitaire. Abonnements, historique et progression de lecture restent sur votre appareil et ne le quittent jamais.</p>
+
+    <h2>Requêtes réseau de l’application</h2>
+    <p>AntPod communique directement avec les services que vous utilisez — sans serveur intermédiaire :</p>
+
+    <h2>PodcastIndex</h2>
+    <p>La recherche et la découverte utilisent l’API de <a href="https://podcastindex.org" target="_blank" rel="noopener">PodcastIndex</a>. Vos recherches sont envoyées à leurs serveurs. Consultez la <a href="https://podcastindex.org/privacy" target="_blank" rel="noopener">politique de confidentialité de PodcastIndex</a> pour savoir comment elles sont traitées.</p>
+
+    <h2>Apple Podcasts</h2>
+    <p>Les recherches sont aussi envoyées à la recherche publique de podcasts d’Apple, et l’onglet <strong>Tendances</strong> charge le classement Apple Podcasts de votre pays. Ces requêtes incluent le réglage pays/région de votre appareil pour des résultats pertinents. Apple peut les enregistrer ; voir les <a href="https://www.apple.com/fr/legal/privacy/" target="_blank" rel="noopener">règles de confidentialité d’Apple</a>.</p>
+
+    <h2>Hébergeurs de podcasts</h2>
+    <p>Quand vous vous abonnez à un podcast ou écoutez/téléchargez un épisode, votre appareil se connecte directement au serveur de l’hébergeur pour récupérer le flux RSS ou le fichier audio. L’hébergeur voit votre adresse IP et vos requêtes et peut les enregistrer — comme pour n’importe quel site web. AntPod n’a aucun contrôle sur ce que les hébergeurs collectent ni sur l’usage qu’ils en font.</p>
+
+    <h2>Ce site et les liens partagés</h2>
+    <p>antpod.eu est hébergé sur GitHub Pages, qui peut enregistrer les visites comme tout hébergeur. Un lien partagé ouvre <code>antpod.eu/open</code>, qui lit l’épisode dans votre navigateur : la page charge le flux via un petit proxy chez Cloudflare (qui garde les flux en cache 30 minutes et ne stocke rien d’autre), se rabat sur PodcastIndex si besoin, et diffuse l’audio directement depuis l’hébergeur. Si vous n’avez pas choisi de langue, elle demande votre pays à geojs.io, d’après votre adresse IP, pour en choisir une. Votre choix de langue est conservé dans un cookie <code>lang</code>, le seul cookie d’antpod.eu.</p>
+
+    <h2>Open source</h2>
+    <p>AntPod est entièrement open source. Vous pouvez vérifier chaque ligne de code sur <a href="https://github.com/ueen/antpod" target="_blank" rel="noopener">github.com/ueen/antpod</a>. Une question ou une inquiétude ? Ouvrez une issue.</p>
+
+    <h2>Contact</h2>
+    <p>Pour toute question de confidentialité, ouvrez une issue sur <a href="https://github.com/ueen/antpod/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+  </main>
+
+  <!-- ══ Español ═════════════════════════════════════════════════════════════ -->
+  <main data-lang="es" hidden>
+    <h1>Política de privacidad</h1>
+    <p class="subtitle">Última actualización: noviembre de 2026</p>
+
+    <p>AntPod se basa en un principio sencillo: tus podcasts son tuyos. La app no recopila, transmite ni comparte ningún dato personal.</p>
+
+    <div class="chips">
+      <span class="chip">Sin cuentas</span>
+      <span class="chip">Sin analíticas</span>
+      <span class="chip">Sin anuncios</span>
+      <span class="chip">Sin SDK de terceros</span>
+    </div>
+
+    <h2>Lo que AntPod no recopila</h2>
+    <p>AntPod no recopila información sobre ti, tu dispositivo ni tus hábitos de escucha. No hay informes de fallos, ni analíticas de uso, ni identificadores publicitarios. Suscripciones, historial y progreso de reproducción se guardan solo en tu dispositivo y nunca salen de él.</p>
+
+    <h2>Peticiones de red de la app</h2>
+    <p>AntPod se comunica directamente con los servicios que usas — sin ningún servidor intermedio:</p>
+
+    <h2>PodcastIndex</h2>
+    <p>La búsqueda y el descubrimiento usan la API de <a href="https://podcastindex.org" target="_blank" rel="noopener">PodcastIndex</a>. Tus búsquedas se envían a sus servidores. Consulta la <a href="https://podcastindex.org/privacy" target="_blank" rel="noopener">política de privacidad de PodcastIndex</a> para saber cómo las tratan.</p>
+
+    <h2>Apple Podcasts</h2>
+    <p>Las búsquedas también se envían al buscador público de podcasts de Apple, y la pestaña <strong>Tendencias</strong> carga las listas de Apple Podcasts de tu país. Estas peticiones incluyen el ajuste de país/región de tu dispositivo para mostrar resultados relevantes. Apple puede registrarlas; consulta la <a href="https://www.apple.com/es/legal/privacy/" target="_blank" rel="noopener">política de privacidad de Apple</a>.</p>
+
+    <h2>Alojamientos de podcasts</h2>
+    <p>Cuando te suscribes a un podcast o escuchas/descargas un episodio, tu dispositivo se conecta directamente al servidor del alojamiento para obtener el feed RSS o el archivo de audio. El alojamiento ve tu dirección IP y tus peticiones y puede registrarlas — igual que al visitar cualquier web. AntPod no controla lo que recopilan ni cómo lo usan.</p>
+
+    <h2>Esta web y los enlaces compartidos</h2>
+    <p>antpod.eu está alojada en GitHub Pages, que puede registrar las visitas como cualquier alojamiento web. Un enlace compartido abre <code>antpod.eu/open</code>, que reproduce el episodio en tu navegador: la página carga el feed a través de un pequeño proxy en Cloudflare (que guarda los feeds en caché 30 minutos y nada más), recurre a PodcastIndex si hace falta y reproduce el audio directamente desde el alojamiento. Si no has elegido idioma, pregunta a geojs.io tu país, según tu dirección IP, para elegir uno. Tu elección de idioma se guarda en una cookie <code>lang</code>, la única cookie de antpod.eu.</p>
+
+    <h2>Código abierto</h2>
+    <p>AntPod es totalmente de código abierto. Puedes revisar cada línea en <a href="https://github.com/ueen/antpod" target="_blank" rel="noopener">github.com/ueen/antpod</a>. Si tienes preguntas o dudas, abre una issue.</p>
+
+    <h2>Contacto</h2>
+    <p>Para cualquier pregunta sobre privacidad, abre una issue en <a href="https://github.com/ueen/antpod/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+  </main>
+
   <footer>
     <p>
       <a href="/">AntPod</a>
       &nbsp;·&nbsp;
-      <a href="https://github.com/ueen/antpod/blob/master/LICENSE" style="color:#9E7056;">License</a>
+      <a href="/guide/" style="color:#9E7056;" data-i18n="guide">Guide</a>
       &nbsp;·&nbsp;
-      <a href="https://github.com/ueen/antpod/issues" style="color:#9E7056;">Issues</a>
+      <a href="https://github.com/ueen/antpod/blob/master/LICENSE" style="color:#9E7056;" data-i18n="license">License</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/ueen/antpod/issues" style="color:#9E7056;" data-i18n="issues">Issues</a>
     </p>
   </footer>
+
+  <script>
+    window.I18N = {
+      de: { title: 'Datenschutz — AntPod', metaDesc: 'AntPod erhebt keine personenbezogenen Daten. Deine Podcasts bleiben auf deinem Gerät.',
+            guide: 'Anleitung', license: 'Lizenz', issues: 'Issues' },
+      fr: { title: 'Confidentialité — AntPod', metaDesc: 'AntPod ne collecte aucune donnée personnelle. Vos podcasts restent sur votre appareil.',
+            guide: 'Guide', license: 'Licence', issues: 'Issues' },
+      es: { title: 'Privacidad — AntPod', metaDesc: 'AntPod no recopila datos personales. Tus podcasts se quedan en tu dispositivo.',
+            guide: 'Guía', license: 'Licencia', issues: 'Issues' },
+    };
+    AntpodI18n.apply();
+  </script>
 
 </body>
 </html>
