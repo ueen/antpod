@@ -723,7 +723,8 @@ class _HomeScreenState extends State<HomeScreen> {
       podcastTitle: Value(e.podcastTitle), podcastImageUrl: Value(e.podcastImageUrl),
       title: Value(e.title), description: Value(e.description),
       audioUrl: Value(e.audioUrl), durationSeconds: Value(e.durationSeconds),
-      publishDate: Value(e.publishDate), isSubscribed: const Value(false),
+      publishDate: Value(e.publishDate), chaptersUrl: Value(e.chaptersUrl),
+      isSubscribed: const Value(false),
     )).toList();
     await db.insertTempEpisodes(companions);
     if (!mounted || _searchQuery != q) return;

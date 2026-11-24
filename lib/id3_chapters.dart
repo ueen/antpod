@@ -1,167 +1,188 @@
 // lib/id3_chapters.dart
 //
-// Reads chapter images embedded as APIC sub-frames inside ID3v2 CHAP tags.
-// Only v2.3 and v2.4 are supported. Range requests are used so only the ID3
-// header is fetched (typically < 1 MB even for heavily-tagged episodes).
-//
-// Usage:
-//   final images = await fetchId3ChapterImages(audioUrl);
-//   // images: Map<startTimeMs, jpegBytes>
+// Reads the chapters embedded in an episode's ID3v2 tag: CHAP frames with
+// their TIT2 title and APIC image. They describe the exact file being played,
+// which the chapters JSON may not: with dynamic ad insertion the CDN shifts
+// the audio and rewrites these times to match, while the JSON keeps the
+// ad-free ones. Only ID3v2.3 and v2.4 are supported.
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// Fetches the ID3v2 tag from [audioUrl] via HTTP range requests and returns
-/// a map of chapter-start-time (ms) → embedded image bytes.
-/// Returns an empty map on any error or unsupported format.
-Future<Map<int, Uint8List>> fetchId3ChapterImages(String audioUrl) async {
+typedef Id3Chapter = ({int startMs, String title, Uint8List? image});
+
+const _maxTagBytes = 8 * 1024 * 1024;
+
+/// Chapters from the ID3 tag at the start of the downloaded file at
+/// [localPath], or else of the stream at [audioUrl]: one request, read up to
+/// the end of the tag and then dropped. Sorted by start time; empty when the
+/// file has none, null when it couldn't be read (worth retrying).
+Future<List<Id3Chapter>?> readId3Chapters(
+    {String? localPath, required String audioUrl}) async {
+  http.Client? client;
   try {
-    // ── Step 1: read 10-byte ID3v2 header ───────────────────────────────────
-    final headResp = await http.get(
-      Uri.parse(audioUrl),
-      headers: {'Range': 'bytes=0-9'},
-    ).timeout(const Duration(seconds: 10));
-    if (headResp.statusCode != 206 && headResp.statusCode != 200) return {};
-
-    final hdr = headResp.bodyBytes;
-    if (hdr.length < 10) return {};
-
-    // Magic "ID3"
-    if (hdr[0] != 0x49 || hdr[1] != 0x44 || hdr[2] != 0x33) return {};
-
-    final version = hdr[3]; // 3 = v2.3, 4 = v2.4
-    if (version < 3 || version > 4) return {};
-
-    final flags = hdr[5];
-    final hasExtHeader = (flags & 0x40) != 0;
-
-    // Synchsafe 28-bit size (7 bits per byte)
-    int tagSize = 0;
-    for (int i = 6; i < 10; i++) { tagSize = (tagSize << 7) | (hdr[i] & 0x7F); }
-    if (tagSize == 0 || tagSize > 8 * 1024 * 1024) return {}; // max 8 MB
-
-    // ── Step 2: fetch tag body ───────────────────────────────────────────────
-    final bodyResp = await http.get(
-      Uri.parse(audioUrl),
-      headers: {'Range': 'bytes=10-${10 + tagSize - 1}'},
-    ).timeout(const Duration(seconds: 20));
-    if (bodyResp.statusCode != 206 && bodyResp.statusCode != 200) return {};
-
-    final tagBytes = Uint8List.fromList(bodyResp.bodyBytes);
-
-    // ── Step 3: parse in background isolate ─────────────────────────────────
-    return compute(_parseChapImages,
-        (bytes: tagBytes, version: version, hasExtHeader: hasExtHeader));
-  } catch (_) {
-    return {};
+    final Stream<List<int>> bytes;
+    if (localPath != null) {
+      bytes = File(localPath).openRead();
+    } else {
+      if (audioUrl.isEmpty) return const [];
+      client = http.Client();
+      final res = await client
+          .send(http.Request('GET', Uri.parse(audioUrl)))
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200 && res.statusCode != 206) return null;
+      bytes = res.stream;
+    }
+    final tag = await _readTag(bytes).timeout(const Duration(seconds: 30));
+    if (tag == null) return const [];
+    return await compute(_parseChapters, tag);
+  } catch (e) {
+    debugPrint('[chapters] ID3 read failed: $e');
+    return null;
+  } finally {
+    client?.close();
   }
 }
 
-// Top-level so compute() can serialize it.
-Map<int, Uint8List> _parseChapImages(
-    ({Uint8List bytes, int version, bool hasExtHeader}) args) {
-  final data = args.bytes;
-  final v = args.version;
-  final result = <int, Uint8List>{};
-  int pos = 0;
+typedef _Tag = ({Uint8List body, int version, int flags});
 
-  // Skip extended header
-  if (args.hasExtHeader && pos + 4 <= data.length) {
-    int extSize = 0;
-    if (v == 4) {
-      for (int i = 0; i < 4; i++) { extSize = (extSize << 7) | (data[pos + i] & 0x7F); }
-    } else {
-      for (int i = 0; i < 4; i++) { extSize = (extSize << 8) | data[pos + i]; }
+/// The tag after its 10-byte header, or null when [bytes] doesn't start with
+/// an ID3v2.3/2.4 tag. Stops reading (cancels the stream) once it's in.
+Future<_Tag?> _readTag(Stream<List<int>> bytes) async {
+  final buf = BytesBuilder(copy: false);
+  int? end;
+  int version = 0, flags = 0;
+  await for (final chunk in bytes) {
+    buf.add(chunk);
+    if (end == null && buf.length >= 10) {
+      final h = buf.toBytes();
+      if (h[0] != 0x49 || h[1] != 0x44 || h[2] != 0x33) return null; // "ID3"
+      version = h[3];
+      if (version < 3 || version > 4) return null;
+      flags = h[5];
+      final size = _synchsafe(h, 6);
+      if (size == 0 || size > _maxTagBytes) return null;
+      end = 10 + size;
     }
-    pos += extSize;
+    if (end != null && buf.length >= end) break;
   }
-
-  // Walk frames
-  while (pos + 10 <= data.length) {
-    final b0 = data[pos], b1 = data[pos+1], b2 = data[pos+2], b3 = data[pos+3];
-    // Padding / end of frames
-    if (b0 == 0 && b1 == 0 && b2 == 0 && b3 == 0) break;
-
-    final frameId = String.fromCharCodes([b0, b1, b2, b3]);
-    int frameSize = 0;
-    if (v == 4) {
-      for (int i = 0; i < 4; i++) { frameSize = (frameSize << 7) | (data[pos + 4 + i] & 0x7F); }
-    } else {
-      for (int i = 0; i < 4; i++) { frameSize = (frameSize << 8) | data[pos + 4 + i]; }
-    }
-    pos += 10;
-    if (frameSize <= 0 || pos + frameSize > data.length) break;
-
-    if (frameId == 'CHAP') {
-      final parsed = _parseChap(data, pos, pos + frameSize, v);
-      if (parsed != null) { result[parsed.$1] = parsed.$2; }
-    }
-
-    pos += frameSize;
-  }
-
-  return result;
+  if (end == null || buf.length < end) throw const FormatException('ID3 tag cut short');
+  return (body: Uint8List.sublistView(buf.toBytes(), 10, end), version: version, flags: flags);
 }
 
-/// Parses one CHAP frame in [data] from [start]..[end].
-/// Returns (startTimeMs, imageBytes) or null.
-(int, Uint8List)? _parseChap(Uint8List data, int start, int end, int v) {
-  int pos = start;
+// Top-level so compute() can run it in an isolate.
+List<Id3Chapter> _parseChapters(_Tag tag) {
+  final d = tag.body;
+  final v4 = tag.version == 4;
+  int frameSize(int at) => v4 ? _synchsafe(d, at) : _uint32(d, at);
 
-  // Skip element ID (null-terminated)
-  while (pos < end && data[pos] != 0) { pos++; }
-  pos++; // skip null
+  var pos = 0;
+  if (tag.flags & 0x40 != 0 && d.length >= 4) {
+    // Extended header: v2.4's size counts itself, v2.3's leaves out its 4 bytes.
+    pos = v4 ? _synchsafe(d, 0) : _uint32(d, 0) + 4;
+  }
 
+  Uint8List? cover; // the file's own artwork
+  final chapters = <Id3Chapter>[];
+  while (pos + 10 <= d.length && d[pos] != 0) {
+    final id = String.fromCharCodes(d, pos, pos + 4);
+    final start = pos + 10, end = start + frameSize(pos + 4);
+    if (end <= start || end > d.length) break;
+    if (id == 'CHAP') {
+      final c = _chap(d, start, end, frameSize);
+      if (c != null) chapters.add(c);
+    } else if (id == 'APIC') {
+      cover ??= _apicImage(d, start, end);
+    }
+    pos = end;
+  }
+
+  chapters.sort((a, b) => a.startMs.compareTo(b.startMs));
+  // A chapter showing the episode artwork has no picture of its own.
+  return [
+    for (final c in chapters)
+      (
+        startMs: c.startMs,
+        title: c.title,
+        image: c.image != null && listEquals(c.image, cover) ? null : c.image,
+      ),
+  ];
+}
+
+/// One CHAP frame: element ID, start/end time and byte offsets, sub-frames.
+Id3Chapter? _chap(Uint8List d, int pos, int end, int Function(int) frameSize) {
+  while (pos < end && d[pos] != 0) { pos++; } // element ID
+  pos++;
   if (pos + 16 > end) return null;
-  final startMs = (data[pos] << 24) | (data[pos+1] << 16) | (data[pos+2] << 8) | data[pos+3];
-  pos += 16; // start(4) + end(4) + startOffset(4) + endOffset(4)
+  final startMs = _uint32(d, pos);
+  pos += 16;
 
-  // Sub-frames
-  while (pos + 10 <= end) {
-    final b0 = data[pos], b1 = data[pos+1], b2 = data[pos+2], b3 = data[pos+3];
-    if (b0 == 0 && b1 == 0 && b2 == 0 && b3 == 0) break;
-    final subId = String.fromCharCodes([b0, b1, b2, b3]);
-
-    int subSize = 0;
-    if (v == 4) {
-      for (int i = 0; i < 4; i++) { subSize = (subSize << 7) | (data[pos + 4 + i] & 0x7F); }
-    } else {
-      for (int i = 0; i < 4; i++) { subSize = (subSize << 8) | data[pos + 4 + i]; }
-    }
-    pos += 10;
-    if (subSize <= 0 || pos + subSize > end) break;
-
-    if (subId == 'APIC') {
-      final img = _extractApic(data, pos, pos + subSize);
-      if (img != null) { return (startMs, img); }
-    }
-    pos += subSize;
+  var title = '';
+  Uint8List? image;
+  while (pos + 10 <= end && d[pos] != 0) {
+    final id = String.fromCharCodes(d, pos, pos + 4);
+    final start = pos + 10, stop = start + frameSize(pos + 4);
+    if (stop <= start || stop > end) break;
+    if (id == 'TIT2') title = _text(d, start, stop);
+    if (id == 'APIC') image ??= _apicImage(d, start, stop);
+    pos = stop;
   }
-  return null;
+  return (startMs: startMs, title: title, image: image);
 }
 
-/// Extracts raw image bytes from an APIC frame in [data] from [start]..[end].
-Uint8List? _extractApic(Uint8List data, int start, int end) {
+/// A text frame's value: an encoding byte, then Latin-1, UTF-16 with BOM,
+/// UTF-16BE or UTF-8.
+String _text(Uint8List d, int start, int end) {
+  if (start >= end) return '';
+  final enc = d[start];
+  final b = Uint8List.sublistView(d, start + 1, end);
+  String s;
+  switch (enc) {
+    case 1 || 2:
+      var bigEndian = enc == 2;
+      var i = 0;
+      if (enc == 1 && b.length >= 2) {
+        if (b[0] == 0xFF && b[1] == 0xFE) { i = 2; }
+        if (b[0] == 0xFE && b[1] == 0xFF) { bigEndian = true; i = 2; }
+      }
+      final units = <int>[];
+      for (; i + 1 < b.length; i += 2) {
+        units.add(bigEndian ? (b[i] << 8) | b[i + 1] : b[i] | (b[i + 1] << 8));
+      }
+      s = String.fromCharCodes(units);
+    case 3:
+      s = utf8.decode(b, allowMalformed: true);
+    default:
+      s = latin1.decode(b);
+  }
+  // Values may be null-terminated, or several null-separated: take the first.
+  final nul = s.indexOf('\u0000');
+  return (nul >= 0 ? s.substring(0, nul) : s).trim();
+}
+
+/// The picture data of an APIC frame: after encoding, MIME type, picture
+/// type and description.
+Uint8List? _apicImage(Uint8List d, int start, int end) {
   if (start >= end) return null;
-  int pos = start;
-  final encoding = data[pos++];
-
-  // Skip MIME type (null-terminated ASCII)
-  while (pos < end && data[pos] != 0) { pos++; }
-  pos++; // null
-  if (pos >= end) return null;
-
-  pos++; // picture type byte
-
-  // Skip description (encoding-dependent null terminator)
-  if (encoding == 1 || encoding == 2) {
-    // UTF-16: 2-byte null
-    while (pos + 1 < end && !(data[pos] == 0 && data[pos+1] == 0)) { pos += 2; }
+  var pos = start;
+  final enc = d[pos++];
+  while (pos < end && d[pos] != 0) { pos++; } // MIME type
+  pos += 2; // its null, picture type
+  if (enc == 1 || enc == 2) {
+    while (pos + 1 < end && !(d[pos] == 0 && d[pos + 1] == 0)) { pos += 2; }
     pos += 2;
   } else {
-    while (pos < end && data[pos] != 0) { pos++; }
+    while (pos < end && d[pos] != 0) { pos++; }
     pos++;
   }
-
   if (pos >= end) return null;
-  return Uint8List.fromList(data.sublist(pos, end));
+  return Uint8List.fromList(d.sublist(pos, end));
 }
+
+int _synchsafe(List<int> b, int at) =>
+    (b[at] & 0x7F) << 21 | (b[at + 1] & 0x7F) << 14 | (b[at + 2] & 0x7F) << 7 | (b[at + 3] & 0x7F);
+
+int _uint32(List<int> b, int at) =>
+    b[at] << 24 | b[at + 1] << 16 | b[at + 2] << 8 | b[at + 3];

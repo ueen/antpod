@@ -343,7 +343,12 @@ class _PlayerSheet extends StatelessWidget {
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: _ChapterCover(player: player, fallbackUrl: fallbackUrl, size: screenWidth),
+              // Follows the playback into the next chapter's picture.
+              child: ListenableBuilder(
+                listenable: player,
+                builder: (_, __) => _ChapterCover(
+                    player: player, fallbackUrl: fallbackUrl, size: screenWidth),
+              ),
             ),
           ),
         ),
@@ -417,8 +422,10 @@ class _PlayerSheet extends StatelessWidget {
             ),
 
             Center(
+              // A chapter's own picture opens big; the podcast cover opens
+              // the podcast.
               child: GestureDetector(
-                onTap: player.chapters.isNotEmpty
+                onTap: player.hasChapterImage
                     ? () => _showCoverFullscreen(context, player, ep.podcastImageUrl)
                     : (onPodcastTap != null
                         ? () {

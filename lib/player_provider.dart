@@ -15,7 +15,14 @@ class PodcastChapter {
   final String title;
   final double startTimeSeconds;
   final String? imageUrl;
-  const PodcastChapter({required this.title, required this.startTimeSeconds, this.imageUrl});
+  /// Picture embedded in the audio file's tag; wins over [imageUrl].
+  final Uint8List? imageBytes;
+  const PodcastChapter({
+    required this.title,
+    required this.startTimeSeconds,
+    this.imageUrl,
+    this.imageBytes,
+  });
 }
 
 class PlayerProvider extends ChangeNotifier {
@@ -30,8 +37,9 @@ class PlayerProvider extends ChangeNotifier {
   // the user taps play. True once load() or play() sets up the audio handler.
   bool _audioReady = false;
   List<PodcastChapter> _chapters = [];
-  // startTimeMs → image bytes, populated from ID3v2 CHAP tags when JSON has no images
-  Map<int, Uint8List> _id3ChapterImages = {};
+  /// What [_chapters] were read for (episode, chapters link, file): the same
+  /// again is skipped, and a newer load makes an older one drop its result.
+  String? _chaptersKey;
 
   StreamSubscription<Episode?>? _episodeWatchSub;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
@@ -130,19 +138,16 @@ class PlayerProvider extends ChangeNotifier {
   String get currentCoverImageUrl =>
       currentChapter?.imageUrl ?? _currentEpisode?.podcastImageUrl ?? '';
 
-  /// Image bytes from ID3v2 CHAP tag for the current chapter, or null.
-  Uint8List? get currentChapterImageBytes {
-    final idx = currentChapterIndex;
-    if (idx < 0 || _chapters.isEmpty) return null;
-    final startMs = (_chapters[idx].startTimeSeconds * 1000).round();
-    // Find the closest ID3 chapter within 2 s tolerance
-    int? best;
-    int bestDiff = 2001;
-    for (final ms in _id3ChapterImages.keys) {
-      final diff = (ms - startMs).abs();
-      if (diff < bestDiff) { bestDiff = diff; best = ms; }
-    }
-    return best != null ? _id3ChapterImages[best] : null;
+  /// The current chapter's picture from the audio file's tag, or null.
+  Uint8List? get currentChapterImageBytes => currentChapter?.imageBytes;
+
+  /// Whether the current chapter has a picture of its own, not the podcast
+  /// cover: only then does tapping the cover enlarge it.
+  bool get hasChapterImage {
+    final c = currentChapter;
+    if (c == null) return false;
+    return c.imageBytes != null ||
+        (c.imageUrl != null && c.imageUrl != _currentEpisode?.podcastImageUrl);
   }
 
   Future<void> seekToChapter(PodcastChapter chapter) =>
@@ -158,41 +163,86 @@ class PlayerProvider extends ChangeNotifier {
     if (i > 0) seekToChapter(_chapters[i - 1]);
   }
 
-  Future<void> _loadChapters(String? url, String audioUrl) async {
-    _chapters = [];
-    _id3ChapterImages = {};
-    if (url == null || url.isEmpty) {
-      debugPrint('[chapters] no chaptersUrl — skipping');
-      return;
-    }
-    try {
-      final result = await ps.Feed.loadChaptersByUrl(url: url);
-      _chapters = result.chapters
-          .where((c) => c.toc && c.title.isNotEmpty)
-          .map((c) => PodcastChapter(
+  /// Chapters come from two places: the feed's chapters JSON and the audio
+  /// file's own ID3 tag. Both are read at once; the JSON (small, quick) shows
+  /// first, and the file's chapters take over once in, since they match the
+  /// audio actually played (see id3_chapters.dart). Also covers feeds whose
+  /// chapters only live in the file.
+  Future<void> _loadChapters(Episode episode) async {
+    final localPath = _resolveLocalPath(episode.localPath);
+    final url = episode.chaptersUrl;
+    final key = '${episode.id}|$url|$localPath';
+    if (key == _chaptersKey) return;
+    // Read again for the same episode (new link, new file): what's shown
+    // stays until the new chapters are in.
+    final again = _chaptersKey?.startsWith('${episode.id}|') ?? false;
+    _chaptersKey = key;
+    if (!again) _chapters = [];
+    bool stale() => _chaptersKey != key;
+
+    final id3Future =
+        readId3Chapters(localPath: localPath, audioUrl: episode.audioUrl);
+
+    List<PodcastChapter>? json;
+    if (url != null && url.isNotEmpty) {
+      try {
+        final result = await ps.Feed.loadChaptersByUrl(url: url);
+        json = [
+          for (final c in result.chapters)
+            if (c.toc)
+              PodcastChapter(
                 title: c.title,
                 startTimeSeconds: c.startTime,
                 imageUrl: c.imageUrl.isNotEmpty ? c.imageUrl : null,
-              ))
-          .toList();
-      debugPrint('[chapters] loaded ${_chapters.length} chapters; '
-          'withImage=${_chapters.where((c) => c.imageUrl != null).length}');
-      notifyListeners();
-    } catch (e) {
-      debugPrint('[chapters] loadChaptersByUrl error: $e');
+              ),
+        ];
+      } catch (e) {
+        debugPrint('[chapters] $url: $e');
+      }
+      if (stale()) return;
+      if (!again && json != null && json.isNotEmpty) {
+        _chapters = json.where((c) => c.title.isNotEmpty).toList();
+        notifyListeners();
+      }
     }
 
-    // If no JSON chapter images, try ID3v2 CHAP tags embedded in the audio file
-    if (_chapters.isNotEmpty && _chapters.every((c) => c.imageUrl == null)) {
-      debugPrint('[chapters] fetching ID3 images from $audioUrl');
-      _id3ChapterImages = await fetchId3ChapterImages(audioUrl);
-      debugPrint('[chapters] ID3 images: ${_id3ChapterImages.length} found '
-          '(keys=${_id3ChapterImages.keys.toList()})');
-      if (_id3ChapterImages.isNotEmpty) notifyListeners();
-    } else {
-      debugPrint('[chapters] skipping ID3 fetch: chapters=${_chapters.length}, '
-          'allNullImages=${_chapters.every((c) => c.imageUrl == null)}');
+    final id3 = await id3Future;
+    if (stale()) return;
+    final best = _chaptersFromFile(id3, json) ??
+        json?.where((c) => c.title.isNotEmpty).toList();
+    if (best != null) {
+      _chapters = best;
+      notifyListeners();
     }
+    // Nothing read because a fetch failed (offline?): the next play retries.
+    final jsonFailed = url != null && url.isNotEmpty && json == null;
+    if (_chapters.isEmpty && (id3 == null || jsonFailed)) _chaptersKey = null;
+  }
+
+  /// The file's chapters, with titles and images from the JSON (paired by
+  /// position) filling any gaps; null to keep the JSON's: the file has none,
+  /// or only the JSON has images and the two don't pair up.
+  static List<PodcastChapter>? _chaptersFromFile(
+      List<Id3Chapter>? id3, List<PodcastChapter>? json) {
+    if (id3 == null || id3.isEmpty) return null;
+    final paired = json != null && json.length == id3.length;
+    if (!paired &&
+        json != null &&
+        id3.every((c) => c.image == null) &&
+        json.any((c) => c.imageUrl != null)) {
+      return null;
+    }
+    return [
+      for (var i = 0; i < id3.length; i++)
+        PodcastChapter(
+          title: id3[i].title.isNotEmpty
+              ? id3[i].title
+              : (paired ? json[i].title : ''),
+          startTimeSeconds: id3[i].startMs / 1000,
+          imageBytes: id3[i].image,
+          imageUrl: id3[i].image == null && paired ? json[i].imageUrl : null,
+        ),
+    ].where((c) => c.title.isNotEmpty).toList();
   }
 
   // ── Playback ──────────────────────────────────────────────────────────────
@@ -206,12 +256,13 @@ class PlayerProvider extends ChangeNotifier {
       if (id == null) return;
       final ep = await _db.getEpisode(id);
       if (ep == null || ep.isFinished) return;
-      // Set UI state only — no network activity until the user taps play.
-      // The audio handler is configured lazily in play().
+      // No audio until the user taps play: the audio handler is configured
+      // lazily in play(). Chapters load now, so the player shows them.
       _currentEpisode = ep;
       _position = Duration(milliseconds: ep.lastPositionMs);
       _duration = Duration(seconds: ep.durationSeconds);
       _audioReady = false;
+      _loadChapters(ep);
       _db.livePositionEpisodeId = ep.id;
       _episodeWatchSub?.cancel();
       _episodeWatchSub = _db.watchEpisode(ep.id).listen(_onEpisodeUpdated);
@@ -273,6 +324,7 @@ class PlayerProvider extends ChangeNotifier {
     _currentEpisode = null;
     _audioReady = false;
     _chapters = [];
+    _chaptersKey = null;
     // Before the save below, so the lists pick up the final position.
     _db.livePositionEpisodeId = null;
     notifyListeners();
@@ -304,14 +356,13 @@ class PlayerProvider extends ChangeNotifier {
     _lastSavedMs = 0;
     _currentEpisode = episode;
     _persistLastEpisode(episode.id);
-    _chapters = [];
+    _loadChapters(episode);
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
     _position = Duration(milliseconds: startMs);
     final localPath = _resolveLocalPath(episode.localPath);
     _isLoading = localPath == null;
     _audioReady = true;
     notifyListeners();
-    _loadChapters(episode.chaptersUrl, episode.audioUrl);
     _episodeWatchSub?.cancel();
     _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
     try {
@@ -354,7 +405,7 @@ class PlayerProvider extends ChangeNotifier {
     _lastSavedMs = 0;
     _currentEpisode = episode;
     _persistLastEpisode(episode.id);
-    _chapters = [];
+    _loadChapters(episode);
 
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
     _position = Duration(milliseconds: startMs);
@@ -362,8 +413,6 @@ class PlayerProvider extends ChangeNotifier {
     _isLoading = localPath == null && episode.audioUrl.isNotEmpty;
     _audioReady = true;
     notifyListeners();
-
-    _loadChapters(episode.chaptersUrl, episode.audioUrl);
 
     // Watch for download completion or deletion to pivot source mid-playback
     _episodeWatchSub?.cancel();
@@ -406,7 +455,12 @@ class PlayerProvider extends ChangeNotifier {
     }
     final prevLocal = _currentEpisode!.localPath;
     final newLocal = updated.localPath;
+    final chaptersMoved = updated.chaptersUrl != _currentEpisode!.chaptersUrl ||
+        prevLocal != newLocal;
     _currentEpisode = updated;
+    // A feed refresh can bring a chapters link, and a download a file whose
+    // tag (another ad variation) has its own times.
+    if (chaptersMoved) _loadChapters(updated);
 
     if (prevLocal == null && newLocal != null) {
       // Download finished while streaming — switch to local file seamlessly

@@ -275,11 +275,16 @@ class AppDatabase extends _$AppDatabase {
   Future<void> insertEpisodes(List<EpisodesCompanion> eps) =>
       batch((b) => b.insertAllOnConflictUpdate(episodes, eps));
 
+  /// A row that's already there (subscribed, played, downloaded) is kept,
+  /// except for its chapters link: a fresh one from the feed wins, and none
+  /// (search results carry none) leaves the old one.
   Future<void> insertTempEpisodes(List<EpisodesCompanion> eps) =>
       batch((b) => b.insertAll(
         episodes,
         eps.map((e) => e.copyWith(isSubscribed: const Value(false))).toList(),
-        mode: InsertMode.insertOrIgnore,
+        onConflict: DoUpdate<$EpisodesTable, Episode>.withExcluded((old, excluded) =>
+            EpisodesCompanion.custom(
+                chaptersUrl: coalesce([excluded.chaptersUrl, old.chaptersUrl]))),
       ));
 
   /// Only promotes temp episodes that were played, finished or downloaded to
