@@ -225,7 +225,8 @@ class EpisodeTile extends StatelessWidget {
   }
 
   void _showContextMenu(BuildContext context, AppDatabase db, AppLocalizations l10n,
-      {required bool isDownloading, required DownloadProvider downloads}) {
+      {required bool isDownloading, required DownloadProvider downloads,
+       required bool isCurrent}) {
     final cs = Theme.of(context).colorScheme;
     final isMarked = episode.markedForDownload;
     showModalBottomSheet(
@@ -238,10 +239,12 @@ class EpisodeTile extends StatelessWidget {
         onMarkPlayed: !episode.isFinished
             ? () { Navigator.pop(context); db.markFinished(episode.id); }
             : null,
-        onMarkUnplayed: (episode.isFinished || episode.lastPositionMs > 0)
+        // isCurrent: the list doesn't follow the playing episode's position
+        // (see build), so its lastPositionMs can still read 0.
+        onMarkUnplayed: (episode.isFinished || episode.lastPositionMs > 0 || isCurrent)
             ? () {
                 final messenger = ScaffoldMessenger.of(context);
-                db.markUnfinished(episode.id);
+                context.read<PlayerProvider>().markUnplayed(episode.id);
                 Navigator.pop(context);
                 messenger.showSnackBar(SnackBar(
                     content: Text(l10n.markUnplayed),
@@ -318,7 +321,7 @@ class EpisodeTile extends StatelessWidget {
         if (!episode.isSubscribed) {
           await db.cleanupTempEpisode(episode.id);
         } else if (episode.isFinished) {
-          await db.markUnfinished(episode.id);
+          await context.read<PlayerProvider>().markUnplayed(episode.id);
         } else {
           await db.markFinished(episode.id);
         }
@@ -338,7 +341,8 @@ class EpisodeTile extends StatelessWidget {
       },
       child: GestureDetector(
         onLongPress: () => _showContextMenu(context, db, l10n,
-            isDownloading: isDownloading, downloads: context.read<DownloadProvider>()),
+            isDownloading: isDownloading, downloads: context.read<DownloadProvider>(),
+            isCurrent: isCurrent),
         child: InkWell(
           onTap: () => context.read<PlayerProvider>().play(episode),
           child: AnimatedContainer(

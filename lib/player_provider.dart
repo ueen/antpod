@@ -245,8 +245,19 @@ class PlayerProvider extends ChangeNotifier {
   /// away) and forgets the episode so it isn't restored on the next launch.
   Future<void> stopAndClear() => _closePlayer(savePosition: true);
 
+  /// Mark an episode as unplayed: back to New, progress cleared. The episode
+  /// in the player stops first, the same as marking it played, so no
+  /// position save can land after the reset and undo it.
+  Future<void> markUnplayed(String id) async {
+    // _closePlayer() clears the player state synchronously, before its
+    // first await, so the reset below is the last write either way.
+    final closing = _currentEpisode?.id == id ? _closePlayer() : null;
+    await _db.markUnfinished(id);
+    await closing;
+  }
+
   /// Single teardown path for every "close the player" case: unsubscribe,
-  /// episode marked as played, episode deleted from the DB.
+  /// episode marked as played or unplayed, episode deleted from the DB.
   ///
   /// [savePosition] must stay false when the episode was just marked as
   /// played: updatePlaybackPosition() rewrites isFinished from the position

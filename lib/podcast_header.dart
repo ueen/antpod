@@ -122,31 +122,48 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                                   fontSize: 12,
                                   color: cs.onSurfaceVariant)),
                         ],
-                        if (widget.syncPaused || widget.finishing) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                  widget.syncPaused
-                                      ? PodcastHeader.stopNewEpisodesIcon
-                                      : PodcastHeader.finishEpisodesIcon,
-                                  size: 14, color: cs.onSurfaceVariant),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                    widget.syncPaused
-                                        ? l10n.newEpisodesStopped
-                                        : l10n.finishingEpisodes,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: cs.onSurfaceVariant)),
-                              ),
-                            ],
+                        // State note: grows/shrinks the header and fades
+                        // between "new episodes stopped" / "finishing".
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          alignment: AlignmentDirectional.topStart,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 240),
+                            layoutBuilder: (current, previous) => Stack(
+                              alignment: AlignmentDirectional.topStart,
+                              children: [...previous, if (current != null) current],
+                            ),
+                            child: !(widget.syncPaused || widget.finishing)
+                                ? const SizedBox.shrink(key: ValueKey('none'))
+                                : Padding(
+                                    key: ValueKey(widget.syncPaused ? 'paused' : 'finishing'),
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                            widget.syncPaused
+                                                ? PodcastHeader.stopNewEpisodesIcon
+                                                : PodcastHeader.finishEpisodesIcon,
+                                            size: 14, color: cs.onSurfaceVariant),
+                                        const SizedBox(width: 4),
+                                        Flexible(
+                                          child: Text(
+                                              widget.syncPaused
+                                                  ? l10n.newEpisodesStopped
+                                                  : l10n.finishingEpisodes,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: cs.onSurfaceVariant)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
