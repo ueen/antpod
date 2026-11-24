@@ -239,14 +239,35 @@ class PlayerProvider extends ChangeNotifier {
   /// Stop playback and close the player (e.g. on podcast unsubscribe).
   /// Saves the position first (awaited, so callers can read it back right
   /// away) and forgets the episode so it isn't restored on the next launch.
-  Future<void> stopAndClear() async {
+  Future<void> stopAndClear() => _closePlayer(savePosition: true);
+
+  /// Single teardown path for every "close the player" case: unsubscribe,
+  /// episode marked as played, episode deleted from the DB.
+  ///
+  /// [savePosition] must stay false when the episode was just marked as
+  /// played: updatePlaybackPosition() rewrites isFinished from the position
+  /// and would silently un-mark it. It is pointless for deleted episodes.
+  Future<void> _closePlayer({bool savePosition = false}) async {
     final ep = _currentEpisode;
+    if (ep == null) return;
+    final wasReady = _audioReady;
     final ms = _position.inMilliseconds;
-    if (ep != null && _audioReady && ms > 0) {
+    final durationMs = _duration.inMilliseconds;
+    // Clear state first: detaches the episode watch (so our own position write
+    // below can't re-enter _onEpisodeUpdated) and stops the position listener
+    // from saving any further ticks for this episode.
+    _episodeWatchSub?.cancel();
+    _episodeWatchSub = null;
+    _currentEpisode = null;
+    _audioReady = false;
+    _chapters = [];
+    notifyListeners();
+
+    if (savePosition && wasReady && ms > 0) {
       _lastSavedMs = ms;
       try {
         await _db.updatePlaybackPosition(ep.id,
-            positionMs: ms, durationMs: _duration.inMilliseconds);
+            positionMs: ms, durationMs: durationMs);
       } catch (_) {}
     }
     try {
@@ -257,15 +278,9 @@ class PlayerProvider extends ChangeNotifier {
       await audioHandler.stop();
     } catch (_) {
       // audio_service can throw "Bad state: You cannot add items while items are
-      // being added from addStream" if the player is mid-stream. We still want
-      // to clear state regardless.
+      // being added from addStream" if the player is mid-stream. State is
+      // already cleared above, so nothing else to do.
     }
-    _episodeWatchSub?.cancel();
-    _episodeWatchSub = null;
-    _currentEpisode = null;
-    _audioReady = false;
-    _chapters = [];
-    notifyListeners();
   }
 
   /// Load episode into player without starting playback.
@@ -364,27 +379,12 @@ class PlayerProvider extends ChangeNotifier {
 
   void _onEpisodeUpdated(Episode? updated) {
     if (_currentEpisode == null) return;
-    if (updated == null) {
-      // Episode was deleted from DB (e.g. unsubscribe) — stop and clear.
-      if (_audioReady) audioHandler.stop();
-      _episodeWatchSub?.cancel();
-      _episodeWatchSub = null;
-      _currentEpisode = null;
-      _audioReady = false;
-      _chapters = [];
-      notifyListeners();
-      return;
-    }
-    // Episode marked as played externally (swipe or menu) — stop and clear,
-    // same as the temp-episode-removed path above.
-    if (!_currentEpisode!.isFinished && updated.isFinished) {
-      if (_audioReady) audioHandler.stop();
-      _episodeWatchSub?.cancel();
-      _episodeWatchSub = null;
-      _currentEpisode = null;
-      _audioReady = false;
-      _chapters = [];
-      notifyListeners();
+    // Episode deleted from the DB (temp episode removed, unsubscribe) or
+    // marked as played (swipe, menu, natural end) — close the player.
+    // No position save: see _closePlayer.
+    if (updated == null ||
+        (!_currentEpisode!.isFinished && updated.isFinished)) {
+      _closePlayer();
       return;
     }
     final prevLocal = _currentEpisode!.localPath;
