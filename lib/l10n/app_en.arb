@@ -66,7 +66,6 @@
   "resumeSync": "Resume sync",
   "syncPaused": "Sync paused",
   "pauseSyncHint": "Keep episodes, stop checking for new ones",
-  "unsubscribeStopsPlayback": "Playback of this podcast will stop.",
   "unsubscribeDeletesDownloads": "{count, plural, =1{1 downloaded episode will be deleted.} other{{count} downloaded episodes will be deleted.}}",
   "@unsubscribeDeletesDownloads": {
     "placeholders": {

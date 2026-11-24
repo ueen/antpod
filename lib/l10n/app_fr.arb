@@ -66,6 +66,5 @@
   "resumeSync": "Reprendre la synchro",
   "syncPaused": "Synchro suspendue",
   "pauseSyncHint": "Garder les épisodes, ne plus chercher de nouveaux",
-  "unsubscribeStopsPlayback": "La lecture de ce podcast sera arrêtée.",
   "unsubscribeDeletesDownloads": "{count, plural, =1{1 épisode téléchargé sera supprimé.} other{{count} épisodes téléchargés seront supprimés.}}"
 }

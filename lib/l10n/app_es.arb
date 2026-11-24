@@ -66,6 +66,5 @@
   "resumeSync": "Reanudar sincronización",
   "syncPaused": "Sincronización en pausa",
   "pauseSyncHint": "Conserva los episodios, sin buscar nuevos",
-  "unsubscribeStopsPlayback": "Se detendrá la reproducción de este podcast.",
   "unsubscribeDeletesDownloads": "{count, plural, =1{Se borrará 1 episodio descargado.} other{Se borrarán {count} episodios descargados.}}"
 }

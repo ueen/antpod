@@ -188,9 +188,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pauseSyncHint => 'Keep episodes, stop checking for new ones';
 
   @override
-  String get unsubscribeStopsPlayback => 'Playback of this podcast will stop.';
-
-  @override
   String unsubscribeDeletesDownloads(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

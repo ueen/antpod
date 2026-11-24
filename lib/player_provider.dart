@@ -236,8 +236,23 @@ class PlayerProvider extends ChangeNotifier {
         .then((p) => p.setString(_prefLastEpisodeId, id));
   }
 
-  /// Stop playback and clear the current episode (e.g. on podcast unsubscribe).
+  /// Stop playback and close the player (e.g. on podcast unsubscribe).
+  /// Saves the position first (awaited, so callers can read it back right
+  /// away) and forgets the episode so it isn't restored on the next launch.
   Future<void> stopAndClear() async {
+    final ep = _currentEpisode;
+    final ms = _position.inMilliseconds;
+    if (ep != null && _audioReady && ms > 0) {
+      _lastSavedMs = ms;
+      try {
+        await _db.updatePlaybackPosition(ep.id,
+            positionMs: ms, durationMs: _duration.inMilliseconds);
+      } catch (_) {}
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefLastEpisodeId);
+    } catch (_) {}
     try {
       await audioHandler.stop();
     } catch (_) {

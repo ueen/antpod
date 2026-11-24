@@ -66,6 +66,5 @@
   "resumeSync": "Sync fortsetzen",
   "syncPaused": "Sync pausiert",
   "pauseSyncHint": "Folgen behalten, nicht mehr nach neuen suchen",
-  "unsubscribeStopsPlayback": "Die Wiedergabe dieses Podcasts wird beendet.",
   "unsubscribeDeletesDownloads": "{count, plural, =1{1 heruntergeladene Folge wird gelöscht.} other{{count} heruntergeladene Folgen werden gelöscht.}}"
 }

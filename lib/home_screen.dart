@@ -527,24 +527,32 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Unsubscribe ───────────────────────────────────────────────────────────
 
-  // Bottom sheet: delete everything (primary, destructive), keep episodes →
-  // temp feed (only when something is playing/downloaded/started), pause/resume
-  // sync (secondary), cancel (link). Warns when playback or downloads are affected.
-  Future<void> _confirmUnsubscribe(Podcast podcast) async {
-    final db = context.read<AppDatabase>();
+  /// Closes the player if it holds an episode of [podcast]; no-op otherwise.
+  Future<void> _closePlayerFor(Podcast podcast) async {
     final player = context.read<PlayerProvider>();
     final epPodId = player.currentEpisode?.podcastId;
-    final affectsPlayback =
-        epPodId != null && (epPodId == podcast.id || epPodId == podcast.feedUrl);
+    if (epPodId != null && (epPodId == podcast.id || epPodId == podcast.feedUrl)) {
+      await player.stopAndClear();
+    }
+  }
+
+  // Pressing unsubscribe first stops playback of this podcast and closes the
+  // player (even if the sheet is then cancelled), so no episode is "live" while
+  // the user decides. Then a bottom sheet: delete everything (primary,
+  // destructive), keep episodes → temp feed (only when something is
+  // downloaded or started), pause/resume sync (secondary), cancel (link).
+  Future<void> _confirmUnsubscribe(Podcast podcast) async {
+    final db = context.read<AppDatabase>();
+    // Awaited: the player saves its position first, so the episode that was
+    // just playing is counted as started below.
+    await _closePlayerFor(podcast);
     final eps = await (db.select(db.episodes)
           ..where((e) =>
               e.podcastId.equals(podcast.id) | e.podcastId.equals(podcast.feedUrl)))
         .get();
     final downloadedCount = eps.where((e) => e.isDownloaded).length;
-    final startedCount =
-        eps.where((e) => e.lastPositionMs > 0 && !e.isFinished).length;
-    // Something worth keeping → offer "unsubscribe, keep episodes".
-    final canKeep = affectsPlayback || downloadedCount > 0 || startedCount > 0;
+    // Same test the keep action applies, so the option never keeps nothing.
+    final canKeep = eps.any(AppDatabase.isKeepWorthy);
     if (!mounted) return;
 
     final action = await showModalBottomSheet<String>(
@@ -554,7 +562,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final cs = Theme.of(ctx).colorScheme;
         final l10n = AppLocalizations.of(ctx)!;
         final warnings = [
-          if (affectsPlayback) l10n.unsubscribeStopsPlayback,
           if (downloadedCount > 0) l10n.unsubscribeDeletesDownloads(downloadedCount),
         ];
         return SafeArea(
@@ -666,14 +673,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _unsubscribe(Podcast podcast) async {
     final db        = context.read<AppDatabase>();
-    final player    = context.read<PlayerProvider>();
     final downloads = context.read<DownloadProvider>();
 
-    // Stop player independently — must not block podcast deletion if it throws.
-    final epPodId = player.currentEpisode?.podcastId;
-    if (epPodId != null && (epPodId == podcast.id || epPodId == podcast.feedUrl)) {
-      await player.stopAndClear();
-    }
+    // Already closed when the sheet opened; again in case playback was
+    // resumed meanwhile (e.g. headset button).
+    await _closePlayerFor(podcast);
 
     try {
       // Cancel any in-progress downloads for this podcast's episodes.
@@ -696,18 +700,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Unsubscribe but keep downloaded/started episodes (and whatever is in the
-  /// player). The podcast becomes a temp feed — cleaned up once those are
-  /// played — and stays open, now with a subscribe button to come back.
+  /// Unsubscribe but keep downloaded/started episodes. The podcast becomes a
+  /// temp feed — cleaned up once those are played — and stays open, now with
+  /// a subscribe button to come back.
   Future<void> _unsubscribeKeepEpisodes(Podcast podcast) async {
     final db        = context.read<AppDatabase>();
-    final player    = context.read<PlayerProvider>();
     final downloads = context.read<DownloadProvider>();
-    final currentId = player.currentEpisode?.id;
+
+    // As in _unsubscribe: the player must not hold an episode whose podcastId
+    // is about to change underneath it.
+    await _closePlayerFor(podcast);
 
     try {
-      final dropped = await db.demoteToTempFeed(podcast,
-          keepIds: {if (currentId != null) currentId});
+      final dropped = await db.demoteToTempFeed(podcast);
       for (final ep in dropped) {
         if (ep.downloadTaskId != null && !ep.isDownloaded) {
           await downloads.cancelDownload(ep.id, ep.downloadTaskId);
@@ -2155,7 +2160,9 @@ class _DiscoverListState extends State<_DiscoverList> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFFFF9A30).withValues(alpha: 0.12),
+                // Same neutral fill as an inactive filter chip; orange stays in
+                // the border and text.
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                     color: const Color(0xFFFF9A30).withValues(alpha: 0.55),

@@ -453,12 +453,6 @@ abstract class AppLocalizations {
   /// **'Keep episodes, stop checking for new ones'**
   String get pauseSyncHint;
 
-  /// No description provided for @unsubscribeStopsPlayback.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback of this podcast will stop.'**
-  String get unsubscribeStopsPlayback;
-
   /// No description provided for @unsubscribeDeletesDownloads.
   ///
   /// In en, this message translates to:

@@ -622,22 +622,23 @@ class AppDatabase extends _$AppDatabase {
     await (delete(podcasts)..where((p) => p.id.equals(podcastId))).go();
   }
 
-  /// Unsubscribe but keep what the user still cares about: downloaded
-  /// episodes, started-but-unfinished ones, and [keepIds] (e.g. the episode
-  /// loaded in the player). Everything else is deleted and the podcast becomes
-  /// a temp feed, which the temp cleanup removes once those are played.
+  /// Worth keeping on "unsubscribe, keep episodes": downloaded, or started but
+  /// not finished. The unsubscribe sheet uses the same test to decide whether
+  /// to offer the option at all.
+  static bool isKeepWorthy(Episode e) =>
+      e.isDownloaded || (e.lastPositionMs > 0 && !e.isFinished);
+
+  /// Unsubscribe but keep what the user still cares about ([isKeepWorthy]).
+  /// Everything else is deleted and the podcast becomes a temp feed, which the
+  /// temp cleanup removes once those are played.
   /// Returns the deleted episodes so the caller can cancel their downloads.
-  Future<List<Episode>> demoteToTempFeed(Podcast pod,
-      {Set<String> keepIds = const {}}) {
+  Future<List<Episode>> demoteToTempFeed(Podcast pod) {
     final feedUrl = pod.feedUrl;
     return transaction(() async {
       final eps = await (select(episodes)
             ..where((e) => e.podcastId.equals(pod.id) | e.podcastId.equals(feedUrl)))
           .get();
-      bool keep(Episode e) =>
-          e.isDownloaded ||
-          keepIds.contains(e.id) ||
-          (e.lastPositionMs > 0 && !e.isFinished);
+      const keep = isKeepWorthy;
       final kept = eps.where(keep).map((e) => e.id).toList();
       final dropped = eps.where((e) => !keep(e)).toList();
 

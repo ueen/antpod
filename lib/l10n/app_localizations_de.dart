@@ -188,9 +188,6 @@ class AppLocalizationsDe extends AppLocalizations {
   String get pauseSyncHint => 'Folgen behalten, nicht mehr nach neuen suchen';
 
   @override
-  String get unsubscribeStopsPlayback => 'Die Wiedergabe dieses Podcasts wird beendet.';
-
-  @override
   String unsubscribeDeletesDownloads(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
