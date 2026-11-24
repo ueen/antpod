@@ -9,10 +9,18 @@ class ShareUtils {
   static const _base = 'https://antpod.eu/open';
 
   // Strip https:// to save 8 chars; mark http:// feeds with "h0:" prefix.
+  // Also strip www. from the host — it's redundant for virtually all podcast feeds.
   static String _stripProto(String url) {
-    if (url.startsWith('https://')) return url.substring(8);
-    if (url.startsWith('http://')) return 'h0:${url.substring(7)}';
-    return url;
+    String s;
+    if (url.startsWith('https://')) {
+      s = url.substring(8);
+    } else if (url.startsWith('http://')) {
+      s = 'h0:${url.substring(7)}';
+    } else {
+      return url;
+    }
+    if (s.startsWith('www.')) s = s.substring(4);
+    return s;
   }
 
   // First 8 bytes of SHA-1 → 11-char base64url. Fixed short ID for any GUID.
