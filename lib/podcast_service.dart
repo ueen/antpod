@@ -61,6 +61,31 @@ class PodcastResult {
     this.categories = const [],
   });
 
+  /// A feed known by its URL and whatever a link or an episode tells about it.
+  const PodcastResult.feed(this.feedUrl, {this.title = '', this.imageUrl = ''})
+      : id = feedUrl, author = '', description = '', categories = const [];
+
+  PodcastResult.fromPodcast(Podcast p)
+      : this(id: p.feedUrl, title: p.title, author: p.author,
+            description: p.description, imageUrl: p.imageUrl, feedUrl: p.feedUrl);
+
+  /// The podcast an episode belongs to (its podcastId is the feed URL).
+  PodcastResult.fromEpisode(Episode e)
+      : this.feed(e.podcastId, title: e.podcastTitle, imageUrl: e.podcastImageUrl);
+
+  PodcastResult copyWith({
+    String? id, String? title, String? description, String? imageUrl, String? feedUrl,
+  }) =>
+      PodcastResult(
+        id: id ?? this.id,
+        title: title ?? this.title,
+        author: author,
+        description: description ?? this.description,
+        imageUrl: imageUrl ?? this.imageUrl,
+        feedUrl: feedUrl ?? this.feedUrl,
+        categories: categories,
+      );
+
   factory PodcastResult.fromAppleJson(Map<String, dynamic> j) {
     final genre = j['primaryGenreName'] as String?;
     return PodcastResult(

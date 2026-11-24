@@ -77,4 +77,22 @@ class FilterState {
   FilterState togglePodcasts() => podcasts
       ? const FilterState()
       : const FilterState(podcasts: true, newOnly: false);
+
+  /// Toggles the chip [key]. "New" and "History" exclude each other; History
+  /// also clears Downloaded and In progress. Sort chips toggle one sort mode.
+  FilterState toggle(String key) {
+    SortMode sortTo(SortMode m) => sort == m ? SortMode.none : m;
+    return switch (key) {
+      'new' => copyWith(newOnly: !newOnly, history: false),
+      'history' => copyWith(
+          history: !history, newOnly: false, downloaded: false, inProgress: false),
+      'dl' => copyWith(downloaded: !downloaded),
+      'az' => copyWith(sort: sortTo(SortMode.alphabetical)),
+      'oldest' => copyWith(sort: sortTo(SortMode.oldest)),
+      'random' => copyWith(sort: sortTo(SortMode.random)),
+      'inprogress' => copyWith(inProgress: !inProgress),
+      'podcasts' => copyWith(podcasts: !podcasts),
+      _ => this,
+    };
+  }
 }

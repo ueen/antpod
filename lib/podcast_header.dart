@@ -1,16 +1,17 @@
 // lib/podcast_header.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
+import 'share_utils.dart';
 
 class PodcastHeader extends StatefulWidget {
   final String imageUrl;
   final String title;
   final String author;
   final String description;
-  final String shareUrl;
+  /// Shared as the podcast's antpod.eu link.
+  final String feedUrl;
 
   /// Provide exactly one of these; the other should be null.
   /// [onUnsubscribe] is called on tap — the caller shows the confirmation.
@@ -34,7 +35,7 @@ class PodcastHeader extends StatefulWidget {
     required this.title,
     required this.author,
     required this.description,
-    required this.shareUrl,
+    required this.feedUrl,
     this.onSubscribe,
     this.onUnsubscribe,
     this.syncPaused = false,
@@ -55,11 +56,6 @@ class _PodcastHeaderState extends State<PodcastHeader> {
     // The header outlives subscription changes (the list below updates in
     // place), so re-arm + once it's gone, ready for the next time it shows.
     if (widget.onSubscribe == null) _subscribePressed = false;
-  }
-
-  void _share() {
-    SharePlus.instance.share(
-        ShareParams(text: '${widget.title}\n${widget.shareUrl}', subject: widget.title));
   }
 
   @override
@@ -171,7 +167,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                   Padding(
                     padding: const EdgeInsets.only(left: 6, right: 12),
                     child: GestureDetector(
-                      onTap: _share,
+                      onTap: () => ShareUtils.sharePodcast(widget.title, widget.feedUrl),
                       child: Icon(Icons.share_rounded,
                           color: cs.onSurfaceVariant, size: 24),
                     ),

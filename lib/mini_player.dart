@@ -2,7 +2,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
@@ -331,11 +330,6 @@ class _PlayerSheet extends StatelessWidget {
   String _fmtSpeed(double speed) =>
       speed % 1 == 0 ? '${speed.toInt()}x' : '${speed}x';
 
-  void _share(BuildContext context, dynamic ep) {
-    final text = '${ep.title} (${ep.podcastTitle})\n${ShareUtils.episodeUrl(ep)}';
-    SharePlus.instance.share(ShareParams(text: text, subject: ep.title));
-  }
-
   void _showCoverFullscreen(BuildContext context, PlayerProvider player, String fallbackUrl) {
     final screenWidth = MediaQuery.of(context).size.width;
     showDialog(
@@ -563,7 +557,7 @@ class _PlayerSheet extends StatelessWidget {
 
                 // Share
                 IconButton(
-                  onPressed: () => _share(context, ep),
+                  onPressed: () => ShareUtils.shareEpisode(ep),
                   icon: Icon(Icons.share_rounded,
                       size: 22, color: cs.secondary),
                   tooltip: l10n.shareEpisode,

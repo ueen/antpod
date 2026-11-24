@@ -22,12 +22,12 @@ import 'download_service.dart';
 import 'episode_feed.dart';
 import 'episode_tile.dart';
 import 'feed_state.dart';
+import 'feed_sync.dart';
 import 'filter_chips.dart';
 import 'l10n/app_localizations.dart';
 import 'mini_player.dart';
 import 'player_provider.dart';
 import 'podcast_header.dart';
-import 'package:share_plus/share_plus.dart';
 import 'podcast_service.dart';
 import 'share_utils.dart';
 
@@ -171,12 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  static String _restoreProto(String s) {
-    if (s.startsWith('http://') || s.startsWith('https://')) return s;
-    if (s.startsWith('h0:')) return 'http://${s.substring(3)}';
-    return 'https://$s';
-  }
-
   // Hash-match all episodes for a podcast against a 11-char base64url MD5 hash.
   Future<Episode?> _findByHash(AppDatabase db, String podcastId, String hash) async {
     final eps = await (db.select(db.episodes)
@@ -186,25 +180,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (ShareUtils.guidHash(ep.id) == hash) return ep;
     }
     return null;
-  }
-
-  // Share links strip the protocol and a leading "www." from the feed URL, so
-  // compare feeds in that same reduced form.
-  static String _normFeed(String url) => url
-      .replaceFirst(RegExp(r'^https?://'), '')
-      .replaceFirst(RegExp(r'^www\.'), '')
-      .replaceFirst(RegExp(r'/+$'), '');
-
-  // Load a feed, returning the URL that actually worked. Share links drop
-  // "www.", which some hosts don't redirect, so retry with it before giving up.
-  Future<(String, FeedData?)> _loadFeedWithWww(String feed) async {
-    final data = await PodcastService.loadFeed(feed);
-    if (data != null) return (feed, data);
-    final withWww = feed.replaceFirstMapped(
-        RegExp(r'^(https?://)(?!www\.)'), (m) => '${m[1]}www.');
-    if (withWww == feed) return (feed, null);
-    final retry = await PodcastService.loadFeed(withWww);
-    return retry != null ? (withWww, retry) : (feed, null);
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
@@ -220,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final q = uri.queryParameters;
     final rawFeed = q['p'] ?? q['f'];
     if (rawFeed == null || rawFeed.isEmpty || !mounted) return;
-    final feed = _restoreProto(rawFeed);
+    final feed = ShareUtils.restoreProto(rawFeed);
     final guidHash = q['e'] ?? q['h'];
     final db = context.read<AppDatabase>();
 
@@ -228,12 +203,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.of(context).popUntil((r) => r.isFirst);
     if (_mode != _FeedMode.feed || _searchQuery.isNotEmpty) _exitToFeed();
 
-    final all = await db.getAllPodcasts();
+    final subscribed = await db.findSubscribed(feed);
     if (!mounted) return;
-    final norm = _normFeed(feed);
-    final subscribed = all
-        .where((p) => p.id == feed || _normFeed(p.feedUrl) == norm)
-        .firstOrNull;
 
     final hasEpisode = guidHash != null && guidHash.isNotEmpty;
 
@@ -242,12 +213,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // ── Subscribed podcast ────────────────────────────────────────────────
     if (subscribed != null) {
-      _enterPodcastFilter(subscribed);
-      if (!hasEpisode) return;
+      await _openSubscribed(subscribed);
+      if (!hasEpisode || !mounted) return;
       var episode = await _findByHash(db, subscribed.id, guidHash);
       if (episode == null) {
         // Not in the DB yet (feed not refreshed since it was published).
-        await _refreshSinglePodcast(subscribed.id);
+        await FeedSync.refreshPodcast(db, subscribed.id);
         episode = await _findByHash(db, subscribed.id, guidHash);
       }
       if (episode != null && mounted) unawaited(_playFromLink(episode));
@@ -260,14 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // episode left from an earlier preview can start without waiting.
     final existing = hasEpisode ? await _findByHash(db, feed, guidHash) : null;
     if (!mounted) return;
-    final loading = _openPreview(PodcastResult(
-      id: feed,
-      title: existing?.podcastTitle ?? '',
-      author: '',
-      description: '',
-      imageUrl: '',
-      feedUrl: feed,
-    ));
+    final loading =
+        _openPreview(PodcastResult.feed(feed, title: existing?.podcastTitle ?? ''));
     if (!hasEpisode) return;
     var episode = existing;
     if (episode == null) {
@@ -293,27 +258,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openPodcastFromPlayer() {
-    final player = context.read<PlayerProvider>();
-    final ep = player.currentEpisode;
-    if (ep == null || !mounted) return;
-    final db = context.read<AppDatabase>();
-    db.getAllPodcasts().then((all) {
-      if (!mounted) return;
-      final subscribed =
-          all.where((p) => p.feedUrl == ep.podcastId || p.id == ep.podcastId).firstOrNull;
-      if (subscribed != null) {
-        _enterPodcastFilter(subscribed);
-      } else {
-        _openPreview(PodcastResult(
-          id: ep.podcastId,
-          title: ep.podcastTitle,
-          author: '',
-          description: '',
-          imageUrl: ep.podcastImageUrl,
-          feedUrl: ep.podcastId,
-        ));
-      }
-    });
+    final ep = context.read<PlayerProvider>().currentEpisode;
+    if (ep != null) _openPodcast(PodcastResult.fromEpisode(ep));
   }
 
   Future<void> _loadFilterPrefs() async {
@@ -433,87 +379,57 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Preview unsubscribed podcast ──────────────────────────────────────────
 
-  Future<void> _openPodcastResult(PodcastResult result) async {
-    final db = context.read<AppDatabase>();
-    final all = await db.getAllPodcasts();
+  /// Opens a podcast from anywhere (search, trending, a cover, the player):
+  /// its page when subscribed, otherwise a preview.
+  Future<void> _openPodcast(PodcastResult result) async {
+    final subscribed = await context.read<AppDatabase>().findSubscribed(result.feedUrl);
     if (!mounted) return;
-    final subscribed = all
-        .where((p) => p.feedUrl == result.feedUrl || p.id == result.feedUrl)
-        .firstOrNull;
     if (subscribed != null) {
-      // Migrate any apple-* stubs the user may have played from search results
-      // for this already-subscribed podcast. No-op if no stubs exist.
-      final migrated = await db.migrateAppleEpisodeStubs(subscribed.id);
-      if (!mounted) return;
-      await _reloadMigratedCurrent(migrated);
-      if (!mounted) return;
-      _enterPodcastFilter(subscribed);
+      await _openSubscribed(subscribed);
     } else {
       _openPreview(result);
     }
   }
 
+  Future<void> _openSubscribed(Podcast podcast) async {
+    _enterPodcastFilter(podcast);
+    // Resolve apple-* stubs played from search results for this podcast
+    // (no-op when there are none).
+    final migrated =
+        await context.read<AppDatabase>().migrateAppleEpisodeStubs(podcast.id);
+    if (mounted) await _reloadMigratedCurrent(migrated);
+  }
+
   /// Shows the preview for [result] at once and loads its feed into the DB as
   /// temp rows. Returns the loaded feed (null on failure) so a deep link can
   /// pick its episode out of the same load.
-  Future<FeedData?> _openPreview(PodcastResult result) async {
+  Future<FeedData?> _openPreview(PodcastResult result) {
     setState(() {
-      _previewResult = PodcastResult(
-        id: result.id,
-        title: result.title,
-        author: result.author,
-        description: result.description,
-        imageUrl: '',  // show placeholder until RSS cover loads
-        feedUrl: result.feedUrl,
-      );
+      _previewResult = result.copyWith(imageUrl: ''); // placeholder until the RSS cover
       _previewLoading = true;
       _previewFrom = _mode;
       _mode = _FeedMode.previewPodcast;
       _filter = _filter.copyWith(podcasts: true);
     });
-    final db = context.read<AppDatabase>();
-    // The URL that actually loaded (share links drop "www.") is the one the
-    // episodes reference, so the podcast row and the preview use it too.
-    final (feedUrl, data) = await _loadFeedWithWww(result.feedUrl);
+    return _loadPreview(result);
+  }
+
+  /// Loads the preview's feed and fills in its header; also the preview's
+  /// pull-to-refresh.
+  Future<FeedData?> _loadPreview(PodcastResult result) async {
+    final loaded = await FeedSync.loadPreview(context.read<AppDatabase>(), result);
+    if (!mounted) return loaded?.data;
+    if (loaded != null) await _reloadMigratedCurrent(loaded.migrated);
     // Still showing this preview? The user may have left or opened another.
-    bool current() =>
-        mounted &&
+    if (mounted &&
         _mode == _FeedMode.previewPodcast &&
-        _previewResult?.feedUrl == result.feedUrl;
-    if (!mounted) return data;
-    if (data == null) {
-      if (current()) setState(() => _previewLoading = false);
-      return null;
+        _previewResult?.feedUrl == result.feedUrl) {
+      setState(() {
+        if (loaded != null) _previewResult = loaded.result;
+        _previewLoading = false;
+      });
     }
-    final title = data.podcast.title?.isNotEmpty == true ? data.podcast.title! : result.title;
-    final image = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
-    await db.insertTempPodcast(PodcastsCompanion(
-      id: Value(feedUrl),
-      title: Value(title),
-      description: Value(data.podcast.description ?? result.description),
-      imageUrl: Value(image.isNotEmpty ? image : result.imageUrl),
-      feedUrl: Value(feedUrl),
-      author: Value(result.author),
-    ));
-    await db.insertTempEpisodes(data.episodes);
-    // Resolve Apple stubs (id: 'apple-*') to real RSS episodes by title-match.
-    // Migrates any saved playback progress to the RSS episode, then removes the stub.
-    final migrated = await db.migrateAppleEpisodeStubs(feedUrl);
-    if (!mounted) return data;
-    await _reloadMigratedCurrent(migrated);
-    if (!current()) return data;
-    setState(() {
-      _previewResult = PodcastResult(
-        id: result.id == result.feedUrl ? feedUrl : result.id,
-        title: title,
-        author: result.author,
-        description: data.podcast.description ?? result.description,
-        imageUrl: image,
-        feedUrl: feedUrl,
-      );
-      _previewLoading = false;
-    });
-    return data;
+    return loaded?.data;
   }
 
   Future<void> _exitPreview() async {
@@ -675,7 +591,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _filterPodcast = podcast.copyWith(syncPaused: paused));
     }
     // Resuming: catch up on what was missed while paused.
-    if (!paused) _refreshSinglePodcast(podcast.id);
+    if (!paused) FeedSync.refreshPodcast(db, podcast.id);
   }
 
   Future<void> _unsubscribe(Podcast podcast) async {
@@ -724,14 +640,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _previewResult = PodcastResult(
-        id: podcast.feedUrl,
-        title: podcast.title,
-        author: podcast.author,
-        description: podcast.description,
-        imageUrl: podcast.imageUrl,
-        feedUrl: podcast.feedUrl,
-      );
+      _previewResult = PodcastResult.fromPodcast(podcast);
       _previewLoading = false;
       _previewFrom = _FeedMode.feed;   // back → home
       _mode = _FeedMode.previewPodcast;
@@ -1054,24 +963,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ── Subscribe ─────────────────────────────────────────────────────────────
-
-  // Fetch first, then write everything in one transaction: the preview list
-  // stays put while the network is busy, and the episode stream emits once,
-  // so the list diffs in place (same episodes, now subscribed) instead of
-  // emptying and refilling.
-  Future<void> _subscribe(PodcastResult result) async {
-    final db = context.read<AppDatabase>();
-    final data = await PodcastService.loadFeed(result.feedUrl);
-    final rssImage = data?.podcast.image?.isNotEmpty == true ? data!.podcast.image! : '';
-    final image = rssImage.isNotEmpty ? rssImage : result.imageUrl;
-    final migrated = await db.subscribePodcast(
-      result.toCompanion().copyWith(imageUrl: Value(image)),
-      data == null ? const [] : _asSubscribed(data.episodes, result.feedUrl, image),
-    );
-    await _reloadMigratedCurrent(migrated);
-  }
-
   /// After Apple stubs were resolved: if the player holds one of them, swap
   /// in its RSS episode.
   Future<void> _reloadMigratedCurrent(Map<String, String> migrated) async {
@@ -1083,30 +974,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (rssEp != null && mounted) await player.load(rssEp);
   }
 
-  // ── Cover tap → podcast filter (or preview for temp episodes) ───────────
-
-  Future<void> _onCoverTap(Episode episode, AppDatabase db) async {
-    final all = await db.getAllPodcasts();
-    final pod = all.where((p) => p.id == episode.podcastId).firstOrNull;
-    if (pod == null) {
-      // Temp episode — open preview so user can subscribe
-      if (!mounted) return;
-      _openPreview(PodcastResult(
-        id: episode.podcastId,
-        title: episode.podcastTitle,
-        author: '',
-        description: '',
-        imageUrl: episode.podcastImageUrl,
-        feedUrl: episode.podcastId,
-      ));
-      return;
-    }
-    final migrated = await db.migrateAppleEpisodeStubs(pod.id);
-    if (!mounted) return;
-    await _reloadMigratedCurrent(migrated);
-    if (!mounted) return;
-    _enterPodcastFilter(pod);
-  }
+  Future<void> _onCoverTap(Episode episode, AppDatabase _) =>
+      _openPodcast(PodcastResult.fromEpisode(episode));
 
   void _enterPodcastFilter(Podcast podcast) {
     setState(() {
@@ -1121,18 +990,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Refresh ───────────────────────────────────────────────────────────────
 
-  /// Parsed feed episodes, re-tagged as belonging to subscribed [podcastId].
-  static List<EpisodesCompanion> _asSubscribed(
-          List<EpisodesCompanion> episodes, String podcastId, String image) =>
-      [
-        for (final e in episodes)
-          e.copyWith(
-            podcastId: Value(podcastId),
-            podcastImageUrl: Value(image),
-            isSubscribed: const Value(true),
-          ),
-      ];
-
   Future<void> _refresh(AppDatabase db, {bool startup = false}) async {
     // Read before any await: the cleanup must not delete what's playing.
     final playingId = mounted
@@ -1146,25 +1003,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await db.cleanupStaleTempEpisodes(keepId: playingId);
       await db.deleteFinishedDownloads();
-      // Paused podcasts keep their episodes but are skipped by the auto-refresh
-      // (manual pull-to-refresh on the podcast page still works).
-      final pods = (await db.getAllPodcasts()).where((p) => !p.syncPaused).toList();
-      // Fetch all feeds in parallel, then write once — one DB write = one stream event.
-      final results = await Future.wait(pods.map((pod) async {
-        final data = await PodcastService.loadFeed(pod.feedUrl);
-        if (data == null) return <EpisodesCompanion>[];
-        final rssImage = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
-        // Keep Podcasts.imageUrl in sync when RSS provides a cover.
-        if (rssImage.isNotEmpty && rssImage != pod.imageUrl) {
-          await db.updatePodcastImageUrl(pod.id, rssImage);
-        }
-        // Fall back to the stored podcast cover when RSS omits the image so we
-        // never overwrite a working URL with an empty string.
-        final episodeImage = rssImage.isNotEmpty ? rssImage : pod.imageUrl;
-        return _asSubscribed(data.episodes, pod.id, episodeImage);
-      }));
-      final all = results.expand((e) => e).toList();
-      if (all.isNotEmpty) await db.insertEpisodes(all);
+      await FeedSync.refreshAll(db);
     } finally {
       // Never leave the refresh header stuck, even if a step above throws.
       if (startup && mounted) setState(() => _startupRefreshing = false);
@@ -1172,156 +1011,29 @@ class _HomeScreenState extends State<HomeScreen> {
     _downloadMarkedEpisodes();
   }
 
-  // Re-fetch a single feed's RSS and update episodes/metadata.
-  // Used as the pull-to-refresh action in podcast view and preview view.
-  Future<void> _refreshSinglePodcast(String feedId, {bool isSubscribed = true}) async {
-    if (!mounted) return;
-    final db = context.read<AppDatabase>();
-    final data = await PodcastService.loadFeed(feedId);
-    if (data == null || !mounted) return;
-
-    final rssImage = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
-
-    if (isSubscribed) {
-      final pod = await (db.select(db.podcasts)
-            ..where((p) => p.id.equals(feedId)))
-          .getSingleOrNull();
-      if (!mounted) return;
-      final storedImage = pod?.imageUrl ?? '';
-      if (rssImage.isNotEmpty && rssImage != storedImage) {
-        await db.updatePodcastImageUrl(feedId, rssImage);
-      }
-      final episodeImage = rssImage.isNotEmpty ? rssImage : storedImage;
-      final episodes = _asSubscribed(data.episodes, feedId, episodeImage);
-      if (episodes.isNotEmpty) await db.insertEpisodes(episodes);
-    } else {
-      // Preview: refresh temp episodes and update in-memory metadata.
-      final podcastImage = rssImage.isNotEmpty ? rssImage : (_previewResult?.imageUrl ?? '');
-      await db.insertTempPodcast(PodcastsCompanion(
-        id: Value(feedId),
-        title: Value(data.podcast.title?.isNotEmpty == true
-            ? data.podcast.title!
-            : (_previewResult?.title ?? '')),
-        description: Value(data.podcast.description ?? (_previewResult?.description ?? '')),
-        imageUrl: Value(podcastImage),
-        feedUrl: Value(feedId),
-        author: Value(_previewResult?.author ?? ''),
-      ));
-      await db.insertTempEpisodes(data.episodes);
-      if (mounted && _previewResult != null) {
-        setState(() {
-          _previewResult = PodcastResult(
-            id: _previewResult!.id,
-            title: data.podcast.title?.isNotEmpty == true
-                ? data.podcast.title!
-                : _previewResult!.title,
-            author: _previewResult!.author,
-            description: data.podcast.description ?? _previewResult!.description,
-            imageUrl: podcastImage,
-            feedUrl: feedId,
-          );
-        });
-      }
-    }
-  }
-
   // ─── Filter chip handler ──────────────────────────────────────────────────
 
   void _onFilterToggle(String key) {
     // Search mode: update ephemeral search filter only, never persist.
     if (_isSearchMode) {
-      setState(() {
-        switch (key) {
-          case 'new':
-            _searchFilter = _searchFilter.copyWith(
-                newOnly: !_searchFilter.newOnly, history: false);
-          case 'history':
-            _searchFilter = _searchFilter.copyWith(
-                history: !_searchFilter.history, newOnly: false,
-                downloaded: false, inProgress: false);
-          case 'dl':
-            _searchFilter = _searchFilter.copyWith(
-                downloaded: !_searchFilter.downloaded);
-          case 'az':
-            _searchFilter = _searchFilter.copyWith(
-                sort: _searchFilter.sort == SortMode.alphabetical
-                    ? SortMode.none : SortMode.alphabetical);
-          case 'oldest':
-            _searchFilter = _searchFilter.copyWith(
-                sort: _searchFilter.sort == SortMode.oldest
-                    ? SortMode.none : SortMode.oldest);
-          case 'random':
-            _searchFilter = _searchFilter.copyWith(
-                sort: _searchFilter.sort == SortMode.random
-                    ? SortMode.none : SortMode.random);
-          case 'inprogress':
-            _searchFilter = _searchFilter.copyWith(
-                inProgress: !_searchFilter.inProgress);
-          case 'podcasts':
-            _searchFilter = _searchFilter.copyWith(
-                podcasts: !_searchFilter.podcasts);
-        }
-      });
+      setState(() => _searchFilter = _searchFilter.toggle(key));
       return;
     }
 
-    // From podcast view, tapping Podcasts chip exits back to the episode list
-    if (key == 'podcasts' &&
-        (_mode == _FeedMode.podcastFilter || _mode == _FeedMode.previewPodcast)) {
-      setState(() {
+    final inPodcastView =
+        _mode == _FeedMode.podcastFilter || _mode == _FeedMode.previewPodcast;
+    setState(() {
+      if (key == 'podcasts' && inPodcastView) {
+        // From a podcast view, the Podcasts chip goes back to the episode list.
         _mode = _FeedMode.feed;
         _filterPodcastId = null;
         _filterPodcast = null;
         _filter = _filter.copyWith(podcasts: false);
-      });
-      _saveFilterPrefs();
-      return;
-    }
-    setState(() {
-      // In podcast view the podcasts flag must stay true; only clear it on the home feed.
-      final inPodcastView = _mode == _FeedMode.podcastFilter || _mode == _FeedMode.previewPodcast;
-      switch (key) {
-        case 'new':
-          _filter = _filter.copyWith(
-              newOnly: !_filter.newOnly,
-              history: false,
-              podcasts: inPodcastView ? null : false);
-        case 'history':
-          _filter = _filter.copyWith(
-              history: !_filter.history,
-              newOnly: false,
-              downloaded: false,
-              inProgress: false,
-              podcasts: inPodcastView ? null : false);
-        case 'dl':
-          _filter = _filter.copyWith(
-              downloaded: !_filter.downloaded,
-              podcasts: inPodcastView ? null : false);
-        case 'az':
-          _filter = _filter.copyWith(
-            sort: _filter.sort == SortMode.alphabetical
-                ? SortMode.none : SortMode.alphabetical,
-            podcasts: inPodcastView ? null : false,
-          );
-        case 'oldest':
-          _filter = _filter.copyWith(
-            sort: _filter.sort == SortMode.oldest
-                ? SortMode.none : SortMode.oldest,
-            podcasts: inPodcastView ? null : false,
-          );
-        case 'random':
-          _filter = _filter.copyWith(
-            sort: _filter.sort == SortMode.random
-                ? SortMode.none : SortMode.random,
-            podcasts: inPodcastView ? null : false,
-          );
-        case 'inprogress':
-          _filter = _filter.copyWith(
-            inProgress: !_filter.inProgress,
-            podcasts: inPodcastView ? null : false,
-          );
-        case 'podcasts':
-          _filter = _filter.togglePodcasts();
+      } else if (key == 'podcasts') {
+        _filter = _filter.togglePodcasts();
+      } else {
+        // In a podcast view the podcasts flag stays on; on the home feed it's off.
+        _filter = _filter.toggle(key).copyWith(podcasts: inPodcastView);
       }
     });
     _saveFilterPrefs();
@@ -1482,22 +1194,19 @@ class _HomeScreenState extends State<HomeScreen> {
           title: _previewResult!.title,
           author: _previewResult!.author,
           description: _previewResult!.description,
-          shareUrl: ShareUtils.podcastResultUrl(_previewResult!),
           isSubscribed: false,
           isLoading: _previewLoading,
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
           onFilterToggle: _onFilterToggle,
-          onRefresh: () => _refreshSinglePodcast(_previewResult!.feedUrl, isSubscribed: false),
+          onRefresh: () => _loadPreview(_previewResult!),
           onSubscribe: () async {
-            final result = _previewResult!;
             final db = context.read<AppDatabase>();
-            await _subscribe(result);
+            final result = _previewResult!;
+            await _reloadMigratedCurrent(await FeedSync.subscribe(db, result));
             if (!mounted) return;
             // Land on the new podcast's page; back from there returns home.
-            final pod = await (db.select(db.podcasts)
-                  ..where((p) => p.id.equals(result.feedUrl)))
-                .getSingleOrNull();
+            final pod = await db.getPodcast(result.feedUrl);
             if (!mounted) return;
             _previewResult = null;
             if (pod != null) {
@@ -1516,12 +1225,11 @@ class _HomeScreenState extends State<HomeScreen> {
           title: _filterPodcast?.title ?? '',
           author: _filterPodcast?.author ?? '',
           description: _filterPodcast?.description ?? '',
-          shareUrl: _filterPodcast != null ? ShareUtils.podcastUrl(_filterPodcast!) : '',
           isSubscribed: true,
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
           onFilterToggle: _onFilterToggle,
-          onRefresh: () => _refreshSinglePodcast(_filterPodcastId!),
+          onRefresh: () => FeedSync.refreshPodcast(db, _filterPodcastId!),
           onCoverTap: _onCoverTap,
           // Paused counts as not subscribed: + resumes new episodes.
           onSubscribe: _filterPodcast?.syncPaused == true
@@ -1545,10 +1253,9 @@ class _HomeScreenState extends State<HomeScreen> {
           isOffline: _isOffline,
           trendingError: _trendingError,
           cs: cs, l10n: l10n,
-          onPreview: _openPodcastResult,
+          onOpen: _openPodcast,
           onRefresh: () => _loadDiscover(forceRefresh: true),
           onLoadMore: _loadMorePISearch,
-          onCoverTap: _openPodcastResult,
         );
 
       case _FeedMode.feed:
@@ -1795,15 +1502,10 @@ class _PodcastGridTile extends StatelessWidget {
     required this.podcast, required this.cs, required this.onTap,
   });
 
-  void _share() {
-    final url = ShareUtils.podcastUrl(podcast);
-    SharePlus.instance.share(ShareParams(text: '${podcast.title}\n$url', subject: podcast.title));
-  }
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onLongPress: _share,
+      onLongPress: () => ShareUtils.sharePodcast(podcast.title, podcast.feedUrl),
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1849,12 +1551,12 @@ class _PodcastFeed extends StatelessWidget {
   final AppDatabase db;
   final ColorScheme cs;
   final AppLocalizations l10n;
+  /// Podcast id, which is its feed URL.
   final String feedId;
   final String imageUrl;
   final String title;
   final String author;
   final String description;
-  final String shareUrl;
   final bool isSubscribed;
   final FilterState filter;
   final bool filterChipsVisible;
@@ -1869,7 +1571,7 @@ class _PodcastFeed extends StatelessWidget {
   const _PodcastFeed({
     required this.db, required this.cs, required this.l10n,
     required this.feedId, required this.imageUrl, required this.title,
-    required this.author, required this.description, required this.shareUrl,
+    required this.author, required this.description,
     required this.isSubscribed,
     required this.filter, required this.filterChipsVisible,
     required this.onFilterToggle,
@@ -1896,7 +1598,7 @@ class _PodcastFeed extends StatelessWidget {
             title: title,
             author: author,
             description: description,
-            shareUrl: shareUrl,
+            feedUrl: feedId,
             onSubscribe: onSubscribe,
             onUnsubscribe: onUnsubscribe,
             syncPaused: syncPaused,
@@ -1999,10 +1701,10 @@ class _DiscoverList extends StatefulWidget {
   final String? trendingError;
   final ColorScheme cs;
   final AppLocalizations l10n;
-  final void Function(PodcastResult) onPreview;
+  /// Opens a podcast: its page when subscribed, a preview otherwise.
+  final void Function(PodcastResult) onOpen;
   final Future<void> Function() onRefresh;
   final Future<void> Function() onLoadMore;
-  final void Function(PodcastResult) onCoverTap;
 
   const _DiscoverList({
     required this.searchQuery, required this.trending,
@@ -2012,8 +1714,8 @@ class _DiscoverList extends StatefulWidget {
     this.isOffline = false,
     this.trendingError,
     required this.cs, required this.l10n,
-    required this.onPreview, required this.onRefresh,
-    required this.onLoadMore, required this.onCoverTap,
+    required this.onOpen, required this.onRefresh,
+    required this.onLoadMore,
   });
 
   @override
@@ -2049,6 +1751,12 @@ class _DiscoverListState extends State<_DiscoverList> {
 
   void _showRssDialog(BuildContext context) {
     final ctrl = TextEditingController();
+    void open(BuildContext ctx, String url) {
+      url = url.trim();
+      if (url.isEmpty) return;
+      Navigator.pop(ctx);
+      widget.onOpen(PodcastResult.feed(url));
+    }
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -2061,28 +1769,12 @@ class _DiscoverListState extends State<_DiscoverList> {
             prefixIcon: Icon(Icons.rss_feed_rounded),
           ),
           keyboardType: TextInputType.url,
-          onSubmitted: (url) {
-            url = url.trim();
-            if (url.isEmpty) return;
-            Navigator.pop(ctx);
-            widget.onPreview(PodcastResult(
-              id: url, title: '', author: '', description: '',
-              imageUrl: '', feedUrl: url,
-            ));
-          },
+          onSubmitted: (url) => open(ctx, url),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(widget.l10n.cancel)),
           FilledButton(
-            onPressed: () {
-              final url = ctrl.text.trim();
-              if (url.isEmpty) return;
-              Navigator.pop(ctx);
-              widget.onPreview(PodcastResult(
-                id: url, title: '', author: '', description: '',
-                imageUrl: '', feedUrl: url,
-              ));
-            },
+            onPressed: () => open(ctx, ctrl.text),
             child: Text(widget.l10n.openFeed),
           ),
         ],
@@ -2108,7 +1800,7 @@ class _DiscoverListState extends State<_DiscoverList> {
           return _DiscoverPodcastTile(
             result: r.podcast!, rank: i + 1, showRank: false,
             cs: widget.cs, l10n: widget.l10n,
-            onPreview: widget.onPreview,
+            onPreview: widget.onOpen,
           );
         }
         final ep = r.episode!;
@@ -2116,10 +1808,7 @@ class _DiscoverListState extends State<_DiscoverList> {
           EpisodeTile(
             episode: ep,
             isSubscribedContext: false,
-            onCoverTap: () => widget.onCoverTap(PodcastResult(
-              id: ep.podcastId, title: ep.podcastTitle, author: '',
-              description: '', imageUrl: ep.podcastImageUrl, feedUrl: ep.podcastId,
-            )),
+            onCoverTap: () => widget.onOpen(PodcastResult.fromEpisode(ep)),
           ),
           Divider(height: 1,
               color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
@@ -2155,10 +1844,7 @@ class _DiscoverListState extends State<_DiscoverList> {
                     textAlign: TextAlign.center),
                 const SizedBox(height: 22),
                 FilledButton.icon(
-                  onPressed: () => widget.onPreview(PodcastResult(
-                    id: url, title: '', author: '', description: '',
-                    imageUrl: '', feedUrl: url,
-                  )),
+                  onPressed: () => widget.onOpen(PodcastResult.feed(url)),
                   icon: const Icon(Icons.add_rounded, size: 18),
                   label: Text(l10n.openFeed),
                 ),
@@ -2259,7 +1945,7 @@ class _DiscoverListState extends State<_DiscoverList> {
                       itemBuilder: (_, i) => _DiscoverPodcastTile(
                         result: widget.trending[i], rank: i + 1,
                         cs: widget.cs, l10n: widget.l10n,
-                        onPreview: widget.onPreview,
+                        onPreview: widget.onOpen,
                       ),
                     ),
                   ),

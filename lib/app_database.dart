@@ -171,6 +171,25 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Podcast>> getAllPodcasts() =>
       (select(podcasts)..where((p) => p.isSubscribed.equals(true))).get();
 
+  Future<Podcast?> getPodcast(String id) =>
+      (select(podcasts)..where((p) => p.id.equals(id))).getSingleOrNull();
+
+  /// The subscribed podcast for [feed]: by id, by feed URL, or by the feed
+  /// with protocol, "www." and trailing slashes ignored (share links drop them).
+  Future<Podcast?> findSubscribed(String feed) async {
+    final all = await getAllPodcasts();
+    final norm = normFeed(feed);
+    return all.where((p) => p.id == feed || p.feedUrl == feed).firstOrNull ??
+        all.where((p) => normFeed(p.feedUrl) == norm).firstOrNull;
+  }
+
+  /// A feed URL reduced for comparison: no protocol, leading "www." or
+  /// trailing slashes.
+  static String normFeed(String url) => url
+      .replaceFirst(RegExp(r'^https?://'), '')
+      .replaceFirst(RegExp(r'^www\.'), '')
+      .replaceFirst(RegExp(r'/+$'), '');
+
   Future<void> insertPodcast(PodcastsCompanion pod) =>
       into(podcasts).insertOnConflictUpdate(pod);
 
@@ -246,22 +265,12 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
-  /// All subscribed episodes (for "show all" filter — kept for podcast filter screen).
-  Stream<List<Episode>> watchAllSubscribedEpisodes() =>
-      (select(episodes)
-            ..where((e) => e.isSubscribed.equals(true))
-            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-          .watch();
-
   Stream<List<Episode>> watchEpisodesForPodcast(String podcastId) =>
       (select(episodes)
             ..where((e) => e.podcastId.equals(podcastId))
             ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
           .watch()
           .distinct(_sameEpisodeList);
-
-  Future<void> insertEpisode(EpisodesCompanion ep) =>
-      into(episodes).insertOnConflictUpdate(ep);
 
   Future<void> insertEpisodes(List<EpisodesCompanion> eps) =>
       batch((b) => b.insertAllOnConflictUpdate(episodes, eps));

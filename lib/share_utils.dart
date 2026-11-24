@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'app_database.dart';
-import 'podcast_service.dart';
 
 class ShareUtils {
   static const _base = 'https://antpod.eu/open';
@@ -56,12 +56,22 @@ class ShareUtils {
     return ok.contains(b);
   }
 
-  static String podcastUrl(Podcast podcast) =>
-      '$_base?p=${_enc(_stripProto(podcast.feedUrl))}';
+  /// Undoes [_stripProto] for a feed from a share link.
+  static String restoreProto(String s) {
+    if (s.startsWith('http://') || s.startsWith('https://')) return s;
+    if (s.startsWith('h0:')) return 'http://${s.substring(3)}';
+    return 'https://$s';
+  }
 
-  static String podcastResultUrl(PodcastResult result) =>
-      '$_base?p=${_enc(_stripProto(result.feedUrl))}';
+  static String podcastUrl(String feedUrl) => '$_base?p=${_enc(_stripProto(feedUrl))}';
 
   static String episodeUrl(Episode episode) =>
       '$_base?p=${_enc(_stripProto(episode.podcastId))}&e=${guidHash(episode.id)}';
+
+  static void sharePodcast(String title, String feedUrl) => SharePlus.instance.share(
+      ShareParams(text: '$title\n${podcastUrl(feedUrl)}', subject: title));
+
+  static void shareEpisode(Episode episode) => SharePlus.instance.share(ShareParams(
+      text: '${episode.title} (${episode.podcastTitle})\n${episodeUrl(episode)}',
+      subject: episode.title));
 }

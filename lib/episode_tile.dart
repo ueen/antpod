@@ -266,8 +266,7 @@ class EpisodeTile extends StatelessWidget {
             : null,
         onShare: () {
           Navigator.pop(context);
-          final text = '${episode.title} (${episode.podcastTitle})\n${ShareUtils.episodeUrl(episode)}';
-          SharePlus.instance.share(ShareParams(text: text, subject: episode.title));
+          ShareUtils.shareEpisode(episode);
         },
         onExportFile: episode.isDownloaded && episode.localPath != null
             ? () {
