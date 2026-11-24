@@ -198,13 +198,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get unsubscribeDeleteAll => 'Abo beenden & löschen';
 
   @override
-  String get unsubscribeKeepEpisodes => 'Folgen behalten';
+  String get unsubscribeFinishEpisodes => 'Zu Ende hören';
 
   @override
-  String get pauseNewEpisodes => 'Neue Folgen pausieren';
+  String get stopNewEpisodes => 'Keine neuen Folgen laden';
 
   @override
-  String get newEpisodesPaused => 'Neue Folgen pausiert';
+  String get newEpisodesStopped => 'Lädt keine neuen Folgen';
 
   @override
   String downloadingEpisodes(int count) {

@@ -262,14 +262,17 @@ class AppDatabase extends _$AppDatabase {
         mode: InsertMode.insertOrIgnore,
       ));
 
-  /// Only promotes temp episodes that were actually played/finished to subscribed.
-  /// Unplayed temp episodes (Apple search results, preview inserts) are left alone
-  /// so they don't appear as duplicates alongside the real RSS episodes.
+  /// Only promotes temp episodes that were played, finished or downloaded to
+  /// subscribed. Other temp episodes (Apple search results, preview inserts)
+  /// are left alone so they don't appear as duplicates alongside the real RSS
+  /// episodes.
   Future<void> markEpisodesSubscribed(String podcastId) =>
       (update(episodes)
             ..where((e) =>
                 e.podcastId.equals(podcastId) &
-                (e.lastPositionMs.isBiggerThanValue(0) | e.isFinished.equals(true))))
+                (e.lastPositionMs.isBiggerThanValue(0) |
+                    e.isFinished.equals(true) |
+                    e.isDownloaded.equals(true))))
           .write(const EpisodesCompanion(isSubscribed: Value(true)));
 
   /// Match Apple episode stubs (id prefix 'apple-') to the real RSS episodes
@@ -641,37 +644,23 @@ class AppDatabase extends _$AppDatabase {
     await (delete(podcasts)..where((p) => p.id.equals(podcastId))).go();
   }
 
-  /// Worth keeping on "unsubscribe, keep episodes": downloaded, or started but
-  /// not finished. The unsubscribe sheet uses the same test to decide whether
-  /// to offer the option at all.
+  /// Something left to finish: downloaded, or started but not finished. The
+  /// unsubscribe sheet offers "finish episodes" only when an episode passes.
   static bool isKeepWorthy(Episode e) =>
       e.isDownloaded || (e.lastPositionMs > 0 && !e.isFinished);
 
-  /// Unsubscribe but keep what the user still cares about ([isKeepWorthy]).
-  /// Everything else is deleted and the podcast becomes a temp feed, which the
-  /// temp cleanup removes once those are played.
-  /// Returns the deleted episodes so the caller can cancel their downloads.
-  Future<List<Episode>> demoteToTempFeed(Podcast pod) {
+  /// Unsubscribe, finish episodes: the podcast and all its episodes become
+  /// temp, with play state, downloads and the list itself untouched. Only the
+  /// flags change; the usual temp cleanup takes the feed once it's played out.
+  Future<void> demoteToTempFeed(Podcast pod) {
     final feedUrl = pod.feedUrl;
     return transaction(() async {
-      final eps = await (select(episodes)
+      await (update(episodes)
             ..where((e) => e.podcastId.equals(pod.id) | e.podcastId.equals(feedUrl)))
-          .get();
-      const keep = isKeepWorthy;
-      final kept = eps.where(keep).map((e) => e.id).toList();
-      final dropped = eps.where((e) => !keep(e)).toList();
-
-      if (dropped.isNotEmpty) {
-        final ids = dropped.map((e) => e.id).toList();
-        await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
-      }
-      if (kept.isNotEmpty) {
-        await (update(episodes)..where((e) => e.id.isIn(kept))).write(
-            EpisodesCompanion(
-                podcastId: Value(feedUrl),
-                isSubscribed: const Value(false),
-                markedForDownload: const Value(false)));
-      }
+          .write(EpisodesCompanion(
+              podcastId: Value(feedUrl),
+              isSubscribed: const Value(false),
+              markedForDownload: const Value(false)));
       // Re-key on feedUrl (legacy rows may use an iTunes id) as a temp feed.
       await (delete(podcasts)..where((p) => p.id.equals(pod.id))).go();
       await into(podcasts).insertOnConflictUpdate(pod.toCompanion(true).copyWith(
@@ -679,7 +668,6 @@ class AppDatabase extends _$AppDatabase {
             isSubscribed: const Value(false),
             syncPaused: const Value(false),
           ));
-      return dropped;
     });
   }
 

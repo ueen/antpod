@@ -441,23 +441,23 @@ abstract class AppLocalizations {
   /// **'Unsubscribe & delete'**
   String get unsubscribeDeleteAll;
 
-  /// No description provided for @unsubscribeKeepEpisodes.
+  /// No description provided for @unsubscribeFinishEpisodes.
   ///
   /// In en, this message translates to:
-  /// **'Keep episodes'**
-  String get unsubscribeKeepEpisodes;
+  /// **'Finish episodes'**
+  String get unsubscribeFinishEpisodes;
 
-  /// No description provided for @pauseNewEpisodes.
+  /// No description provided for @stopNewEpisodes.
   ///
   /// In en, this message translates to:
-  /// **'Pause new episodes'**
-  String get pauseNewEpisodes;
+  /// **'Don\'t load new episodes'**
+  String get stopNewEpisodes;
 
-  /// No description provided for @newEpisodesPaused.
+  /// No description provided for @newEpisodesStopped.
   ///
   /// In en, this message translates to:
-  /// **'New episodes paused'**
-  String get newEpisodesPaused;
+  /// **'Not loading new episodes'**
+  String get newEpisodesStopped;
 
   /// No description provided for @downloadingEpisodes.
   ///

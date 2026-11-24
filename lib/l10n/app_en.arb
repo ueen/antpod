@@ -78,9 +78,9 @@
   },
   "foundStartedAndDownloaded": "Started and downloaded episodes found",
   "unsubscribeDeleteAll": "Unsubscribe & delete",
-  "unsubscribeKeepEpisodes": "Keep episodes",
-  "pauseNewEpisodes": "Pause new episodes",
-  "newEpisodesPaused": "New episodes paused",
+  "unsubscribeFinishEpisodes": "Finish episodes",
+  "stopNewEpisodes": "Don't load new episodes",
+  "newEpisodesStopped": "Not loading new episodes",
   "downloadingEpisodes": "{count, plural, =1{Downloading 1 episode} other{Downloading {count} episodes}}",
   "@downloadingEpisodes": {
     "placeholders": {

@@ -64,9 +64,9 @@
   "foundStarted": "{count, plural, =1{1 angefangene Folge gefunden} other{{count} angefangene Folgen gefunden}}",
   "foundStartedAndDownloaded": "Angefangene und heruntergeladene Folgen gefunden",
   "unsubscribeDeleteAll": "Abo beenden & löschen",
-  "unsubscribeKeepEpisodes": "Folgen behalten",
-  "pauseNewEpisodes": "Neue Folgen pausieren",
-  "newEpisodesPaused": "Neue Folgen pausiert",
+  "unsubscribeFinishEpisodes": "Zu Ende hören",
+  "stopNewEpisodes": "Keine neuen Folgen laden",
+  "newEpisodesStopped": "Lädt keine neuen Folgen",
   "downloadingEpisodes": "{count, plural, =1{1 Folge wird geladen} other{{count} Folgen werden geladen}}",
   "downloadNotificationChannel": "Downloads"
 }

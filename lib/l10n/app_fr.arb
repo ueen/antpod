@@ -64,9 +64,9 @@
   "foundStarted": "{count, plural, =1{1 épisode commencé trouvé} other{{count} épisodes commencés trouvés}}",
   "foundStartedAndDownloaded": "Épisodes commencés et téléchargés trouvés",
   "unsubscribeDeleteAll": "Se désabonner et supprimer",
-  "unsubscribeKeepEpisodes": "Garder les épisodes",
-  "pauseNewEpisodes": "Suspendre les nouveaux épisodes",
-  "newEpisodesPaused": "Nouveaux épisodes suspendus",
+  "unsubscribeFinishEpisodes": "Finir d'écouter",
+  "stopNewEpisodes": "Ne plus charger d'épisodes",
+  "newEpisodesStopped": "Nouveaux épisodes non chargés",
   "downloadingEpisodes": "{count, plural, =1{Téléchargement d’1 épisode} other{Téléchargement de {count} épisodes}}",
   "downloadNotificationChannel": "Téléchargements"
 }

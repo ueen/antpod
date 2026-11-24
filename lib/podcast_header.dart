@@ -118,10 +118,10 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.pause_circle_outline_rounded,
+                              Icon(Icons.sync_disabled_rounded,
                                   size: 14, color: cs.onSurfaceVariant),
                               const SizedBox(width: 4),
-                              Text(l10n.newEpisodesPaused,
+                              Text(l10n.newEpisodesStopped,
                                   style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,

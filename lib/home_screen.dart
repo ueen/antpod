@@ -547,10 +547,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Pressing unsubscribe first stops playback of this podcast and closes the
   // player (even if the sheet is then cancelled), so no episode is "live" while
-  // the user decides. Then a bottom sheet: unsubscribe & delete (destructive),
-  // then either keep episodes (temp feed; when something is downloaded or
-  // started) or, when there's nothing to keep, pause new episodes. Both leave
-  // the podcast's current episodes in place, so only one is ever offered.
+  // the user decides. Then a bottom sheet: unsubscribe & delete (destructive);
+  // finish episodes (temp feed that goes once played out; only when something
+  // is downloaded or started); don't load new episodes (stays subscribed and
+  // as is, just no refresh). The last two only flip flags: nothing is deleted.
   Future<void> _confirmUnsubscribe(Podcast podcast) async {
     final db = context.read<AppDatabase>();
     // Awaited: the player saves its position first, so the episode that was
@@ -625,8 +625,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: Text(l10n.unsubscribeDeleteAll),
                   onPressed: () => Navigator.pop(ctx, 'delete'),
                 ),
-                const SizedBox(height: 10),
-                if (canKeep)
+                if (canKeep) ...[
+                  const SizedBox(height: 10),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: cs.error,
@@ -634,17 +634,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       minimumSize: const Size.fromHeight(48),
                     ),
                     icon: const Icon(Icons.inventory_2_outlined),
-                    label: Text(l10n.unsubscribeKeepEpisodes),
-                    onPressed: () => Navigator.pop(ctx, 'keep'),
-                  )
-                else
-                  FilledButton.tonalIcon(
-                    style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48)),
-                    icon: const Icon(Icons.pause_circle_outline_rounded),
-                    label: Text(l10n.pauseNewEpisodes),
-                    onPressed: () => Navigator.pop(ctx, 'pause'),
+                    label: Text(l10n.unsubscribeFinishEpisodes),
+                    onPressed: () => Navigator.pop(ctx, 'finish'),
                   ),
+                ],
+                const SizedBox(height: 10),
+                FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48)),
+                  icon: const Icon(Icons.sync_disabled_rounded),
+                  label: Text(l10n.stopNewEpisodes),
+                  onPressed: () => Navigator.pop(ctx, 'stop'),
+                ),
                 const SizedBox(height: 6),
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
@@ -659,9 +660,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     if (action == 'delete') {
       await _unsubscribe(podcast);
-    } else if (action == 'keep') {
-      await _unsubscribeKeepEpisodes(podcast);
-    } else if (action == 'pause') {
+    } else if (action == 'finish') {
+      await _unsubscribeFinishEpisodes(podcast);
+    } else if (action == 'stop') {
       await _setSyncPaused(podcast, true);
     }
   }
@@ -706,26 +707,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Unsubscribe but keep downloaded/started episodes. The podcast becomes a
-  /// temp feed — cleaned up once those are played — and stays open, now with
-  /// a subscribe button to come back.
-  Future<void> _unsubscribeKeepEpisodes(Podcast podcast) async {
-    final db        = context.read<AppDatabase>();
-    final downloads = context.read<DownloadProvider>();
+  /// Unsubscribe, finish episodes: the podcast turns temp with every episode
+  /// and its play state intact (cleaned up once played out) and stays open, now
+  /// with a subscribe button to come back.
+  Future<void> _unsubscribeFinishEpisodes(Podcast podcast) async {
+    final db = context.read<AppDatabase>();
 
     // As in _unsubscribe: the player must not hold an episode whose podcastId
     // is about to change underneath it.
     await _closePlayerFor(podcast);
 
     try {
-      final dropped = await db.demoteToTempFeed(podcast);
-      for (final ep in dropped) {
-        if (ep.downloadTaskId != null && !ep.isDownloaded) {
-          await downloads.cancelDownload(ep.id, ep.downloadTaskId);
-        }
-      }
+      await db.demoteToTempFeed(podcast);
     } catch (e, st) {
-      debugPrint('[unsub-keep] ERROR: $e\n$st');
+      debugPrint('[unsub-finish] ERROR: $e\n$st');
     }
     if (!mounted) return;
     setState(() {
