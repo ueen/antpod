@@ -8,20 +8,6 @@ import 'podcast_service.dart';
 class ShareUtils {
   static const _base = 'https://antpod.eu/open';
 
-  // Podcast name: clip at natural separator within 30 chars, else hard-clip at 30.
-  // Uses ASCII ... (not …) — dots are URL-safe, no %E2%80%A6 encoding.
-  static String _clipPodcast(String s) {
-    for (final sep in [': ', ' - ', ' – ', ' — ', ' | ']) {
-      final i = s.indexOf(sep);
-      if (i > 0 && i < 30) return s.substring(0, i);
-    }
-    return s.length <= 30 ? s : '${s.substring(0, 30)}...';
-  }
-
-  // Episode title: plain 50-char clip with ASCII dots.
-  static String _clipTitle(String s) =>
-      s.length <= 50 ? s : '${s.substring(0, 50)}...';
-
   // Strip https:// to save 8 chars; mark http:// feeds with "h0:" prefix.
   static String _stripProto(String url) {
     if (url.startsWith('https://')) return url.substring(8);
@@ -62,23 +48,12 @@ class ShareUtils {
     return ok.contains(b);
   }
 
-  static String podcastUrl(Podcast podcast) {
-    final b = StringBuffer('$_base?f=${_enc(_stripProto(podcast.feedUrl))}');
-    if (podcast.title.isNotEmpty) b.write('&t=${_enc(_clipPodcast(podcast.title))}');
-    return b.toString();
-  }
+  static String podcastUrl(Podcast podcast) =>
+      '$_base?f=${_enc(_stripProto(podcast.feedUrl))}';
 
-  static String podcastResultUrl(PodcastResult result) {
-    final b = StringBuffer('$_base?f=${_enc(_stripProto(result.feedUrl))}');
-    if (result.title.isNotEmpty) b.write('&t=${_enc(_clipPodcast(result.title))}');
-    return b.toString();
-  }
+  static String podcastResultUrl(PodcastResult result) =>
+      '$_base?f=${_enc(_stripProto(result.feedUrl))}';
 
-  static String episodeUrl(Episode episode) {
-    final b = StringBuffer('$_base?f=${_enc(_stripProto(episode.podcastId))}'
-        '&h=${guidHash(episode.id)}');
-    if (episode.title.isNotEmpty) b.write('&t=${_enc(_clipTitle(episode.title))}');
-    if (episode.podcastTitle.isNotEmpty) b.write('&p=${_enc(_clipPodcast(episode.podcastTitle))}');
-    return b.toString();
-  }
+  static String episodeUrl(Episode episode) =>
+      '$_base?f=${_enc(_stripProto(episode.podcastId))}&h=${guidHash(episode.id)}';
 }

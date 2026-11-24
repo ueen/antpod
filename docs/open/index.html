@@ -505,14 +505,14 @@
     }
 
     // Try to show player from an episode item, matching by hash then title fallback.
-    function _tryMatchEpisode(items, getGuid, getAudio, getTitle) {
+    // onMatch(item) is called with the matched item so callers can extract its title.
+    function _tryMatchEpisode(items, getGuid, getAudio, getTitle, onMatch) {
       return async function() {
         const guids = items.map(getGuid);
         const hashes = await Promise.all(guids.map(g => g ? guidHash(g) : Promise.resolve('')));
         let idx = hashes.indexOf(h);
         if (idx < 0 && pTitle) {
-          // Hash didn't match — episode may have been stored with a different ID.
-          // Fall back to title match (exact, then prefix for truncated titles).
+          // Hash didn't match — fall back to title match for old share links.
           const norm = pTitle.toLowerCase().trim();
           idx = items.findIndex(item => {
             const t = getTitle(item).toLowerCase().trim();
@@ -522,6 +522,7 @@
         if (idx < 0) return false;
         const audio = getAudio(items[idx]);
         if (!audio) return false;
+        if (onMatch) onMatch(items[idx]);
         const audioEl = document.getElementById('audio-el');
         audioEl.src = audio;
         showPlayer(audioEl);
@@ -529,32 +530,42 @@
       };
     }
 
-    // PodcastIndex fallback: fetch cover + episode audio when RSS is CORS-blocked.
+    function _applyTitles(epTitle, podTitle) {
+      if (epTitle) document.getElementById('ep-title').textContent = epTitle;
+      if (podTitle) document.getElementById('podcast-name').textContent = podTitle;
+      const main = epTitle || podTitle || '';
+      const sub  = epTitle ? podTitle : '';
+      if (main) document.title = main + (sub ? ' · ' + sub : '') + ' — AntPod';
+    }
+
+    // PodcastIndex fallback: fetch cover + titles + episode audio.
     async function tryPodcastIndex(feedUrl) {
       const base = 'https://api.podcastindex.org/api/1.0';
       try {
         const feedData = await fetch(base + '/podcasts/byfeedurl?' +
           new URLSearchParams({url: feedUrl}), {headers: await piHeaders()}).then(r => r.json());
-        const cover = feedData.feed?.artwork || feedData.feed?.image;
+        const cover    = feedData.feed?.artwork || feedData.feed?.image;
+        const podTitle = feedData.feed?.title || '';
         if (cover) _showCover(cover);
 
-        if (!h) return;
+        if (!h) { _applyTitles(podTitle, ''); return; }
 
         const epData = await fetch(base + '/episodes/byfeedurl?' +
           new URLSearchParams({url: feedUrl, max: '1000'}), {headers: await piHeaders()}).then(r => r.json());
         const items = epData.items || [];
+        _applyTitles('', podTitle);
         await _tryMatchEpisode(
           items,
           item => (item.guid || '').trim(),
           item => item.enclosureUrl || item.url || '',
-          item => item.title || ''
+          item => item.title || '',
+          item => _applyTitles(item.title || '', podTitle)
         )();
       } catch (e) { console.warn('[PI] error:', e); }
     }
 
-    // Fetch RSS, extract cover art and (if episode) match audio by GUID hash.
-    // Uses the RSS proxy when configured to avoid CORS blocks; falls back to
-    // a direct fetch, then PodcastIndex if both fail or find no match.
+    // Fetch RSS via proxy, extract cover + titles + episode audio.
+    // Falls back to PodcastIndex if proxy errors or episode hash not found.
     async function tryFetchRSS(feedUrl) {
       let xml;
       try {
@@ -574,13 +585,18 @@
         doc.querySelector('image url')?.textContent?.trim();
       if (img) _showCover(img);
 
-      if (!h) return;
+      const podTitle = doc.querySelector('channel > title')?.textContent?.trim() || '';
+
+      if (!h) { _applyTitles(podTitle, ''); return; }
+
+      _applyTitles('', podTitle);
       const items = [...doc.querySelectorAll('item')];
       const found = await _tryMatchEpisode(
         items,
         item => item.querySelector('guid')?.textContent?.trim() || '',
         item => item.querySelector('enclosure')?.getAttribute('url') || '',
-        item => item.querySelector('title')?.textContent?.trim() || ''
+        item => item.querySelector('title')?.textContent?.trim() || '',
+        item => _applyTitles(item.querySelector('title')?.textContent?.trim() || '', podTitle)
       )();
       if (!found) tryPodcastIndex(feedUrl);
     }
