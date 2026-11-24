@@ -75,7 +75,7 @@
     }
     .title-row {
       display: flex; align-items: center; gap: 0.5rem;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
     }
     .desc-btn {
       flex-shrink: 0;
@@ -109,7 +109,7 @@
     .podcast-name a:hover { color: #FF9A30; }
 
     /* Episode list on podcast share */
-    .ep-list { margin-top: 0.75rem; padding-bottom: 0.75rem; display: none; }
+    .ep-list { margin-top: 0; padding-bottom: 0.75rem; display: none; }
     .ep-list-label { font-size: 0.72rem; font-weight: 600; color: #9E7056; margin-bottom: 0.35rem; }
     .ep-item {
       display: flex; align-items: center; gap: 0.5rem;
@@ -200,6 +200,15 @@
     }
     .not-installed a { color: #FF9A30; font-weight: 600; text-decoration: none; }
 
+    .lang-select {
+      margin-left: auto; background: transparent; border: 1.5px solid #F0E4D4;
+      border-radius: 0.375rem; padding: 0.2rem 0.5rem;
+      font-size: 0.72rem; color: #9E7056; cursor: pointer; font-family: inherit;
+    }
+    .lang-select:hover { border-color: #FF9A30; color: #FF9A30; }
+    .desc-panel a { color: #FF9A30; text-decoration: none; word-break: break-all; }
+    .desc-panel a:hover { text-decoration: underline; }
+
     .feed-row {
       display: flex; align-items: center; gap: 0.5rem;
       margin-top: 0.875rem;
@@ -236,6 +245,12 @@
     <a href="/"><img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg"
         width="26" height="26" alt="" /></a>
     <a href="/" class="nav-brand">AntPod</a>
+    <select id="lang-select" class="lang-select" onchange="setLang(this.value)">
+      <option value="en">EN</option>
+      <option value="de">DE</option>
+      <option value="es">ES</option>
+      <option value="fr">FR</option>
+    </select>
   </nav>
 
   <main>
@@ -270,7 +285,7 @@
 
         <!-- Recent episodes (podcast share only) -->
         <div class="ep-list" id="ep-list">
-          <div class="ep-list-label">Recent episodes</div>
+          <div class="ep-list-label" id="ep-list-label"></div>
         </div>
 
         <!-- Custom audio player (episode only) -->
@@ -300,7 +315,7 @@
 
         <!-- Open in AntPod -->
         <button class="btn-open" id="btn-open" onclick="openInApp()">
-          <img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg" width="26" height="26" alt="" style="border-radius:50%;display:block;flex-shrink:0;" />
+          <img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg" width="26" height="26" alt="" style="border-radius:50%;display:block;flex-shrink:0;filter:brightness(0.72);" />
           <span id="btn-open-label"></span>
         </button>
 
@@ -349,6 +364,8 @@
         useDifferentApp:'Use a different app',
         openSource:     'Open source',
         download:       'Download',
+        recentEpisodes: 'Episodes',
+        shownotes:      'Shownotes',
       },
       de: {
         metaDesc:       'Diesen Podcast oder diese Episode in AntPod öffnen.',
@@ -362,6 +379,8 @@
         useDifferentApp:'Andere App verwenden',
         openSource:     'Open Source',
         download:       'Herunterladen',
+        recentEpisodes: 'Episoden',
+        shownotes:      'Shownotes',
       },
       es: {
         metaDesc:       'Abre este podcast o episodio en AntPod.',
@@ -375,6 +394,8 @@
         useDifferentApp:'Usar otra aplicación',
         openSource:     'Código abierto',
         download:       'Descargar',
+        recentEpisodes: 'Episodios',
+        shownotes:      'Notas',
       },
       fr: {
         metaDesc:       'Ouvrez ce podcast ou cet épisode dans AntPod.',
@@ -388,31 +409,77 @@
         useDifferentApp:'Utiliser une autre application',
         openSource:     'Open source',
         download:       'Télécharger',
+        recentEpisodes: 'Épisodes',
+        shownotes:      'Notes',
       },
     };
 
-    function detectLang() {
-      const supported = ['de', 'es', 'fr'];
+    const _SUPPORTED = ['en', 'de', 'es', 'fr'];
+    const _COUNTRY_LANG = {
+      DE:'de', AT:'de',
+      ES:'es', MX:'es', AR:'es', CO:'es', CL:'es', PE:'es', VE:'es', EC:'es', BO:'es',
+      UY:'es', PY:'es', CR:'es', PA:'es', DO:'es', CU:'es', GT:'es', HN:'es', SV:'es', NI:'es',
+      FR:'fr', BE:'fr', LU:'fr', MC:'fr',
+    };
+
+    function getCookie(name) {
+      const m = document.cookie.match('(?:^|;)\\s*' + name + '=([^;]*)');
+      return m ? decodeURIComponent(m[1]) : null;
+    }
+
+    function _browserLang() {
       for (const l of (navigator.languages || [navigator.language || 'en'])) {
         const code = l.split('-')[0].toLowerCase();
-        if (supported.includes(code)) return code;
+        if (_SUPPORTED.includes(code)) return code;
       }
       return 'en';
     }
 
-    const lang = detectLang();
-    const t = i18n[lang];
-    document.documentElement.lang = lang;
-    document.getElementById('meta-desc').content              = t.metaDesc;
-    document.getElementById('badge-label').textContent        = t.episode;
-    document.getElementById('ep-title').textContent           = t.loading;
-    document.getElementById('not-installed-msg').textContent  = t.notInstalledMsg;
-    document.getElementById('not-installed-link').textContent = t.downloadLink;
-    document.getElementById('not-installed-suffix').textContent = t.notInstalledSfx;
-    document.getElementById('btn-open-label').textContent     = t.openInAntpod;
-    document.getElementById('btn-other-label').textContent    = t.useDifferentApp;
-    document.getElementById('footer-oss').textContent         = t.openSource;
-    document.getElementById('footer-dl').textContent          = t.download;
+    let lang = (() => {
+      const c = getCookie('lang');
+      return (c && _SUPPORTED.includes(c)) ? c : _browserLang();
+    })();
+    let t = i18n[lang];
+
+    function applyLang(code) {
+      lang = code; t = i18n[code] || i18n.en;
+      document.documentElement.lang = code;
+      document.getElementById('meta-desc').content               = t.metaDesc;
+      document.getElementById('badge-label').textContent         = t.episode;
+      document.getElementById('not-installed-msg').textContent   = t.notInstalledMsg;
+      document.getElementById('not-installed-link').textContent  = t.downloadLink;
+      document.getElementById('not-installed-suffix').textContent= t.notInstalledSfx;
+      document.getElementById('btn-open-label').textContent      = t.openInAntpod;
+      document.getElementById('btn-other-label').textContent     = t.useDifferentApp;
+      document.getElementById('footer-oss').textContent          = t.openSource;
+      document.getElementById('footer-dl').textContent           = t.download;
+      document.getElementById('ep-list-label').textContent       = t.recentEpisodes;
+      document.getElementById('lang-select').value               = code;
+      const descBtnLabel = document.getElementById('desc-btn-label');
+      if (descBtnLabel) descBtnLabel.textContent                 = t.shownotes;
+    }
+
+    function setLang(code) {
+      document.cookie = 'lang=' + code + ';max-age=31536000;path=/';
+      applyLang(code);
+    }
+
+    applyLang(lang);
+    document.getElementById('ep-title').textContent = t.loading;
+
+    // IP-based language detection (async, skipped if cookie set)
+    if (!getCookie('lang')) {
+      (async () => {
+        try {
+          const ctl = new AbortController();
+          setTimeout(() => ctl.abort(), 1500);
+          const r = await fetch('https://get.geojs.io/v1/ip/country.json', {signal: ctl.signal});
+          const data = await r.json();
+          const ipLang = _COUNTRY_LANG[(data.country || '').toUpperCase()];
+          if (ipLang && ipLang !== lang) applyLang(ipLang);
+        } catch (_) {}
+      })();
+    }
 
     // ── RSS proxy ─────────────────────────────────────────────────────────────
     // Set to your Cloudflare Worker URL after deploying workers/rss-proxy.js.
@@ -433,6 +500,20 @@
     const pPod   = '';
 
     let _feedUrl = '';
+
+    function _toBase64Url(str) {
+      return btoa(unescape(encodeURIComponent(str)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+    function showFeedRow(feedUrl) {
+      _feedUrl = feedUrl;
+      document.getElementById('btn-podlink').href =
+        'https://pod.link/' + _toBase64Url(feedUrl);
+      document.getElementById('feed-url-text').innerHTML =
+        '<a href="' + encodeURI(feedUrl) + '" target="_blank" rel="noopener">' +
+        feedUrl.replace(/^https?:\/\//, '') + '</a>';
+      document.getElementById('feed-row').style.display = 'flex';
+    }
 
     function resetPage() {
       _desc = '';
@@ -466,7 +547,10 @@
       feed   = restoreProto(params.get('p') || '');
       h      = params.get('e') || '';
       resetPage();
-      if (feed) tryFetchRSS(feed);
+      if (feed) {
+        render(feed, params.get('t') || '', '', '', '');
+        tryFetchRSS(feed);
+      }
     }
     function navigate(search) {
       history.pushState(null, '', search);
@@ -504,19 +588,7 @@
         showPlayer(audioEl);
       }
 
-      if (rFeed) {
-        _feedUrl = rFeed;
-        function toBase64Url(str) {
-          return btoa(unescape(encodeURIComponent(str)))
-            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-        }
-        document.getElementById('btn-podlink').href =
-          'https://pod.link/' + toBase64Url(rFeed);
-        document.getElementById('feed-url-text').innerHTML =
-          '<a href="' + encodeURI(rFeed) + '" target="_blank" rel="noopener">' +
-          rFeed.replace(/^https?:\/\//, '') + '</a>';
-        document.getElementById('feed-row').style.display = 'flex';
-      }
+      if (rFeed) showFeedRow(rFeed);
     }
 
     // ── Description toggle ────────────────────────────────────────────────────
@@ -532,14 +604,20 @@
       _desc = text ? stripHtml(text) : '';
       if (_desc) {
         document.getElementById('desc-btn').style.display = 'flex';
-        document.getElementById('desc-btn-label').textContent = 'Shownotes';
+        document.getElementById('desc-btn-label').textContent = t.shownotes;
       }
+    }
+    function linkify(text) {
+      const esc = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return esc.replace(/(https?:\/\/[^\s<>"'()[\]]+)/g, url =>
+        '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>'
+      );
     }
     function toggleDesc() {
       const panel = document.getElementById('desc-panel');
       const btn   = document.getElementById('desc-btn');
       const open  = panel.classList.contains('open');
-      if (!open && !panel.textContent) panel.textContent = _desc;
+      if (!open) panel.innerHTML = linkify(_desc);
       panel.classList.toggle('open', !open);
       btn.classList.toggle('open', !open);
     }
@@ -691,6 +769,7 @@
         if (!h) {
           _applyTitles(podTitle, '');
           showDesc(podDesc);
+          showFeedRow(feedUrl);
           return;
         }
 
@@ -760,7 +839,9 @@
         const dur = fmtDuration(rawDur);
         const a = document.createElement('a');
         a.className = 'ep-item';
-        a.href = '?' + new URLSearchParams({p: feedParam, e: hashes[i]}).toString();
+        const epSearch = '?' + new URLSearchParams({p: feedParam, e: hashes[i]}).toString();
+        a.href = epSearch;
+        a.onclick = e => { e.preventDefault(); navigate(epSearch); };
         a.innerHTML =
           '<span class="ep-item-title">' + title.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>' +
           (dur ? '<span class="ep-item-dur">' + dur + '</span>' : '') +
@@ -797,6 +878,7 @@
       if (!h) {
         _applyTitles(podTitle, '');
         showDesc(podDesc);
+        showFeedRow(feedUrl);
         const items = [...doc.querySelectorAll('item')];
         showRecentEpisodes(items, params.get('p'));
         return;
