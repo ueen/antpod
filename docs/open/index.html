@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AntPod</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.svg" />
   <meta name="description" id="meta-desc" content="Open this podcast or episode in AntPod." />
   <meta property="og:title" content="Open in AntPod" />
   <meta property="og:description" content="Open this podcast or episode in AntPod." />
@@ -73,6 +75,8 @@
       font-size: 1.15rem; font-weight: 800; line-height: 1.3;
       letter-spacing: -0.02em; flex: 1;
     }
+    .ep-title.loading { color: #C8A882; font-weight: 600; animation: title-pulse 1.4s ease-in-out infinite; }
+    @keyframes title-pulse { 50% { opacity: 0.45; } }
     .title-row {
       display: flex; align-items: center; gap: 0.5rem;
       margin-bottom: 0.75rem;
@@ -309,7 +313,7 @@
         <!-- Not installed hint -->
         <div class="not-installed" id="not-installed">
           <span id="not-installed-msg"></span>
-          <a id="not-installed-link" href="https://github.com/ueen/antpod/releases"></a>
+          <a id="not-installed-link" href="https://antpod.eu/"></a>
           <span id="not-installed-suffix"></span>
         </div>
 
@@ -346,7 +350,7 @@
     &nbsp;·&nbsp;
     <a href="https://github.com/ueen/antpod" class="muted" id="footer-oss"></a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/ueen/antpod/releases" class="muted" id="footer-dl"></a>
+    <a href="https://antpod.eu/" class="muted" id="footer-dl"></a>
   </footer>
 
   <script>
@@ -356,6 +360,7 @@
         metaDesc:       'Open this podcast or episode in AntPod.',
         episode:        'Episode',
         loading:        'Loading…',
+        notFound:       'Episode not found',
         failedToLoad:   'Failed to load',
         notInstalledMsg:'AntPod doesn’t seem to be installed. ',
         downloadLink:   'Download it here',
@@ -371,6 +376,7 @@
         metaDesc:       'Diesen Podcast oder diese Episode in AntPod öffnen.',
         episode:        'Episode',
         loading:        'Lädt…',
+        notFound:       'Episode nicht gefunden',
         failedToLoad:   'Laden fehlgeschlagen',
         notInstalledMsg:'AntPod scheint nicht installiert zu sein. ',
         downloadLink:   'Hier herunterladen',
@@ -386,6 +392,7 @@
         metaDesc:       'Abre este podcast o episodio en AntPod.',
         episode:        'Episodio',
         loading:        'Cargando…',
+        notFound:       'Episodio no encontrado',
         failedToLoad:   'Error al cargar',
         notInstalledMsg:'AntPod no parece estar instalado. ',
         downloadLink:   'Descárgalo aquí',
@@ -401,6 +408,7 @@
         metaDesc:       'Ouvrez ce podcast ou cet épisode dans AntPod.',
         episode:        'Épisode',
         loading:        'Chargement…',
+        notFound:       'Épisode introuvable',
         failedToLoad:   'Échec du chargement',
         notInstalledMsg:'AntPod ne semble pas être installé. ',
         downloadLink:   'Téléchargez-le ici',
@@ -542,7 +550,34 @@
       while (epList.children.length > 1) epList.removeChild(epList.lastChild);
     }
 
+    // Every navigation bumps _navId; async work started for an earlier page
+    // checks it and drops its result instead of rendering into this one.
+    let _navId = 0;
+    // Parsed feeds by URL: soft navigation stays on the same feed, and some
+    // feeds are several MB, so fetch and parse each one once.
+    const _feedDocs = new Map();
+    function fetchFeedDoc(feedUrl) {
+      if (!_feedDocs.has(feedUrl)) {
+        const fetchUrl = RSS_PROXY
+          ? RSS_PROXY + '?url=' + encodeURIComponent(feedUrl)
+          : feedUrl;
+        const p = fetch(fetchUrl)
+          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+          .then(xml => new DOMParser().parseFromString(xml, 'text/xml'));
+        p.catch(() => _feedDocs.delete(feedUrl));
+        _feedDocs.set(feedUrl, p);
+      }
+      return _feedDocs.get(feedUrl);
+    }
+    // Episode id as the app derives it: the guid, or "<feed>_<title>" without one.
+    function rssEpisodeId(item, feedUrl) {
+      const guid = item.querySelector('guid')?.textContent?.trim();
+      if (guid) return guid;
+      return feedUrl + '_' + (item.querySelector('title')?.textContent?.trim() || '');
+    }
+
     function _doNavigate(search) {
+      _navId++;
       params = new URLSearchParams(search.replace(/^\?/, ''));
       feed   = restoreProto(params.get('p') || '');
       h      = params.get('e') || '';
@@ -580,7 +615,9 @@
 
       if (isEpisode) document.getElementById('badge').style.display = 'inline-flex';
       if (rPodcast)  document.getElementById('podcast-name').textContent = rPodcast;
-      document.getElementById('ep-title').textContent = rTitle || (isEpisode ? t.episode : 'Podcast');
+      // "Loading…" until the feed resolves to a title, not-found or failure;
+      // a bare "Episode" placeholder looked like a broken page.
+      if (rTitle) _setTitle(rTitle); else _setTitle(t.loading, true);
 
       if (rAudio) {
         const audioEl = document.getElementById('audio-el');
@@ -721,9 +758,11 @@
     // Try to show player from an episode item, matching by hash then title fallback.
     // onMatch(item) is called with the matched item so callers can extract its title.
     function _tryMatchEpisode(items, getGuid, getAudio, getTitle, onMatch) {
+      const nav = _navId;
       return async function() {
         const guids = items.map(getGuid);
         const hashes = await Promise.all(guids.map(g => g ? guidHash(g) : Promise.resolve('')));
+        if (nav !== _navId) return true;  // page changed meanwhile: no fallback either
         let idx = hashes.indexOf(h);
         if (idx < 0 && pTitle) {
           // Hash didn't match — fall back to title match for old share links.
@@ -744,8 +783,14 @@
       };
     }
 
+    function _setTitle(text, loading = false) {
+      const el = document.getElementById('ep-title');
+      el.textContent = text;
+      el.classList.toggle('loading', loading);
+    }
+
     function _applyTitles(epTitle, podTitle) {
-      if (epTitle) document.getElementById('ep-title').textContent = epTitle;
+      if (epTitle) _setTitle(epTitle);
       if (podTitle) {
         const el = document.getElementById('podcast-name');
         if (!el.querySelector('a')) el.textContent = podTitle;
@@ -758,16 +803,18 @@
     // PodcastIndex fallback: fetch cover + titles + episode audio.
     async function tryPodcastIndex(feedUrl) {
       const base = 'https://api.podcastindex.org/api/1.0';
+      const nav = _navId;
       try {
         const feedData = await fetch(base + '/podcasts/byfeedurl?' +
           new URLSearchParams({url: feedUrl}), {headers: await piHeaders()}).then(r => r.json());
+        if (nav !== _navId) return;
         const cover    = feedData.feed?.artwork || feedData.feed?.image;
         const podTitle = feedData.feed?.title || '';
         const podDesc  = feedData.feed?.description || '';
         if (cover) _showCover(cover);
 
         if (!h) {
-          _applyTitles(podTitle, '');
+          _applyTitles(podTitle || 'Podcast', '');
           showDesc(podDesc);
           showFeedRow(feedUrl);
           return;
@@ -776,9 +823,10 @@
         linkPodcastName(podTitle);
         const epData = await fetch(base + '/episodes/byfeedurl?' +
           new URLSearchParams({url: feedUrl, max: '1000'}), {headers: await piHeaders()}).then(r => r.json());
+        if (nav !== _navId) return;
         const items = epData.items || [];
         _applyTitles('', podTitle);
-        await _tryMatchEpisode(
+        const found = await _tryMatchEpisode(
           items,
           item => (item.guid || '').trim(),
           item => item.enclosureUrl || item.url || '',
@@ -788,7 +836,13 @@
             showDesc(stripHtml(item.description || '') || podDesc);
           }
         )();
-      } catch (e) { console.warn('[PI] error:', e); }
+        // Neither the feed nor PodcastIndex has it (removed, or its guid
+        // changed); the podcast name above still links to the show.
+        if (!found && nav === _navId) _setTitle(t.notFound);
+      } catch (e) {
+        console.warn('[PI] error:', e);
+        if (nav === _navId) _setTitle(t.failedToLoad);
+      }
     }
 
     // Make podcast name + cover clickable on episode pages, linking back to podcast share.
@@ -826,12 +880,14 @@
     }
 
     // Show up to 3 recent episodes on a podcast share page (no extra fetch needed).
-    async function showRecentEpisodes(items, feedParam) {
+    async function showRecentEpisodes(items, feedParam, feedUrl) {
+      const nav = _navId;
       const list = document.getElementById('ep-list');
       const top = items.slice(0, 3);
       const hashes = await Promise.all(
-        top.map(item => guidHash(item.querySelector('guid')?.textContent?.trim() || ''))
+        top.map(item => guidHash(rssEpisodeId(item, feedUrl)))
       );
+      if (nav !== _navId) return;
       top.forEach((item, i) => {
         const title = item.querySelector('title')?.textContent?.trim() || '';
         if (!title || !hashes[i]) return;
@@ -854,18 +910,15 @@
     // Fetch RSS via proxy, extract cover + titles + episode audio.
     // Falls back to PodcastIndex if proxy errors or episode hash not found.
     async function tryFetchRSS(feedUrl) {
-      let xml;
+      const nav = _navId;
+      let doc;
       try {
-        const fetchUrl = RSS_PROXY
-          ? RSS_PROXY + '?url=' + encodeURIComponent(feedUrl)
-          : feedUrl;
-        xml = await fetch(fetchUrl).then(r => r.text());
+        doc = await fetchFeedDoc(feedUrl);
       } catch (_) {
-        tryPodcastIndex(feedUrl);
+        if (nav === _navId) tryPodcastIndex(feedUrl);
         return;
       }
-
-      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+      if (nav !== _navId) return;
 
       const img =
         doc.querySelector('image[href]')?.getAttribute('href') ||
@@ -876,11 +929,11 @@
       const podDesc  = doc.querySelector('channel > description')?.textContent?.trim() || '';
 
       if (!h) {
-        _applyTitles(podTitle, '');
+        _applyTitles(podTitle || 'Podcast', '');
         showDesc(podDesc);
         showFeedRow(feedUrl);
         const items = [...doc.querySelectorAll('item')];
-        showRecentEpisodes(items, params.get('p'));
+        showRecentEpisodes(items, params.get('p'), feedUrl);
         return;
       }
 
@@ -889,7 +942,7 @@
       const items = [...doc.querySelectorAll('item')];
       const found = await _tryMatchEpisode(
         items,
-        item => item.querySelector('guid')?.textContent?.trim() || '',
+        item => rssEpisodeId(item, feedUrl),
         item => item.querySelector('enclosure')?.getAttribute('url') || '',
         item => item.querySelector('title')?.textContent?.trim() || '',
         item => {
@@ -907,13 +960,11 @@
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
-    window._openQuery = location.search;
-
     if (feed) {
       render(feed, pTitle, pPod, '', '');
       tryFetchRSS(feed);
     } else {
-      document.getElementById('ep-title').textContent = t.failedToLoad;
+      _setTitle(t.failedToLoad);
     }
 
     function togglePlay() {
@@ -921,10 +972,19 @@
       if (audioEl.paused) audioEl.play(); else audioEl.pause();
     }
 
+    // Opens whatever page is shown now (soft navigation changes location.search).
+    // The "not installed" hint only appears if the page never lost focus, i.e.
+    // nothing took over the antpod:// link.
     function openInApp() {
-      window.location.href = 'antpod://open' + window._openQuery;
+      let left = false;
+      const onHide = () => { if (document.hidden) left = true; };
+      document.addEventListener('visibilitychange', onHide);
+      window.location.href = 'antpod://open' + location.search;
       setTimeout(() => {
-        document.getElementById('not-installed').style.display = 'block';
+        document.removeEventListener('visibilitychange', onHide);
+        if (!left && !document.hidden) {
+          document.getElementById('not-installed').style.display = 'block';
+        }
       }, 2500);
     }
   </script>
