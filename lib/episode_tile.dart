@@ -37,7 +37,9 @@ Future<void> triggerDownload({
       episodeId: episode.id, audioUrl: episode.audioUrl,
       episodeTitle: episode.title, db: db,
     );
-    if (taskId != null && context.mounted) downloads.trackDownload(taskId);
+    if (taskId != null && context.mounted) {
+      downloads.trackDownload(taskId, episodeId: episode.id);
+    }
     return;
   }
 
@@ -68,7 +70,7 @@ Future<void> triggerDownload({
           episodeId: episode.id, audioUrl: episode.audioUrl,
           episodeTitle: episode.title, db: db,
         );
-        if (taskId != null) downloads.trackDownload(taskId);
+        if (taskId != null) downloads.trackDownload(taskId, episodeId: episode.id);
       },
       onSaveForWifi: () {
         Navigator.pop(ctx);
@@ -178,11 +180,11 @@ class _NoConnectionSheet extends StatelessWidget {
           ),
           Icon(Icons.signal_wifi_off_rounded, size: 40, color: cs.onSurfaceVariant),
           const SizedBox(height: 10),
-          Text(l10n.noWifi,
+          Text(l10n.noConnection,
               style: TextStyle(
                   fontSize: 17, fontWeight: FontWeight.w700, color: cs.onSurface)),
           const SizedBox(height: 4),
-          Text(l10n.onMobileData,
+          Text(l10n.offlineSub,
               style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
           const SizedBox(height: 24),
           SizedBox(
@@ -296,8 +298,9 @@ class EpisodeTile extends StatelessWidget {
 
     // select() instead of watch(): only rebuilds when THIS episode's download progress changes,
     // not on every progress tick from any other episode's download.
+    // Falls back to episodeId lookup in case the DB stream hasn't yet emitted the new taskId.
     final dlProgress = context.select<DownloadProvider, double?>(
-        (d) => d.progressForTask(episode.downloadTaskId));
+        (d) => d.progressForTask(episode.downloadTaskId) ?? d.progressForEpisode(episode.id));
     final db = context.read<AppDatabase>();
     final l10n = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;

@@ -92,6 +92,16 @@ class PodcastResult {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'author': author,
+    'description': description,
+    'artwork': imageUrl,
+    'url': feedUrl,
+    'categories': {for (int i = 0; i < categories.length; i++) '$i': categories[i]},
+  };
+
   PodcastsCompanion toCompanion() => PodcastsCompanion(
         id: Value(feedUrl),
         title: Value(title),

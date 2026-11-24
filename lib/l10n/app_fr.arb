@@ -50,5 +50,7 @@
   "cancelWifiQueue": "Annuler la file WiFi",
   "showMarkedForDownload": "Afficher les marqués pour téléchargement",
   "noWifi": "Pas de WiFi",
-  "onMobileData": "Vous êtes sur les données mobiles"
+  "onMobileData": "Vous êtes sur les données mobiles",
+  "noConnection": "Pas de connexion",
+  "offlineSub": "Vous êtes hors ligne"
 }

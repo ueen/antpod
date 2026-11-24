@@ -159,4 +159,10 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get onMobileData => 'Estás usando datos móviles';
+
+  @override
+  String get noConnection => 'Sin conexión';
+
+  @override
+  String get offlineSub => 'Estás sin conexión';
 }

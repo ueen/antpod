@@ -398,6 +398,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'You\'re on mobile data'**
   String get onMobileData;
+
+  /// No description provided for @noConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'No connection'**
+  String get noConnection;
+
+  /// No description provided for @offlineSub.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re offline'**
+  String get offlineSub;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

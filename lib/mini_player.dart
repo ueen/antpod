@@ -82,7 +82,16 @@ class _MiniPlayerState extends State<MiniPlayer> {
     // select() avoids rebuilding the whole mini player on every position tick.
     // Only _MiniProgress (the thin bar) rebuilds at 5Hz during playback.
     final hasEpisode = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
-    if (!hasEpisode) return const SizedBox.shrink();
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOut,
+      alignment: Alignment.bottomCenter,
+      child: hasEpisode ? _buildContent(context) : const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
 
     final imageUrl = context.select<PlayerProvider, String>(
         (p) => p.currentEpisode?.podcastImageUrl ?? '');

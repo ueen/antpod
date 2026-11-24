@@ -50,5 +50,7 @@
   "cancelWifiQueue": "Cancelar cola WiFi",
   "showMarkedForDownload": "Mostrar marcados para descarga",
   "noWifi": "Sin WiFi",
-  "onMobileData": "Estás usando datos móviles"
+  "onMobileData": "Estás usando datos móviles",
+  "noConnection": "Sin conexión",
+  "offlineSub": "Estás sin conexión"
 }

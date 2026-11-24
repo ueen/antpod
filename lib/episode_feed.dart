@@ -94,10 +94,8 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     if (old.filter != widget.filter || old.searchQuery != widget.searchQuery) {
       _diffUpdate(_applyFilters(_raw));
     }
-    if (!old.refreshing && widget.refreshing) {
-      WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _refreshKey.currentState?.show());
-    }
+    if (old.refreshing != widget.refreshing) setState(() {});
+
   }
 
   @override
@@ -346,6 +344,19 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
           if (widget.headerSlivers != null)
             for (final w in widget.headerSlivers!)
               SliverToBoxAdapter(child: w),
+          SliverToBoxAdapter(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOut,
+              height: widget.refreshing && _displayed.isNotEmpty ? 56.0 : 0.0,
+              child: widget.refreshing && _displayed.isNotEmpty
+                  ? const Center(child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ))
+                  : const SizedBox.shrink(),
+            ),
+          ),
           SliverAnimatedList(
             key: _listKey,
             initialItemCount: _displayed.length,

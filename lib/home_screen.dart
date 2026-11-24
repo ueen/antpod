@@ -1,5 +1,6 @@
 // lib/home_screen.dart
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -75,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _piSearchTimer;
 
   List<PodcastResult> _trending = [];
+  DateTime? _trendingFetchedAt;
   List<_UnifiedResult> _unifiedSearchResults = [];
   int _searchOffset = 0;
   bool _searchHasMore = true;
@@ -308,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
             episodeId: ep.id, audioUrl: ep.audioUrl,
             episodeTitle: ep.title, db: db,
           );
-          if (taskId != null) downloads.trackDownload(taskId);
+          if (taskId != null) downloads.trackDownload(taskId, episodeId: ep.id);
           // If taskId is null, mark is preserved for retry on next WiFi connect.
         } catch (_) {
           // Keep mark set so the episode retries on next WiFi connect.
@@ -718,7 +720,43 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Discover data ─────────────────────────────────────────────────────────
 
-  Future<void> _loadDiscover() async {
+  static const _kTrendingCacheKey = 'trending_cache_v1';
+  static const _kTrendingCacheTsKey = 'trending_cache_ts_v1';
+
+  Future<void> _loadDiscover({bool forceRefresh = false}) async {
+    // Return cached data if it's less than 1 day old and we have results.
+    if (!forceRefresh && _trending.isNotEmpty && _trendingFetchedAt != null &&
+        DateTime.now().difference(_trendingFetchedAt!).inHours < 24) {
+      return;
+    }
+
+    // Try loading from SharedPreferences cache first (survives app restarts).
+    if (!forceRefresh) {
+      final prefs = await SharedPreferences.getInstance();
+      final ts = prefs.getInt(_kTrendingCacheTsKey);
+      final raw = prefs.getString(_kTrendingCacheKey);
+      if (ts != null && raw != null) {
+        final age = DateTime.now()
+            .difference(DateTime.fromMillisecondsSinceEpoch(ts));
+        if (age.inHours < 24) {
+          try {
+            final list = (jsonDecode(raw) as List)
+                .cast<Map<String, dynamic>>()
+                .map(PodcastResult.fromJson)
+                .toList();
+            if (list.isNotEmpty && mounted) {
+              setState(() {
+                _trending = list;
+                _trendingFetchedAt = DateTime.fromMillisecondsSinceEpoch(ts);
+              });
+              return;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (!mounted) return;
     final locale = Localizations.localeOf(context);
     final country = (locale.countryCode ?? locale.languageCode).toLowerCase();
     final lang = locale.languageCode == 'en' ? 'en' : '${locale.languageCode},en';
@@ -742,7 +780,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (!mounted) return;
 
-    setState(() { _trending = charts; _loadingTrending = false; });
+    // Persist to cache.
+    final now = DateTime.now();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kTrendingCacheTsKey, now.millisecondsSinceEpoch);
+      await prefs.setString(_kTrendingCacheKey,
+          jsonEncode(charts.map((c) => c.toJson()).toList()));
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _trending = charts;
+        _trendingFetchedAt = now;
+        _loadingTrending = false;
+      });
+    }
   }
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
@@ -1121,7 +1174,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           filter: _effectiveFilter, l10n: l10n, cs: cs,
                           onToggle: _onFilterToggle,
                           showPodcastsChip: !_isSearchMode || _searchPodcastId != null,
-                          podcastsFirst: _searchPodcastId != null,
+                          podcastsFirst: false,
                         ),
                       ],
                     ),
@@ -1211,7 +1264,7 @@ class _HomeScreenState extends State<HomeScreen> {
           trendingError: _trendingError,
           cs: cs, l10n: l10n,
           onPreview: _openPodcastResult,
-          onRefresh: _loadDiscover,
+          onRefresh: () => _loadDiscover(forceRefresh: true),
           onLoadMore: _loadMorePISearch,
           onCoverTap: _openPodcastResult,
         );
@@ -1816,15 +1869,10 @@ class _DiscoverListState extends State<_DiscoverList> {
         Divider(height: 1, color: cs.outlineVariant),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-          child: Row(
-            children: [
-              Icon(Icons.trending_up_rounded, size: 18, color: cs.primary),
-              const SizedBox(width: 8),
-              Text(l10n.sectionTrending,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
-                      color: cs.onSurfaceVariant,
-                      letterSpacing: 0.3)),
-            ],
+          child: Center(
+            child: Text(l10n.sectionTrending,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
+                    color: cs.onSurface)),
           ),
         ),
         Expanded(

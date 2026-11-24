@@ -92,7 +92,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get openFeed => 'Feed öffnen';
 
   @override
-  String get addByRssUrl => 'Per RSS-URL hinzufügen';
+  String get addByRssUrl => 'RSS-URL hinzufügen';
 
   @override
   String get subscribeToRss => 'RSS-Feed abonnieren';
@@ -159,4 +159,10 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get onMobileData => 'Du bist im Mobilfunknetz';
+
+  @override
+  String get noConnection => 'Keine Verbindung';
+
+  @override
+  String get offlineSub => 'Du bist offline';
 }

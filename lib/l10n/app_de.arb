@@ -28,7 +28,7 @@
   "filterPlaying": "Angefangen",
   "addRssFeed": "RSS-Feed hinzufügen",
   "openFeed": "Feed öffnen",
-  "addByRssUrl": "Per RSS-URL hinzufügen",
+  "addByRssUrl": "RSS-URL hinzufügen",
   "subscribeToRss": "RSS-Feed abonnieren",
   "searchOnline": "Online suchen",
   "discoverTabTrending": "Trends",
@@ -50,5 +50,7 @@
   "cancelWifiQueue": "WLAN-Download abbrechen",
   "showMarkedForDownload": "Für WLAN vorgemerkte anzeigen",
   "noWifi": "Kein WLAN",
-  "onMobileData": "Du bist im Mobilfunknetz"
+  "onMobileData": "Du bist im Mobilfunknetz",
+  "noConnection": "Keine Verbindung",
+  "offlineSub": "Du bist offline"
 }

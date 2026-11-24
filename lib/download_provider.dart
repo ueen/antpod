@@ -18,6 +18,7 @@ import 'app_database.dart';
 class DownloadProvider extends ChangeNotifier {
   final AppDatabase _db;
   final Map<String, double> _progress = {}; // taskId → 0.0..1.0
+  final Map<String, String> _episodeTask = {}; // episodeId → taskId
   Timer? _pollTimer;
 
   DownloadProvider(this._db) {
@@ -28,10 +29,15 @@ class DownloadProvider extends ChangeNotifier {
   double? progressForTask(String? taskId) =>
       taskId == null ? null : _progress[taskId];
 
+  /// Progress by episodeId — fast path before the DB stream emits the new taskId.
+  double? progressForEpisode(String episodeId) =>
+      progressForTask(_episodeTask[episodeId]);
+
   /// Call this immediately after DownloadService.downloadEpisode() returns
   /// a taskId. Shows the ring at 0% right away and starts polling.
-  void trackDownload(String taskId) {
+  void trackDownload(String taskId, {String? episodeId}) {
     _progress[taskId] = 0.0;
+    if (episodeId != null) _episodeTask[episodeId] = taskId;
     notifyListeners();
     _ensurePolling();
   }
@@ -69,6 +75,7 @@ class DownloadProvider extends ChangeNotifier {
     for (final taskId in _progress.keys.toList()) {
       if (!activeIds.contains(taskId)) {
         _progress.remove(taskId);
+        _episodeTask.removeWhere((_, v) => v == taskId);
         await _markComplete(taskId);
         changed = true;
       }
@@ -93,19 +100,19 @@ class DownloadProvider extends ChangeNotifier {
     } catch (_) {}
 
     if (completedTasks != null && completedTasks.isNotEmpty) {
-      // Download completed successfully — update DB with the local file path.
+      // Download completed successfully — update DB using the actual filename.
+      final task = completedTasks.first;
       final dir = await getApplicationDocumentsDirectory();
       final saveDir = p.join(dir.path, 'episodes');
+      final fullPath = p.join(saveDir, task.filename);
       final episode = await (_db.select(_db.episodes)
             ..where((e) => e.downloadTaskId.equals(taskId)))
           .getSingleOrNull();
-      if (episode != null && !episode.isDownloaded) {
-        final fileName = '${episode.id.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
-        final fullPath = p.join(saveDir, fileName);
-        if (File(fullPath).existsSync()) {
-          await _db.updateEpisodeDownload(episode.id, true, fullPath, taskId);
-        }
+      if (episode != null && !episode.isDownloaded && File(fullPath).existsSync()) {
+        await _db.updateEpisodeDownload(episode.id, true, fullPath, taskId);
       }
+      // Dismiss the OS notification for this completed download.
+      try { await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: false); } catch (_) {}
       return;
     }
 
@@ -117,24 +124,42 @@ class DownloadProvider extends ChangeNotifier {
         .getSingleOrNull();
     if (episode != null && !episode.isDownloaded) {
       await _db.requeueEpisodeForDownload(episode.id);
+      // Try to delete any partial file — query task for the actual filename first.
       try {
+        final tasks = await FlutterDownloader.loadTasksWithRawQuery(
+          query: "SELECT * FROM task WHERE task_id='$taskId'",
+        );
         final dir = await getApplicationDocumentsDirectory();
-        final fileName = '${episode.id.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
+        final fileName = tasks != null && tasks.isNotEmpty
+            ? tasks.first.filename
+            : '${episode.id.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
         final file = File(p.join(dir.path, 'episodes', fileName));
         if (file.existsSync()) await file.delete();
       } catch (_) {}
+      // Dismiss notification for failed download.
+      try { await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: false); } catch (_) {}
     }
   }
 
   // ── Cancel in-progress download ───────────────────────────────────────────
 
   Future<void> cancelDownload(String taskId, String episodeId) async {
+    // Query the actual filename before cancelling (the task record is gone after cancel).
+    String? taskFilename;
+    try {
+      final tasks = await FlutterDownloader.loadTasksWithRawQuery(
+        query: "SELECT * FROM task WHERE task_id='$taskId'",
+      );
+      taskFilename = tasks?.firstOrNull?.filename;
+    } catch (_) {}
+
     try { await FlutterDownloader.cancel(taskId: taskId); } catch (_) {}
 
-    // Delete the partial file (same path the downloader was writing to)
+    // Delete the partial file using the actual filename from the task record.
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final fileName = '${episodeId.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
+      final fileName = taskFilename ??
+          '${episodeId.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
       final file = File(p.join(dir.path, 'episodes', fileName));
       if (file.existsSync()) await file.delete();
     } catch (_) {}
@@ -143,6 +168,7 @@ class DownloadProvider extends ChangeNotifier {
     await _db.updateEpisodeDownload(episodeId, false, null, null);
 
     _progress.remove(taskId);
+    _episodeTask.remove(episodeId);
     if (_progress.isEmpty) {
       _pollTimer?.cancel();
       _pollTimer = null;

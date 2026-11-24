@@ -159,4 +159,10 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get onMobileData => 'Vous êtes sur les données mobiles';
+
+  @override
+  String get noConnection => 'Pas de connexion';
+
+  @override
+  String get offlineSub => 'Vous êtes hors ligne';
 }

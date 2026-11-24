@@ -63,7 +63,13 @@ class DownloadService {
     final saveDir = Directory(p.join(dir.path, 'episodes'));
     if (!saveDir.existsSync()) saveDir.createSync(recursive: true);
 
-    final fileName = '${episodeId.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
+    // Use sanitized episode title as filename so the OS notification shows
+    // the episode name. Fall back to episodeId if title is empty after sanitization.
+    final safeTitle = episodeTitle.replaceAll(RegExp(r'[^\w ]'), '').trim();
+    final baseName = safeTitle.isNotEmpty
+        ? safeTitle
+        : episodeId.replaceAll(RegExp(r'[^\w]'), '_');
+    final fileName = '$baseName.mp3';
 
     // On Android 14+ a foreground-service notification requires POST_NOTIFICATIONS.
     // If permission is not granted, disable the OS notification so the WorkManager

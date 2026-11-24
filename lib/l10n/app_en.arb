@@ -28,7 +28,7 @@
   "filterPlaying": "Playing",
   "addRssFeed": "Add RSS feed",
   "openFeed": "Open feed",
-  "addByRssUrl": "Add by RSS feed URL",
+  "addByRssUrl": "Add by RSS URL",
   "subscribeToRss": "Subscribe to RSS feed",
   "searchOnline": "Search online",
   "discoverTabTrending": "Trending",
@@ -50,5 +50,7 @@
   "cancelWifiQueue": "Cancel WiFi queue",
   "showMarkedForDownload": "Show marked for download",
   "noWifi": "No WiFi",
-  "onMobileData": "You're on mobile data"
+  "onMobileData": "You're on mobile data",
+  "noConnection": "No connection",
+  "offlineSub": "You're offline"
 }
