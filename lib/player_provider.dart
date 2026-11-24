@@ -245,14 +245,15 @@ class PlayerProvider extends ChangeNotifier {
   /// away) and forgets the episode so it isn't restored on the next launch.
   Future<void> stopAndClear() => _closePlayer(savePosition: true);
 
-  /// Mark an episode as unplayed: back to New, progress cleared. The episode
-  /// in the player stops first, the same as marking it played, so no
-  /// position save can land after the reset and undo it.
-  Future<void> markUnplayed(String id) async {
+  /// Mark an episode as played (into Listened) or unplayed (back to New,
+  /// progress cleared). Either way, if it's the episode in the player, the
+  /// player closes first, so no position save can land after the write and
+  /// undo it.
+  Future<void> setPlayed(String id, bool played) async {
     // _closePlayer() clears the player state synchronously, before its
-    // first await, so the reset below is the last write either way.
+    // first await, so the write below is the last one either way.
     final closing = _currentEpisode?.id == id ? _closePlayer() : null;
-    await _db.markUnfinished(id);
+    await (played ? _db.markFinished(id) : _db.markUnfinished(id));
     await closing;
   }
 
@@ -399,7 +400,8 @@ class PlayerProvider extends ChangeNotifier {
   void _onEpisodeUpdated(Episode? updated) {
     if (_currentEpisode == null) return;
     // Episode deleted from the DB (temp episode removed, unsubscribe) or
-    // marked as played (swipe, menu, natural end) — close the player.
+    // marked as played elsewhere (natural end, feed sync) — close the
+    // player. Swipe and menu go through setPlayed(), which closes first.
     // No position save: see _closePlayer.
     if (updated == null ||
         (!_currentEpisode!.isFinished && updated.isFinished)) {

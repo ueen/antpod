@@ -237,14 +237,17 @@ class EpisodeTile extends StatelessWidget {
         cs: cs,
         l10n: l10n,
         onMarkPlayed: !episode.isFinished
-            ? () { Navigator.pop(context); db.markFinished(episode.id); }
+            ? () {
+                context.read<PlayerProvider>().setPlayed(episode.id, true);
+                Navigator.pop(context);
+              }
             : null,
         // isCurrent: the list doesn't follow the playing episode's position
         // (see build), so its lastPositionMs can still read 0.
         onMarkUnplayed: (episode.isFinished || episode.lastPositionMs > 0 || isCurrent)
             ? () {
                 final messenger = ScaffoldMessenger.of(context);
-                context.read<PlayerProvider>().markUnplayed(episode.id);
+                context.read<PlayerProvider>().setPlayed(episode.id, false);
                 Navigator.pop(context);
                 messenger.showSnackBar(SnackBar(
                     content: Text(l10n.markUnplayed),
@@ -320,10 +323,9 @@ class EpisodeTile extends StatelessWidget {
       onSwipeStart: () async {
         if (!episode.isSubscribed) {
           await db.cleanupTempEpisode(episode.id);
-        } else if (episode.isFinished) {
-          await context.read<PlayerProvider>().markUnplayed(episode.id);
         } else {
-          await db.markFinished(episode.id);
+          await context.read<PlayerProvider>()
+              .setPlayed(episode.id, !episode.isFinished);
         }
       },
       onSwipeEnd: () async {
