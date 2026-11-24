@@ -71,8 +71,47 @@
     }
     .ep-title {
       font-size: 1.15rem; font-weight: 800; line-height: 1.3;
-      letter-spacing: -0.02em; margin-bottom: 1.25rem;
+      letter-spacing: -0.02em;
     }
+    .title-row {
+      display: flex; align-items: flex-start; gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .desc-btn {
+      flex-shrink: 0;
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 1.5px solid #F0E4D4; background: #fff;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: #9E7056; margin-top: 0.15rem; padding: 0;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .desc-btn:hover { border-color: #FF9A30; color: #FF9A30; }
+    .desc-btn svg { transition: transform 0.2s; }
+    .desc-btn.open svg { transform: rotate(180deg); }
+    .desc-panel {
+      display: none; font-size: 0.82rem; color: #5C3A1E; line-height: 1.6;
+      padding: 0.75rem 0.875rem;
+      background: #FFFAF5; border: 1px solid #F0E4D4;
+      border-radius: 0.625rem; margin-bottom: 1rem;
+      max-height: 160px; overflow-y: auto;
+      white-space: pre-line;
+    }
+
+    .podcast-name a { color: inherit; text-decoration: none; }
+    .podcast-name a:hover { color: #FF9A30; }
+
+    /* Episode list on podcast share */
+    .ep-list { margin-top: 0.875rem; padding-top: 0.875rem; border-top: 1px solid #F0E4D4; display: none; }
+    .ep-list-label { font-size: 0.72rem; font-weight: 600; color: #9E7056; margin-bottom: 0.35rem; }
+    .ep-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.45rem 0; border-bottom: 1px solid #F5EDE3;
+      text-decoration: none; color: #1A0E07;
+    }
+    .ep-item:last-child { border-bottom: none; }
+    .ep-item:hover .ep-item-title { color: #FF9A30; }
+    .ep-item-title { flex: 1; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ep-item-arrow { color: #C8A882; flex-shrink: 0; }
 
     /* Custom audio player */
     .player {
@@ -104,35 +143,12 @@
       flex: 1; min-width: 0;
       display: flex; flex-direction: column; gap: 0.3rem;
     }
-    .cp-track {
-      position: relative;
-      height: 20px;
-      cursor: pointer;
+    .waveform {
+      display: flex; align-items: center; gap: 1.5px;
+      height: 32px; cursor: pointer; user-select: none;
     }
-    .cp-track::before {
-      content: '';
-      position: absolute; left: 0; right: 0;
-      height: 4px; border-radius: 2px;
-      background: #F0E4D4;
-      top: 50%; transform: translateY(-50%);
-    }
-    .cp-fill {
-      position: absolute; left: 0;
-      height: 4px; border-radius: 2px;
-      background: #FF9A30;
-      width: 0%; transition: width 0.25s linear;
-      top: 50%; transform: translateY(-50%);
-      pointer-events: none;
-    }
-    .cp-thumb {
-      position: absolute;
-      width: 13px; height: 13px;
-      background: #FF9A30; border-radius: 50%;
-      transform: translate(-50%, -50%);
-      left: 0%; top: 50%;
-      box-shadow: 0 1px 4px rgba(255,154,48,.5);
-      pointer-events: none;
-    }
+    .wf-bar { flex: 1; border-radius: 2px; background: #F0E4D4; pointer-events: none; }
+    .wf-bar.on { background: #FF9A30; }
     .cp-times {
       display: flex; justify-content: space-between;
       font-size: 0.7rem; color: #9E7056; font-variant-numeric: tabular-nums;
@@ -174,8 +190,6 @@
     }
     .not-installed a { color: #FF9A30; font-weight: 600; text-decoration: none; }
 
-    .divider { border: none; border-top: 1px solid #F0E4D4; margin: 0.75rem 0; }
-
     .feed-row {
       display: flex; align-items: center; gap: 0.5rem;
       margin-top: 0.875rem;
@@ -190,6 +204,12 @@
     }
     .feed-url a { color: #9E7056; text-decoration: none; }
     .feed-url a:hover { color: #FF9A30; }
+    .feed-copy {
+      flex-shrink: 0; border: none; background: transparent; padding: 2px;
+      cursor: pointer; color: #C8A882; line-height: 0;
+      transition: color 0.15s;
+    }
+    .feed-copy:hover { color: #FF9A30; }
 
     footer {
       border-top: 1px solid #F0E4D4;
@@ -229,7 +249,13 @@
           <span id="badge-label"></span>
         </div>
         <div class="podcast-name" id="podcast-name"></div>
-        <h1 class="ep-title" id="ep-title"></h1>
+        <div class="title-row">
+          <h1 class="ep-title" id="ep-title"></h1>
+          <button class="desc-btn" id="desc-btn" onclick="toggleDesc()" aria-label="Show description" style="display:none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+        <div class="desc-panel" id="desc-panel"></div>
 
         <!-- Custom audio player (episode only) -->
         <div class="player" id="player">
@@ -240,10 +266,7 @@
               <svg id="icon-pause" width="18" height="18" viewBox="0 0 24 24" fill="white" style="display:none;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
             </button>
             <div class="cp-right">
-              <div class="cp-track" id="cp-track">
-                <div class="cp-fill" id="cp-fill"></div>
-                <div class="cp-thumb" id="cp-thumb"></div>
-              </div>
+              <div class="waveform" id="waveform"></div>
               <div class="cp-times">
                 <span id="cp-cur">0:00</span>
                 <span id="cp-dur">0:00</span>
@@ -268,8 +291,6 @@
           <span id="btn-open-label"></span>
         </button>
 
-        <hr class="divider" />
-
         <!-- Other apps via pod.link -->
         <a class="btn-other" id="btn-podlink" href="https://pod.link/" target="_blank" rel="noopener">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -283,6 +304,14 @@
         <div class="feed-row" id="feed-row" style="display:none;">
           <span class="feed-label">RSS</span>
           <span class="feed-url" id="feed-url-text"></span>
+          <button class="feed-copy" id="feed-copy" onclick="copyFeed()" aria-label="Copy RSS URL">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+
+        <!-- Recent episodes (podcast share only) -->
+        <div class="ep-list" id="ep-list">
+          <div class="ep-list-label">Recent episodes</div>
         </div>
       </div>
     </div>
@@ -394,6 +423,18 @@
     const pTitle = params.get('t') || '';
     const pPod   = '';
 
+    let _feedUrl = '';
+    function copyFeed() {
+      if (!_feedUrl) return;
+      navigator.clipboard?.writeText(_feedUrl).then(() => {
+        const btn = document.getElementById('feed-copy');
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF9A30" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(() => {
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        }, 1800);
+      });
+    }
+
     function render(rFeed, rTitle, rPodcast, rCover, rAudio) {
       const isEpisode = !!h;
 
@@ -413,6 +454,7 @@
       }
 
       if (rFeed) {
+        _feedUrl = rFeed;
         function toBase64Url(str) {
           return btoa(unescape(encodeURIComponent(str)))
             .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
@@ -426,10 +468,46 @@
       }
     }
 
+    // ── Description toggle ────────────────────────────────────────────────────
+    let _desc = '';
+    function stripHtml(html) {
+      if (!html) return '';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      return (tmp.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+    }
+    function showDesc(text) {
+      _desc = text ? text.trim() : '';
+      if (_desc) document.getElementById('desc-btn').style.display = 'flex';
+    }
+    function toggleDesc() {
+      const panel = document.getElementById('desc-panel');
+      const btn   = document.getElementById('desc-btn');
+      const open  = panel.style.display === 'block';
+      panel.style.display = open ? 'none' : 'block';
+      btn.classList.toggle('open', !open);
+      if (!open && !panel.textContent) panel.textContent = _desc;
+    }
+
     // ── Audio player wiring ───────────────────────────────────────────────────
+    function buildWaveform() {
+      const wf = document.getElementById('waveform');
+      const N = 55;
+      let v = 0.5;
+      for (let i = 0; i < N; i++) {
+        v += (Math.random() - 0.5) * 0.35;
+        v = Math.max(0.12, Math.min(1.0, v));
+        const bar = document.createElement('div');
+        bar.className = 'wf-bar';
+        bar.style.height = Math.round(v * 100) + '%';
+        wf.appendChild(bar);
+      }
+    }
+
     function showPlayer(audioEl) {
       const playerEl = document.getElementById('player');
       playerEl.style.display = 'block';
+      buildWaveform();
       requestAnimationFrame(() => {
         playerEl.style.opacity = '1';
         playerEl.style.transform = 'translateY(0)';
@@ -440,9 +518,7 @@
     function wirePlayer(audioEl) {
       const iconPlay  = document.getElementById('icon-play');
       const iconPause = document.getElementById('icon-pause');
-      const fill  = document.getElementById('cp-fill');
-      const thumb = document.getElementById('cp-thumb');
-      const track = document.getElementById('cp-track');
+      const wf    = document.getElementById('waveform');
       const curEl = document.getElementById('cp-cur');
       const durEl = document.getElementById('cp-dur');
 
@@ -451,7 +527,12 @@
         s = Math.floor(s);
         return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
       }
-      function setProgress(pct) { fill.style.width = pct + '%'; thumb.style.left = pct + '%'; }
+      function setProgress(pct) {
+        const bars = wf.children;
+        const cut = (pct / 100) * bars.length;
+        for (let i = 0; i < bars.length; i++)
+          bars[i].classList.toggle('on', i < cut);
+      }
 
       audioEl.addEventListener('loadedmetadata', () => durEl.textContent = fmt(audioEl.duration));
       audioEl.addEventListener('timeupdate', () => {
@@ -464,14 +545,14 @@
 
       let seeking = false;
       function seekFromEvent(e) {
-        const rect = track.getBoundingClientRect();
+        const rect = wf.getBoundingClientRect();
         const x    = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
         const pct  = Math.max(0, Math.min(1, x / rect.width));
         if (audioEl.duration) audioEl.currentTime = pct * audioEl.duration;
         setProgress(pct * 100);
       }
-      track.addEventListener('mousedown',  e => { seeking = true; seekFromEvent(e); });
-      track.addEventListener('touchstart', e => { seeking = true; seekFromEvent(e); }, {passive:true});
+      wf.addEventListener('mousedown',  e => { seeking = true; seekFromEvent(e); });
+      wf.addEventListener('touchstart', e => { seeking = true; seekFromEvent(e); }, {passive:true});
       window.addEventListener('mousemove',  e => { if (seeking) seekFromEvent(e); });
       window.addEventListener('touchmove',  e => { if (seeking) seekFromEvent(e); }, {passive:true});
       window.addEventListener('mouseup',   () => seeking = false);
@@ -546,10 +627,16 @@
           new URLSearchParams({url: feedUrl}), {headers: await piHeaders()}).then(r => r.json());
         const cover    = feedData.feed?.artwork || feedData.feed?.image;
         const podTitle = feedData.feed?.title || '';
+        const podDesc  = feedData.feed?.description || '';
         if (cover) _showCover(cover);
 
-        if (!h) { _applyTitles(podTitle, ''); return; }
+        if (!h) {
+          _applyTitles(podTitle, '');
+          showDesc(podDesc);
+          return;
+        }
 
+        linkPodcastName(podTitle);
         const epData = await fetch(base + '/episodes/byfeedurl?' +
           new URLSearchParams({url: feedUrl, max: '1000'}), {headers: await piHeaders()}).then(r => r.json());
         const items = epData.items || [];
@@ -559,9 +646,41 @@
           item => (item.guid || '').trim(),
           item => item.enclosureUrl || item.url || '',
           item => item.title || '',
-          item => _applyTitles(item.title || '', podTitle)
+          item => {
+            _applyTitles(item.title || '', podTitle);
+            showDesc(stripHtml(item.description || '') || podDesc);
+          }
         )();
       } catch (e) { console.warn('[PI] error:', e); }
+    }
+
+    // Make the podcast-name clickable, linking to the podcast share page.
+    function linkPodcastName(podTitle) {
+      if (!podTitle || !h) return;
+      const el = document.getElementById('podcast-name');
+      el.innerHTML = '<a href="?' + new URLSearchParams({p: params.get('p')}).toString() + '">' +
+        podTitle.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</a>';
+    }
+
+    // Show up to 3 recent episodes on a podcast share page (no extra fetch needed).
+    async function showRecentEpisodes(items, feedParam) {
+      const list = document.getElementById('ep-list');
+      const top = items.slice(0, 3);
+      const hashes = await Promise.all(
+        top.map(item => guidHash(item.querySelector('guid')?.textContent?.trim() || ''))
+      );
+      top.forEach((item, i) => {
+        const title = item.querySelector('title')?.textContent?.trim() || '';
+        if (!title || !hashes[i]) return;
+        const a = document.createElement('a');
+        a.className = 'ep-item';
+        a.href = '?' + new URLSearchParams({p: feedParam, e: hashes[i]}).toString();
+        a.innerHTML =
+          '<span class="ep-item-title">' + title.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>' +
+          '<svg class="ep-item-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+        list.appendChild(a);
+      });
+      if (list.children.length > 1) list.style.display = 'block';
     }
 
     // Fetch RSS via proxy, extract cover + titles + episode audio.
@@ -586,17 +705,34 @@
       if (img) _showCover(img);
 
       const podTitle = doc.querySelector('channel > title')?.textContent?.trim() || '';
+      const podDesc  = doc.querySelector('channel > description')?.textContent?.trim() || '';
 
-      if (!h) { _applyTitles(podTitle, ''); return; }
+      if (!h) {
+        _applyTitles(podTitle, '');
+        showDesc(podDesc);
+        const items = [...doc.querySelectorAll('item')];
+        showRecentEpisodes(items, params.get('p'));
+        return;
+      }
 
       _applyTitles('', podTitle);
+      linkPodcastName(podTitle);
       const items = [...doc.querySelectorAll('item')];
       const found = await _tryMatchEpisode(
         items,
         item => item.querySelector('guid')?.textContent?.trim() || '',
         item => item.querySelector('enclosure')?.getAttribute('url') || '',
         item => item.querySelector('title')?.textContent?.trim() || '',
-        item => _applyTitles(item.querySelector('title')?.textContent?.trim() || '', podTitle)
+        item => {
+          _applyTitles(item.querySelector('title')?.textContent?.trim() || '', podTitle);
+          let epDesc = '';
+          for (const el of item.children) {
+            if (el.localName === 'encoded') { epDesc = el.textContent; break; }
+          }
+          if (!epDesc) epDesc = item.querySelector('description')?.textContent ||
+                                item.querySelector('summary')?.textContent || '';
+          showDesc(stripHtml(epDesc) || podDesc);
+        }
       )();
       if (!found) tryPodcastIndex(feedUrl);
     }
