@@ -317,7 +317,7 @@ class EpisodeTile extends StatelessWidget {
 
     final ringProgress = episode.isDownloaded ? 1.0 : dlProgress;
     final activeTaskId = episode.downloadTaskId;
-    final isDownloading = activeTaskId != null && !episode.isDownloaded;
+    final isDownloading = (activeTaskId != null || dlProgress != null) && !episode.isDownloaded;
     final isMarked = episode.markedForDownload;
 
     return _StickySwipeable(
@@ -337,7 +337,8 @@ class EpisodeTile extends StatelessWidget {
       onSwipeEnd: () async {
         final downloads = context.read<DownloadProvider>();
         if (isDownloading) {
-          await downloads.cancelDownload(activeTaskId, episode.id);
+          final taskId = activeTaskId ?? downloads.taskIdForEpisode(episode.id);
+          if (taskId != null) await downloads.cancelDownload(taskId, episode.id);
         } else if (episode.isDownloaded) {
           await db.deleteLocalFile(episode.id);
           if (!episode.isSubscribed) {

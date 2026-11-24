@@ -10,12 +10,15 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'app_database.dart';
 
 class DownloadProvider extends ChangeNotifier {
+  static const _notifChannel = MethodChannel('de.ueen.antpod/notifications');
+
   final AppDatabase _db;
   final Map<String, double> _progress = {}; // taskId → 0.0..1.0
   final Map<String, String> _episodeTask = {}; // episodeId → taskId
@@ -32,6 +35,9 @@ class DownloadProvider extends ChangeNotifier {
   /// Progress by episodeId — fast path before the DB stream emits the new taskId.
   double? progressForEpisode(String episodeId) =>
       progressForTask(_episodeTask[episodeId]);
+
+  /// Task ID for an episode — useful when the DB field hasn't synced yet.
+  String? taskIdForEpisode(String episodeId) => _episodeTask[episodeId];
 
   /// Call this immediately after DownloadService.downloadEpisode() returns
   /// a taskId. Shows the ring at 0% right away and starts polling.
@@ -113,6 +119,7 @@ class DownloadProvider extends ChangeNotifier {
       }
       // Dismiss the OS notification for this completed download.
       try { await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: false); } catch (_) {}
+      try { await _notifChannel.invokeMethod('dismissDownloadNotifications'); } catch (_) {}
       return;
     }
 
@@ -138,6 +145,7 @@ class DownloadProvider extends ChangeNotifier {
       } catch (_) {}
       // Dismiss notification for failed download.
       try { await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: false); } catch (_) {}
+      try { await _notifChannel.invokeMethod('dismissDownloadNotifications'); } catch (_) {}
     }
   }
 
@@ -154,6 +162,7 @@ class DownloadProvider extends ChangeNotifier {
     } catch (_) {}
 
     try { await FlutterDownloader.cancel(taskId: taskId); } catch (_) {}
+    try { await _notifChannel.invokeMethod('dismissDownloadNotifications'); } catch (_) {}
 
     // Delete the partial file using the actual filename from the task record.
     try {
