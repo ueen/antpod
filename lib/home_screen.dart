@@ -157,14 +157,9 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         if (!mounted) return;
       }
-      if (pods.isEmpty) {
-        // No subscriptions: Discover is home, also behind a linked preview.
-        if (_mode == _FeedMode.feed) {
-          _enterDiscover();
-        } else if (_mode == _FeedMode.previewPodcast) {
-          _previewFrom = _FeedMode.discover;
-        }
-      }
+      // No subscriptions: Discover is home (back from a linked preview
+      // lands there too, see _exitPreview).
+      if (pods.isEmpty && _mode == _FeedMode.feed) _enterDiscover();
       if (pods.isNotEmpty) {
         // Schedule the RSS refresh at idle priority so it only starts after
         // the first frame is fully painted and the scheduler has no pending work.
@@ -521,9 +516,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return data;
   }
 
-  void _exitPreview() {
+  Future<void> _exitPreview() async {
+    var target = _previewFrom;
+    // Without subscriptions home is empty, so Discover stands in for it
+    // (a linked preview on a fresh install, or the last podcast unsubscribed).
+    if (target == _FeedMode.feed) {
+      final pods = await context.read<AppDatabase>().getAllPodcasts();
+      if (!mounted || _mode != _FeedMode.previewPodcast) return;
+      if (pods.isEmpty) target = _FeedMode.discover;
+    }
     setState(() {
-      _mode = _previewFrom;
+      _mode = target;
       _previewResult = null;
       _filter = _filter.copyWith(podcasts: false);
     });
