@@ -89,13 +89,19 @@
     .desc-btn svg { transition: transform 0.2s; flex-shrink: 0; }
     .desc-btn.open svg { transform: rotate(180deg); }
     .desc-panel {
-      display: none; font-size: 0.82rem; color: #5C3A1E; line-height: 1.6;
-      padding: 0.75rem 0.875rem;
+      font-size: 0.82rem; color: #5C3A1E; line-height: 1.6;
+      padding: 0 0.875rem;
       background: #FFFAF5; border: 1px solid #F0E4D4;
       border-radius: 0.625rem; margin-bottom: 1rem;
-      max-height: 160px; overflow-y: hidden; overflow-x: hidden;
+      max-height: 0; overflow: hidden;
       word-break: break-word; overflow-wrap: break-word;
       white-space: pre-wrap;
+      transition: max-height 0.28s ease, padding 0.28s ease, border-color 0.28s ease;
+      border-color: transparent;
+    }
+    .desc-panel.open {
+      max-height: 160px; padding: 0.75rem 0.875rem;
+      border-color: #F0E4D4;
     }
 
     .podcast-name a { color: inherit; text-decoration: none; }
@@ -286,7 +292,7 @@
 
         <!-- Open in AntPod -->
         <button class="btn-open" id="btn-open" onclick="openInApp()">
-          <img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg" width="24" height="24" alt="" style="border-radius:50%;display:block;flex-shrink:0;filter:brightness(0.78);" />
+          <img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg" width="22" height="22" alt="" style="border-radius:50%;display:block;flex-shrink:0;box-shadow:0 0 0 3px #C97018;" />
           <span id="btn-open-label"></span>
         </button>
 
@@ -487,10 +493,10 @@
     function toggleDesc() {
       const panel = document.getElementById('desc-panel');
       const btn   = document.getElementById('desc-btn');
-      const open  = panel.style.display === 'block';
-      panel.style.display = open ? 'none' : 'block';
-      btn.classList.toggle('open', !open);
+      const open  = panel.classList.contains('open');
       if (!open && !panel.textContent) panel.textContent = _desc;
+      panel.classList.toggle('open', !open);
+      btn.classList.toggle('open', !open);
     }
 
     // ── Audio player wiring ───────────────────────────────────────────────────
