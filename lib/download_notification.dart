@@ -99,7 +99,7 @@ class DownloadNotification {
         l10n.downloadNotificationChannel,
         importance: Importance.low,
         priority: Priority.low,
-        icon: 'ic_notification',
+        icon: 'ic_download',
         ongoing: true,
         autoCancel: false,
         onlyAlertOnce: true,

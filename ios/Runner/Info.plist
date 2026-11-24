@@ -92,5 +92,8 @@
 				</array>
 			</dict>
 		</array>
+		<!-- Links are routed by app_links, not Flutter's router -->
+		<key>FlutterDeepLinkingEnabled</key>
+		<false/>
 	</dict>
 </plist>

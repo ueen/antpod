@@ -28,7 +28,6 @@ class PlayerProvider extends ChangeNotifier {
   // False after restoreLastEpisode() — audio source is not configured until
   // the user taps play. True once load() or play() sets up the audio handler.
   bool _audioReady = false;
-  double? _downloadProgress;
   List<PodcastChapter> _chapters = [];
   // startTimeMs → image bytes, populated from ID3v2 CHAP tags when JSON has no images
   Map<int, Uint8List> _id3ChapterImages = {};
@@ -74,16 +73,7 @@ class PlayerProvider extends ChangeNotifier {
 
       if (state.processingState == AudioProcessingState.completed) {
         _isPlaying = false;
-        if (_currentEpisode != null) {
-          _db.updatePlaybackPosition(
-            _currentEpisode!.id,
-            positionMs: _duration.inMilliseconds,
-            durationMs: _duration.inMilliseconds,
-          );
-          _db.markFinished(_currentEpisode!.id);
-          _db.cleanupTempEpisode(_currentEpisode!.id);
-          // Local file kept — startup cleanup deletes it 2 days after lastPlayed.
-        }
+        _finishCurrent();
       }
       notifyListeners();
     });
@@ -114,7 +104,6 @@ class PlayerProvider extends ChangeNotifier {
   Duration get position => _position;
   Duration get duration => _duration;
   bool get isLoading => _isLoading;
-  double? get downloadProgress => _downloadProgress;
   bool get hasEpisode => _currentEpisode != null;
 
   double get progress =>
@@ -438,12 +427,20 @@ class PlayerProvider extends ChangeNotifier {
     if (_currentEpisode == null) return;
     if (_duration.inSeconds <= 0) return;
     if (_position.inSeconds < _duration.inSeconds - 60) return;
-    _db.updatePlaybackPosition(_currentEpisode!.id,
+    _finishCurrent();
+  }
+
+  /// Record the current episode as fully played. Temp episodes are removed;
+  /// a subscribed episode's download is kept and deleted by the startup
+  /// cleanup 2 days after it was last played.
+  Future<void> _finishCurrent() async {
+    final ep = _currentEpisode;
+    if (ep == null) return;
+    await _db.updatePlaybackPosition(ep.id,
         positionMs: _duration.inMilliseconds,
         durationMs: _duration.inMilliseconds);
-    _db.markFinished(_currentEpisode!.id);
-    _db.cleanupTempEpisode(_currentEpisode!.id);
-    // Local file kept — startup cleanup deletes it 2 days after lastPlayed.
+    await _db.markFinished(ep.id);
+    await _db.cleanupTempEpisode(ep.id);
   }
 
   Future<void> seekTo(Duration pos) async {
@@ -476,13 +473,6 @@ class PlayerProvider extends ChangeNotifier {
 
   void setRewindSeconds(int s) {
     (audioHandler as AntPodAudioHandler).setRewindSeconds(s);
-    notifyListeners();
-  }
-
-  // ── Download progress ─────────────────────────────────────────────────────
-
-  void setDownloadProgress(double? progress) {
-    _downloadProgress = progress;
     notifyListeners();
   }
 

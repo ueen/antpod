@@ -167,36 +167,44 @@ class AppLocalizationsEs extends AppLocalizations {
   String get offlineSub => 'Estás sin conexión';
 
   @override
-  String get unsubscribeDeleteAll => 'Cancelar suscripción y borrar todo';
+  String get unsubscribeConfirm => '¿Seguro que quieres cancelar la suscripción?';
 
   @override
-  String get unsubscribeKeepEpisodes => 'Cancelar suscripción, conservar episodios';
-
-  @override
-  String get unsubscribeKeepHint => 'Los episodios descargados y empezados se quedan hasta escucharlos';
-
-  @override
-  String get pauseSync => 'Pausar sincronización';
-
-  @override
-  String get resumeSync => 'Reanudar sincronización';
-
-  @override
-  String get syncPaused => 'Sincronización en pausa';
-
-  @override
-  String get pauseSyncHint => 'Conserva los episodios, sin buscar nuevos';
-
-  @override
-  String unsubscribeDeletesDownloads(int count) {
+  String foundDownloaded(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Se borrarán $count episodios descargados.',
-      one: 'Se borrará 1 episodio descargado.',
+      other: '$count episodios descargados encontrados',
+      one: '1 episodio descargado encontrado',
     );
     return '$_temp0';
   }
+
+  @override
+  String foundStarted(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count episodios empezados encontrados',
+      one: '1 episodio empezado encontrado',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get foundStartedAndDownloaded => 'Episodios empezados y descargados encontrados';
+
+  @override
+  String get unsubscribeDeleteAll => 'Cancelar suscripción y borrar';
+
+  @override
+  String get unsubscribeKeepEpisodes => 'Conservar episodios';
+
+  @override
+  String get pauseNewEpisodes => 'Pausar episodios nuevos';
+
+  @override
+  String get newEpisodesPaused => 'Episodios nuevos en pausa';
 
   @override
   String downloadingEpisodes(int count) {

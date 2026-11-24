@@ -1,46 +1,23 @@
 // lib/download_service.dart
+//
+// Thin wrapper around flutter_downloader: init, enqueue, remove. Progress and
+// completion are observed by DownloadProvider (it polls the task table).
 import 'dart:io';
-import 'dart:isolate';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'app_database.dart';
+import 'share_utils.dart';
 
-const _kDownloadPort = 'antpod_downloads';
-
-@pragma('vm:entry-point')
 class DownloadService {
   static bool _initialized = false;
-  static ReceivePort? _receivePort;
-
-  // Optional fast-path callback (IsolateNameServer). DownloadProvider polling
-  // is the primary mechanism; this is a bonus for faster UI updates.
-  static void Function(String taskId, int status, int progress)? onProgress;
 
   static Future<void> init() async {
     if (_initialized) return;
     await FlutterDownloader.initialize(debug: kDebugMode);
     _initialized = true;
-  }
-
-  static void registerCallback() {
-    FlutterDownloader.registerCallback(downloadCallback, step: 1);
-
-    _receivePort?.close();
-    _receivePort = ReceivePort();
-    IsolateNameServer.removePortNameMapping(_kDownloadPort);
-    IsolateNameServer.registerPortWithName(
-        _receivePort!.sendPort, _kDownloadPort);
-
-    _receivePort!.listen((data) {
-      if (data is List && data.length == 3) {
-        onProgress?.call(
-            data[0] as String, data[1] as int, data[2] as int);
-      }
-    });
   }
 
   // ── Download episode ──────────────────────────────────────────────────────
@@ -53,6 +30,20 @@ class DownloadService {
     if (status.isDenied) await Permission.notification.request();
   }
 
+  /// File name for an episode download: the readable title (Unicode letters
+  /// kept, capped so the name stays under the 255-byte limit) plus a short
+  /// hash of the episode id. The hash keeps same-titled episodes ("Trailer",
+  /// "Bonus") apart: flutter_downloader fails a task whose file already exists.
+  static String fileNameFor(String episodeId, String episodeTitle) {
+    final clean = episodeTitle
+        .replaceAll(RegExp(r'[^\p{L}\p{N} _-]', unicode: true), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final title = String.fromCharCodes(clean.runes.take(60)).trim();
+    final hash = ShareUtils.guidHash(episodeId).substring(0, 8);
+    return title.isEmpty ? '$hash.mp3' : '$title $hash.mp3';
+  }
+
   static Future<String?> downloadEpisode({
     required String episodeId,
     required String audioUrl,
@@ -63,13 +54,12 @@ class DownloadService {
     final saveDir = Directory(p.join(dir.path, 'episodes'));
     if (!saveDir.existsSync()) saveDir.createSync(recursive: true);
 
-    // Sanitized episode title as filename (readable when exported). Fall back
-    // to episodeId if the title is empty after sanitization.
-    final safeTitle = episodeTitle.replaceAll(RegExp(r'[^\w ]'), '').trim();
-    final baseName = safeTitle.isNotEmpty
-        ? safeTitle
-        : episodeId.replaceAll(RegExp(r'[^\w]'), '_');
-    final fileName = '$baseName.mp3';
+    final fileName = fileNameFor(episodeId, episodeTitle);
+    // A leftover partial file from an earlier attempt would make the task fail.
+    final stale = File(p.join(saveDir.path, fileName));
+    if (stale.existsSync()) {
+      try { stale.deleteSync(); } catch (_) {}
+    }
 
     // flutter_downloader's own notifications stay off: it posts one per task
     // plus "complete"/"failed" notices. DownloadProvider shows a single
@@ -92,20 +82,17 @@ class DownloadService {
     return taskId;
   }
 
-  // ── Cancel interrupted download and remove partial file ───────────────────
-
+  /// Stop a task (if still running), drop its record and delete its file.
   static Future<void> cancelAndCleanup(String taskId) async {
     try {
-      // shouldDeleteContent removes the partial file from disk.
       await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: true);
     } catch (_) {}
   }
 
-  // ── Background callback (runs in bg isolate) ──────────────────────────────
-
-  @pragma('vm:entry-point')
-  static void downloadCallback(String id, int status, int progress) {
-    IsolateNameServer.lookupPortByName(_kDownloadPort)
-        ?.send([id, status, progress]);
+  /// Drop a finished task's record but keep its file.
+  static Future<void> forget(String taskId) async {
+    try {
+      await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: false);
+    } catch (_) {}
   }
 }

@@ -2,4 +2,4 @@
 <!-- Referenced by name from Dart (audio_service, download notification), so
      the release resource shrinker can't see it. -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/ic_notification" />
+    tools:keep="@drawable/ic_notification,@drawable/ic_download" />

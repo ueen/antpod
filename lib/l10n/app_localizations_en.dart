@@ -167,36 +167,44 @@ class AppLocalizationsEn extends AppLocalizations {
   String get offlineSub => 'You\'re offline';
 
   @override
-  String get unsubscribeDeleteAll => 'Unsubscribe & delete all';
+  String get unsubscribeConfirm => 'Sure you want to unsubscribe?';
 
   @override
-  String get unsubscribeKeepEpisodes => 'Unsubscribe, keep episodes';
-
-  @override
-  String get unsubscribeKeepHint => 'Downloaded and started episodes stay until played';
-
-  @override
-  String get pauseSync => 'Pause sync';
-
-  @override
-  String get resumeSync => 'Resume sync';
-
-  @override
-  String get syncPaused => 'Sync paused';
-
-  @override
-  String get pauseSyncHint => 'Keep episodes, stop checking for new ones';
-
-  @override
-  String unsubscribeDeletesDownloads(int count) {
+  String foundDownloaded(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count downloaded episodes will be deleted.',
-      one: '1 downloaded episode will be deleted.',
+      other: '$count downloaded episodes found',
+      one: '1 downloaded episode found',
     );
     return '$_temp0';
   }
+
+  @override
+  String foundStarted(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count started episodes found',
+      one: '1 started episode found',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get foundStartedAndDownloaded => 'Started and downloaded episodes found';
+
+  @override
+  String get unsubscribeDeleteAll => 'Unsubscribe & delete';
+
+  @override
+  String get unsubscribeKeepEpisodes => 'Keep episodes';
+
+  @override
+  String get pauseNewEpisodes => 'Pause new episodes';
+
+  @override
+  String get newEpisodesPaused => 'New episodes paused';
 
   @override
   String downloadingEpisodes(int count) {

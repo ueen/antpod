@@ -1,3 +1,4 @@
+import 'package:app_links/app_links.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,10 @@ Future<void> main() async {
 
   // Fire all slow one-time inits in parallel — AudioService.init alone can
   // take 1–2 s on first launch (spawns a background isolate).
+  // The launch link is read up front so HomeScreen opens straight into it.
+  final linkFuture = AppLinks()
+      .getInitialLink()
+      .then<Uri?>((uri) => uri, onError: (_) => null);
   final spFuture = SharedPreferences.getInstance();
   final dlFuture = DownloadService.init();
   final audioFuture = AudioService.init(
@@ -33,8 +38,8 @@ Future<void> main() async {
   );
   await spFuture;
   await dlFuture;
-  DownloadService.registerCallback();
   audioHandler = await audioFuture;
+  final initialLink = await linkFuture;
 
   final db = AppDatabase();
   runApp(
@@ -44,13 +49,14 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => PlayerProvider(db)),
         ChangeNotifierProvider(create: (_) => DownloadProvider(db)),
       ],
-      child: const AntPodApp(),
+      child: AntPodApp(initialLink: initialLink),
     ),
   );
 }
 
 class AntPodApp extends StatelessWidget {
-  const AntPodApp({super.key});
+  final Uri? initialLink;
+  const AntPodApp({super.key, this.initialLink});
 
   static const _seed = Color(0xFF8B5E3C);
 
@@ -77,7 +83,7 @@ class AntPodApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           supportedLocales: AppLocalizations.supportedLocales,
-          home: const HomeScreen(),
+          home: HomeScreen(initialLink: initialLink),
         );
       },
     );

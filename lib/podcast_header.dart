@@ -40,6 +40,14 @@ class _PodcastHeaderState extends State<PodcastHeader> {
   bool _expanded = false;
   bool _subscribePressed = false;
 
+  @override
+  void didUpdateWidget(PodcastHeader old) {
+    super.didUpdateWidget(old);
+    // The header outlives subscription changes (the list below updates in
+    // place), so re-arm + once it's gone, ready for the next time it shows.
+    if (widget.onSubscribe == null) _subscribePressed = false;
+  }
+
   void _share() {
     SharePlus.instance.share(
         ShareParams(text: '${widget.title}\n${widget.shareUrl}', subject: widget.title));
@@ -113,7 +121,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                               Icon(Icons.pause_circle_outline_rounded,
                                   size: 14, color: cs.onSurfaceVariant),
                               const SizedBox(width: 4),
-                              Text(l10n.syncPaused,
+                              Text(l10n.newEpisodesPaused,
                                   style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
@@ -133,35 +141,32 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                           color: cs.onSurfaceVariant, size: 24),
                     ),
                   ),
-                  // Subscribe / unsubscribe button
-                  if (widget.onSubscribe != null)
+                  // Subscribe (+, then ✓) / unsubscribe (−) button
+                  if (widget.onSubscribe != null || widget.onUnsubscribe != null)
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
-                      child: GestureDetector(
-                        onTap: _subscribePressed ? null : () async {
-                          setState(() => _subscribePressed = true);
-                          await Future.delayed(const Duration(milliseconds: 380));
-                          widget.onSubscribe?.call();
-                        },
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 220),
-                          child: _subscribePressed
-                              ? Icon(Icons.check_circle_rounded,
-                                  key: const ValueKey('check'),
-                                  color: Colors.green, size: 32)
-                              : Icon(Icons.add_circle_outline_rounded,
-                                  key: const ValueKey('add'),
-                                  color: cs.primary, size: 32),
-                        ),
-                      ),
-                    ),
-                  if (widget.onUnsubscribe != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: GestureDetector(
-                        onTap: widget.onUnsubscribe,
-                        child: Icon(Icons.remove_circle_outline_rounded,
-                            color: cs.error, size: 32),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: widget.onSubscribe != null
+                            ? GestureDetector(
+                                key: ValueKey(_subscribePressed ? 'check' : 'add'),
+                                onTap: _subscribePressed ? null : () async {
+                                  setState(() => _subscribePressed = true);
+                                  await Future.delayed(const Duration(milliseconds: 380));
+                                  widget.onSubscribe?.call();
+                                },
+                                child: _subscribePressed
+                                    ? const Icon(Icons.check_circle_rounded,
+                                        color: Colors.green, size: 32)
+                                    : Icon(Icons.add_circle_outline_rounded,
+                                        color: cs.primary, size: 32),
+                              )
+                            : GestureDetector(
+                                key: const ValueKey('remove'),
+                                onTap: widget.onUnsubscribe,
+                                child: Icon(Icons.remove_circle_outline_rounded,
+                                    color: cs.error, size: 32),
+                              ),
                       ),
                     ),
                 ],

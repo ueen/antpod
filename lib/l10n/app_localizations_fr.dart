@@ -167,36 +167,44 @@ class AppLocalizationsFr extends AppLocalizations {
   String get offlineSub => 'Vous êtes hors ligne';
 
   @override
-  String get unsubscribeDeleteAll => 'Se désabonner et tout supprimer';
+  String get unsubscribeConfirm => 'Vraiment se désabonner ?';
 
   @override
-  String get unsubscribeKeepEpisodes => 'Se désabonner, garder les épisodes';
-
-  @override
-  String get unsubscribeKeepHint => 'Les épisodes téléchargés et commencés restent jusqu\'à leur écoute';
-
-  @override
-  String get pauseSync => 'Suspendre la synchro';
-
-  @override
-  String get resumeSync => 'Reprendre la synchro';
-
-  @override
-  String get syncPaused => 'Synchro suspendue';
-
-  @override
-  String get pauseSyncHint => 'Garder les épisodes, ne plus chercher de nouveaux';
-
-  @override
-  String unsubscribeDeletesDownloads(int count) {
+  String foundDownloaded(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count épisodes téléchargés seront supprimés.',
-      one: '1 épisode téléchargé sera supprimé.',
+      other: '$count épisodes téléchargés trouvés',
+      one: '1 épisode téléchargé trouvé',
     );
     return '$_temp0';
   }
+
+  @override
+  String foundStarted(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count épisodes commencés trouvés',
+      one: '1 épisode commencé trouvé',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get foundStartedAndDownloaded => 'Épisodes commencés et téléchargés trouvés';
+
+  @override
+  String get unsubscribeDeleteAll => 'Se désabonner et supprimer';
+
+  @override
+  String get unsubscribeKeepEpisodes => 'Garder les épisodes';
+
+  @override
+  String get pauseNewEpisodes => 'Suspendre les nouveaux épisodes';
+
+  @override
+  String get newEpisodesPaused => 'Nouveaux épisodes suspendus';
 
   @override
   String downloadingEpisodes(int count) {

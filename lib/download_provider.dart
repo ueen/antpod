@@ -14,6 +14,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'app_database.dart';
 import 'download_notification.dart';
+import 'download_service.dart';
 
 class _EpDownload {
   final String taskId;
@@ -27,10 +28,10 @@ class DownloadProvider extends ChangeNotifier {
   // episodeId → active download state. Non-null means actively downloading.
   final Map<String, _EpDownload> _downloads = {};
   Timer? _pollTimer;
+  bool _polling = false;
+  Future<void>? _restore;
 
-  DownloadProvider(this._db) {
-    _reconcileTerminalTasks();
-  }
+  DownloadProvider(this._db);
 
   bool isDownloading(String episodeId) => _downloads.containsKey(episodeId);
   double? progressForEpisode(String episodeId) => _downloads[episodeId]?.progress;
@@ -39,9 +40,13 @@ class DownloadProvider extends ChangeNotifier {
   void trackDownload(String taskId,
       {required String episodeId, required String title}) {
     _downloads[episodeId] = _EpDownload(taskId, title, 0.0);
+    _changed();
+    _ensurePolling();
+  }
+
+  void _changed() {
     notifyListeners();
     _syncNotification();
-    _ensurePolling();
   }
 
   /// Mirror the active downloads into the one notification; empty → gone.
@@ -59,7 +64,24 @@ class DownloadProvider extends ChangeNotifier {
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
   }
 
+  void _stopPollingIfIdle() {
+    if (_downloads.isNotEmpty) return;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
   Future<void> _poll() async {
+    // A slow DB round-trip must not overlap with the next tick.
+    if (_polling) return;
+    _polling = true;
+    try {
+      await _pollOnce();
+    } finally {
+      _polling = false;
+    }
+  }
+
+  Future<void> _pollOnce() async {
     List<DownloadTask>? active;
     try {
       active = await FlutterDownloader.loadTasksWithRawQuery(
@@ -75,13 +97,13 @@ class DownloadProvider extends ChangeNotifier {
 
     bool changed = false;
     for (final entry in _downloads.entries.toList()) {
+      // Canceled (or replaced) while an earlier iteration was awaiting.
+      if (_downloads[entry.key]?.taskId != entry.value.taskId) continue;
       final prog = taskProgress[entry.value.taskId];
       if (prog == null) {
         // Task left the active set → download finished or failed.
-        final taskId = entry.value.taskId;
-        final episodeId = entry.key;
-        _downloads.remove(episodeId);
-        await _markComplete(taskId, episodeId: episodeId);
+        _downloads.remove(entry.key);
+        await _markComplete(entry.value.taskId, episodeId: entry.key);
         changed = true;
       } else if (entry.value.progress != prog) {
         final d = entry.value;
@@ -90,14 +112,8 @@ class DownloadProvider extends ChangeNotifier {
       }
     }
 
-    if (_downloads.isEmpty) {
-      _pollTimer?.cancel();
-      _pollTimer = null;
-    }
-    if (changed) {
-      notifyListeners();
-      _syncNotification();
-    }
+    _stopPollingIfIdle();
+    if (changed) _changed();
   }
 
   // ── Mark complete ──────────────────────────────────────────────────────────
@@ -110,34 +126,31 @@ class DownloadProvider extends ChangeNotifier {
       );
     } catch (_) {}
 
+    final episode = await _findEpisode(episodeId: episodeId, taskId: taskId);
+
     if (completedTasks != null && completedTasks.isNotEmpty) {
       final task = completedTasks.first;
       final dir = await getApplicationDocumentsDirectory();
       final fullPath = p.join(dir.path, 'episodes', task.filename);
-      final episode = await _findEpisode(episodeId: episodeId, taskId: taskId);
       if (episode != null && !episode.isDownloaded && File(fullPath).existsSync()) {
         await _db.updateEpisodeDownload(episode.id, true, fullPath, taskId);
+        await DownloadService.forget(taskId);
+        return;
       }
-      await _removeTask(taskId);
+      // Nobody wants this file (episode gone or already downloaded elsewhere).
+      if (episode == null) {
+        await DownloadService.cancelAndCleanup(taskId);
+      } else {
+        await DownloadService.forget(taskId);
+      }
       return;
     }
 
-    // Task is gone but not completed (failed, WiFi dropped, etc.).
-    final episode = await _findEpisode(episodeId: episodeId, taskId: taskId);
+    // Task is gone but not completed (failed, WiFi dropped, etc.): drop the
+    // partial file and put the episode back in the WiFi queue.
+    await DownloadService.cancelAndCleanup(taskId);
     if (episode != null && !episode.isDownloaded) {
       await _db.requeueEpisodeForDownload(episode.id);
-      try {
-        final tasks = await FlutterDownloader.loadTasksWithRawQuery(
-          query: "SELECT * FROM task WHERE task_id='$taskId'",
-        );
-        final dir = await getApplicationDocumentsDirectory();
-        final fileName = tasks != null && tasks.isNotEmpty
-            ? tasks.first.filename
-            : '${episode.id.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
-        final file = File(p.join(dir.path, 'episodes', fileName));
-        if (file.existsSync()) await file.delete();
-      } catch (_) {}
-      await _removeTask(taskId);
     }
   }
 
@@ -150,61 +163,66 @@ class DownloadProvider extends ChangeNotifier {
         .getSingleOrNull();
   }
 
-  /// Drop the finished task record (the file stays).
-  Future<void> _removeTask(String taskId) async {
-    try { await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: false); } catch (_) {}
-  }
-
   // ── Cancel in-progress download ───────────────────────────────────────────
 
   /// Cancel by episodeId. Pass [fallbackTaskId] when the download was started
   /// in a previous session and may not be in the in-memory map.
   Future<void> cancelDownload(String episodeId, [String? fallbackTaskId]) async {
-    final taskId = _downloads[episodeId]?.taskId ?? fallbackTaskId;
+    // Leave the map first, synchronously: a poll running meanwhile would
+    // otherwise see the canceled task as failed and re-queue the episode.
+    final taskId = _downloads.remove(episodeId)?.taskId ?? fallbackTaskId;
     if (taskId == null) return;
+    _stopPollingIfIdle();
+    _changed();
 
-    String? taskFilename;
-    try {
-      final tasks = await FlutterDownloader.loadTasksWithRawQuery(
-        query: "SELECT * FROM task WHERE task_id='$taskId'",
-      );
-      taskFilename = tasks?.firstOrNull?.filename;
-    } catch (_) {}
-
-    try { await FlutterDownloader.cancel(taskId: taskId); } catch (_) {}
-
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final fileName = taskFilename ??
-          '${episodeId.replaceAll(RegExp(r'[^\w]'), '_')}.mp3';
-      final file = File(p.join(dir.path, 'episodes', fileName));
-      if (file.existsSync()) await file.delete();
-    } catch (_) {}
-
+    await DownloadService.cancelAndCleanup(taskId);
     await _db.updateEpisodeDownload(episodeId, false, null, null);
-
-    _downloads.remove(episodeId);
-    if (_downloads.isEmpty) {
-      _pollTimer?.cancel();
-      _pollTimer = null;
-    }
-    notifyListeners();
-    _syncNotification();
   }
 
-  // ── Startup reconciliation ─────────────────────────────────────────────────
+  // ── Startup ───────────────────────────────────────────────────────────────
 
-  Future<void> _reconcileTerminalTasks() async {
+  /// Settle what happened to downloads while the app wasn't running, once per
+  /// launch. Finished and failed tasks are recorded, tasks WorkManager is
+  /// still running are tracked again, and everything else (paused, canceled,
+  /// task record gone) is cleaned up and put back in the WiFi queue.
+  Future<void> restore() => _restore ??= _doRestore();
+
+  Future<void> _doRestore() async {
+    List<DownloadTask> tasks = [];
     try {
-      // Handle both completed (3) and failed (4) tasks left from a previous run.
-      final tasks = await FlutterDownloader.loadTasksWithRawQuery(
-        query: 'SELECT * FROM task WHERE status IN (3, 4)',
-      );
-      if (tasks == null || tasks.isEmpty) return;
-      for (final task in tasks) {
-        await _markComplete(task.taskId);
-      }
+      tasks = await FlutterDownloader.loadTasks() ?? [];
     } catch (_) {}
+    final byId = {for (final t in tasks) t.taskId: t};
+
+    for (final ep in await _db.getPendingDownloads()) {
+      final task = byId.remove(ep.downloadTaskId);
+      switch (task?.status) {
+        case DownloadTaskStatus.enqueued:
+        case DownloadTaskStatus.running:
+          _downloads[ep.id] =
+              _EpDownload(task!.taskId, ep.title, task.progress / 100.0);
+        case DownloadTaskStatus.complete:
+        case DownloadTaskStatus.failed:
+          await _markComplete(task!.taskId, episodeId: ep.id);
+        default:
+          if (task != null) await DownloadService.cancelAndCleanup(task.taskId);
+          await _db.requeueEpisodeForDownload(ep.id);
+      }
+    }
+
+    // Task records no pending episode points at any more.
+    for (final t in byId.values) {
+      if (t.status == DownloadTaskStatus.complete) {
+        await _markComplete(t.taskId);
+      } else {
+        await DownloadService.cancelAndCleanup(t.taskId);
+      }
+    }
+
+    if (_downloads.isNotEmpty) {
+      _changed();
+      _ensurePolling();
+    }
   }
 
   @override

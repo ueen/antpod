@@ -59,21 +59,28 @@
   "onMobileData": "You're on mobile data",
   "noConnection": "No connection",
   "offlineSub": "You're offline",
-  "unsubscribeDeleteAll": "Unsubscribe & delete all",
-  "unsubscribeKeepEpisodes": "Unsubscribe, keep episodes",
-  "unsubscribeKeepHint": "Downloaded and started episodes stay until played",
-  "pauseSync": "Pause sync",
-  "resumeSync": "Resume sync",
-  "syncPaused": "Sync paused",
-  "pauseSyncHint": "Keep episodes, stop checking for new ones",
-  "unsubscribeDeletesDownloads": "{count, plural, =1{1 downloaded episode will be deleted.} other{{count} downloaded episodes will be deleted.}}",
-  "@unsubscribeDeletesDownloads": {
+  "unsubscribeConfirm": "Sure you want to unsubscribe?",
+  "foundDownloaded": "{count, plural, =1{1 downloaded episode found} other{{count} downloaded episodes found}}",
+  "@foundDownloaded": {
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
+  "foundStarted": "{count, plural, =1{1 started episode found} other{{count} started episodes found}}",
+  "@foundStarted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "foundStartedAndDownloaded": "Started and downloaded episodes found",
+  "unsubscribeDeleteAll": "Unsubscribe & delete",
+  "unsubscribeKeepEpisodes": "Keep episodes",
+  "pauseNewEpisodes": "Pause new episodes",
+  "newEpisodesPaused": "New episodes paused",
   "downloadingEpisodes": "{count, plural, =1{Downloading 1 episode} other{Downloading {count} episodes}}",
   "@downloadingEpisodes": {
     "placeholders": {

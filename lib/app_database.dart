@@ -255,11 +255,6 @@ class AppDatabase extends _$AppDatabase {
   Future<void> insertEpisodes(List<EpisodesCompanion> eps) =>
       batch((b) => b.insertAllOnConflictUpdate(episodes, eps));
 
-  Future<void> insertTempEpisode(EpisodesCompanion ep) =>
-      into(episodes).insertOnConflictUpdate(
-        ep.copyWith(isSubscribed: const Value(false)),
-      );
-
   Future<void> insertTempEpisodes(List<EpisodesCompanion> eps) =>
       batch((b) => b.insertAll(
         episodes,
@@ -311,17 +306,46 @@ class AppDatabase extends _$AppDatabase {
     return migrated;
   }
 
-  /// Delete unplayed, undownloaded temp episodes for a feed before subscribing,
-  /// so Apple search-result stubs don't accumulate as orphaned rows.
-  Future<void> deleteUnplayedTempEpisodes(String podcastId) =>
-      (delete(episodes)
+  /// Subscribe to [podcast] with its freshly fetched [rssEpisodes] (already
+  /// tagged subscribed), in one transaction so episode watchers see a single
+  /// change: an open preview list updates in place instead of emptying and
+  /// refilling. Preview rows share the RSS ids and are simply upserted;
+  /// played/finished temp rows are promoted; Apple search stubs hand their
+  /// progress to the matching RSS episode and go; other unplayed temp rows
+  /// that aren't in the feed are dropped.
+  /// Without [rssEpisodes] (feed fetch failed) the preview's rows are all we
+  /// have of the feed, so they're promoted and stubs wait for a later fetch.
+  /// Returns {appleStubId → rssGuid} like [migrateAppleEpisodeStubs].
+  Future<Map<String, String>> subscribePodcast(
+      PodcastsCompanion podcast, List<EpisodesCompanion> rssEpisodes) {
+    final id = podcast.id.value;
+    return transaction(() async {
+      await insertPodcast(podcast);
+      await markEpisodesSubscribed(id);
+      if (rssEpisodes.isEmpty) {
+        await (update(episodes)
+              ..where((e) => e.podcastId.equals(id) & e.id.like('apple-%').not()))
+            .write(const EpisodesCompanion(isSubscribed: Value(true)));
+        return const <String, String>{};
+      }
+      await insertEpisodes(rssEpisodes);
+      final migrated = await migrateAppleEpisodeStubs(id);
+      final inFeed = {for (final e in rssEpisodes) e.id.value};
+      final leftovers = await (select(episodes)
             ..where((e) =>
-                e.podcastId.equals(podcastId) &
+                e.podcastId.equals(id) &
                 e.isSubscribed.equals(false) &
                 e.lastPositionMs.equals(0) &
                 e.isFinished.equals(false) &
                 e.isDownloaded.equals(false)))
-          .go();
+          .get();
+      final stale = [for (final e in leftovers) if (!inFeed.contains(e.id)) e.id];
+      if (stale.isNotEmpty) {
+        await (delete(episodes)..where((e) => e.id.isIn(stale))).go();
+      }
+      return migrated;
+    });
+  }
 
   /// Save resume position (ms + seconds) and optionally mark finished.
   Future<void> updatePlaybackPosition(
@@ -404,24 +428,13 @@ class AppDatabase extends _$AppDatabase {
         const EpisodesCompanion(markedForDownload: Value(false)),
       );
 
-  /// Episodes whose download was interrupted (taskId set, not yet downloaded).
-  /// Clears the stale taskId, re-queues them for WiFi download, and returns
-  /// the stale task IDs so the caller can cancel them in flutter_downloader.
-  Future<List<String>> resetIncompleteDownloads() async {
-    final stale = await (select(episodes)
-          ..where((e) =>
-              e.downloadTaskId.isNotNull() & e.isDownloaded.equals(false)))
-        .get();
-    if (stale.isEmpty) return [];
-    await (update(episodes)
-          ..where((e) =>
-              e.downloadTaskId.isNotNull() & e.isDownloaded.equals(false)))
-        .write(const EpisodesCompanion(
-          downloadTaskId: Value(null),
-          markedForDownload: Value(true),
-        ));
-    return stale.map((e) => e.downloadTaskId).whereType<String>().toList();
-  }
+  /// Episodes with a download task that hasn't completed yet (as recorded
+  /// here; DownloadProvider.restore() checks the task's real state).
+  Future<List<Episode>> getPendingDownloads() =>
+      (select(episodes)
+            ..where((e) =>
+                e.downloadTaskId.isNotNull() & e.isDownloaded.equals(false)))
+          .get();
 
   Future<List<Episode>> getMarkedForDownloadEpisodes() =>
       (select(episodes)
@@ -463,11 +476,14 @@ class AppDatabase extends _$AppDatabase {
         .distinct(_episodeListEqual);
   }
 
-  Future<void> deleteLocalFile(String id) async {
+  /// User-initiated "delete download": removes the file, and for a temp
+  /// episode lets its preview feed go once nothing in it is left to keep.
+  Future<void> deleteDownload(String id) async {
     final ep = await (select(episodes)..where((e) => e.id.equals(id)))
         .getSingleOrNull();
-    if (ep?.localPath != null) {
-      final f = File(ep!.localPath!);
+    if (ep == null) return;
+    if (ep.localPath != null) {
+      final f = File(ep.localPath!);
       if (f.existsSync()) f.deleteSync();
     }
     await (update(episodes)..where((e) => e.id.equals(id))).write(
@@ -477,6 +493,7 @@ class AppDatabase extends _$AppDatabase {
         downloadTaskId: Value(null),
       ),
     );
+    if (!ep.isSubscribed) await cleanupTempFeedIfDone(ep.podcastId);
   }
 
   /// Delete local files for finished subscribed episodes downloaded more than
@@ -512,13 +529,15 @@ class AppDatabase extends _$AppDatabase {
   ///
   /// Played episodes: removed 7 days after last playback.
   /// Never-started episodes: removed if publish date is >7 days old.
-  /// In-progress episodes (started but not finished) are always kept.
-  Future<void> cleanupStaleTempEpisodes() async {
+  /// In-progress episodes (started but not finished) are always kept, and so
+  /// is [keepId] (the loaded episode, e.g. an old one just opened from a link).
+  Future<void> cleanupStaleTempEpisodes({String? keepId}) async {
     final cutoff = DateTime.now().subtract(const Duration(days: 7));
 
     final stale = await (select(episodes)
           ..where((e) =>
               e.isSubscribed.equals(false) &
+              (keepId == null ? const Constant(true) : e.id.equals(keepId).not()) &
               (
                 // Played: wait 7 days from last playback before removing
                 (e.isFinished.equals(true) &

@@ -411,53 +411,53 @@ abstract class AppLocalizations {
   /// **'You\'re offline'**
   String get offlineSub;
 
+  /// No description provided for @unsubscribeConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Sure you want to unsubscribe?'**
+  String get unsubscribeConfirm;
+
+  /// No description provided for @foundDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 downloaded episode found} other{{count} downloaded episodes found}}'**
+  String foundDownloaded(int count);
+
+  /// No description provided for @foundStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 started episode found} other{{count} started episodes found}}'**
+  String foundStarted(int count);
+
+  /// No description provided for @foundStartedAndDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Started and downloaded episodes found'**
+  String get foundStartedAndDownloaded;
+
   /// No description provided for @unsubscribeDeleteAll.
   ///
   /// In en, this message translates to:
-  /// **'Unsubscribe & delete all'**
+  /// **'Unsubscribe & delete'**
   String get unsubscribeDeleteAll;
 
   /// No description provided for @unsubscribeKeepEpisodes.
   ///
   /// In en, this message translates to:
-  /// **'Unsubscribe, keep episodes'**
+  /// **'Keep episodes'**
   String get unsubscribeKeepEpisodes;
 
-  /// No description provided for @unsubscribeKeepHint.
+  /// No description provided for @pauseNewEpisodes.
   ///
   /// In en, this message translates to:
-  /// **'Downloaded and started episodes stay until played'**
-  String get unsubscribeKeepHint;
+  /// **'Pause new episodes'**
+  String get pauseNewEpisodes;
 
-  /// No description provided for @pauseSync.
+  /// No description provided for @newEpisodesPaused.
   ///
   /// In en, this message translates to:
-  /// **'Pause sync'**
-  String get pauseSync;
-
-  /// No description provided for @resumeSync.
-  ///
-  /// In en, this message translates to:
-  /// **'Resume sync'**
-  String get resumeSync;
-
-  /// No description provided for @syncPaused.
-  ///
-  /// In en, this message translates to:
-  /// **'Sync paused'**
-  String get syncPaused;
-
-  /// No description provided for @pauseSyncHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Keep episodes, stop checking for new ones'**
-  String get pauseSyncHint;
-
-  /// No description provided for @unsubscribeDeletesDownloads.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 downloaded episode will be deleted.} other{{count} downloaded episodes will be deleted.}}'**
-  String unsubscribeDeletesDownloads(int count);
+  /// **'New episodes paused'**
+  String get newEpisodesPaused;
 
   /// No description provided for @downloadingEpisodes.
   ///

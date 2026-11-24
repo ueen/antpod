@@ -43,7 +43,10 @@ enum _FeedMode { feed, podcastFilter, searchEpisodes, discover, previewPodcast }
 // ─────────────────────────────────────────────────────────────────────────────
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  /// The link that launched the app (fetched in main), so a cold start opens
+  /// straight into the linked podcast instead of showing home first.
+  final Uri? initialLink;
+  const HomeScreen({super.key, this.initialLink});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -94,6 +97,9 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Uri? _pendingDeepLink;
   bool _appReady = false;
+  // While a launch link is being routed the home feed stays blank, so the
+  // app opens on the linked podcast rather than flashing home first.
+  late bool _linkOpening = widget.initialLink != null;
   String? _lastDeepLink;
   DateTime _lastDeepLinkAt = DateTime.fromMillisecondsSinceEpoch(0);
   bool _downloadingMarked = false;
@@ -133,22 +139,40 @@ class _HomeScreenState extends State<HomeScreen> {
       final player = context.read<PlayerProvider>();
       final pods = await db.getAllPodcasts();
       if (!mounted) return;
+      // Restore the last episode before any link is handled, so a linked
+      // episode that starts playing can't be overwritten by the restore.
+      if (pods.isNotEmpty) await player.restoreLastEpisode();
+      if (!mounted) return;
+      _appReady = true;
+      final link = _pendingDeepLink ?? widget.initialLink;
+      _pendingDeepLink = null;
+      if (link != null) {
+        // Route first: the linked feed loads without the startup refresh's
+        // feed isolates competing with it.
+        try {
+          await _handleDeepLink(link);
+        } finally {
+          // A link that didn't route (bad params) falls back to home.
+          if (mounted && _linkOpening) setState(() => _linkOpening = false);
+        }
+        if (!mounted) return;
+      }
       if (pods.isEmpty) {
-        _enterDiscover();
-      } else {
+        // No subscriptions: Discover is home, also behind a linked preview.
+        if (_mode == _FeedMode.feed) {
+          _enterDiscover();
+        } else if (_mode == _FeedMode.previewPodcast) {
+          _previewFrom = _FeedMode.discover;
+        }
+      }
+      if (pods.isNotEmpty) {
         // Schedule the RSS refresh at idle priority so it only starts after
         // the first frame is fully painted and the scheduler has no pending work.
         SchedulerBinding.instance.scheduleTask(
           () { if (mounted) _refresh(db, startup: true); },
           Priority.idle,
         );
-        player.restoreLastEpisode();
       }
-      // Process initial deep link after the app has finished initializing
-      _appReady = true;
-      final pending = _pendingDeepLink;
-      _pendingDeepLink = null;
-      if (pending != null) _handleDeepLink(pending);
     });
   }
 
@@ -176,9 +200,9 @@ class _HomeScreenState extends State<HomeScreen> {
       .replaceFirst(RegExp(r'^www\.'), '')
       .replaceFirst(RegExp(r'/+$'), '');
 
-  // Load a feed restored from a share link. The share URL dropped "www.", which
-  // some hosts don't redirect, so retry with it before giving up.
-  Future<(String, FeedData?)> _loadSharedFeed(String feed) async {
+  // Load a feed, returning the URL that actually worked. Share links drop
+  // "www.", which some hosts don't redirect, so retry with it before giving up.
+  Future<(String, FeedData?)> _loadFeedWithWww(String feed) async {
     final data = await PodcastService.loadFeed(feed);
     if (data != null) return (feed, data);
     final withWww = feed.replaceFirstMapped(
@@ -201,10 +225,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final q = uri.queryParameters;
     final rawFeed = q['p'] ?? q['f'];
     if (rawFeed == null || rawFeed.isEmpty || !mounted) return;
-    var feed = _restoreProto(rawFeed);
+    final feed = _restoreProto(rawFeed);
     final guidHash = q['e'] ?? q['h'];
     final db = context.read<AppDatabase>();
-    final player = context.read<PlayerProvider>();
 
     // Close any open player sheet / dialog / pushed page so the target is visible.
     Navigator.of(context).popUntil((r) => r.isFirst);
@@ -217,72 +240,60 @@ class _HomeScreenState extends State<HomeScreen> {
         .where((p) => p.id == feed || _normFeed(p.feedUrl) == norm)
         .firstOrNull;
 
-    // ── Podcast-only link ─────────────────────────────────────────────────
-    if (guidHash == null || guidHash.isEmpty) {
-      if (subscribed != null) {
-        _enterPodcastFilter(subscribed);
-        return;
-      }
-      final (resolved, data) = await _loadSharedFeed(feed);
-      if (!mounted) return;
-      _openPreview(PodcastResult(
-        id: resolved,
-        title: data?.podcast.title ?? '',
-        author: '',
-        description: '',
-        imageUrl: '',
-        feedUrl: resolved,
-      ));
-      return;
-    }
+    final hasEpisode = guidHash != null && guidHash.isNotEmpty;
 
-    // ── Episode link ──────────────────────────────────────────────────────
+    // Routing below leaves the home feed, so it no longer needs blanking.
+    _linkOpening = false;
+
+    // ── Subscribed podcast ────────────────────────────────────────────────
     if (subscribed != null) {
       _enterPodcastFilter(subscribed);
+      if (!hasEpisode) return;
       var episode = await _findByHash(db, subscribed.id, guidHash);
       if (episode == null) {
         // Not in the DB yet (feed not refreshed since it was published).
         await _refreshSinglePodcast(subscribed.id);
         episode = await _findByHash(db, subscribed.id, guidHash);
       }
-      if (episode == null || !mounted) return;
-      await player.load(episode);
-      if (!mounted) return;
-      await showPlayerSheet(context, onPodcastTap: _openPodcastFromPlayer);
+      if (episode != null && mounted) unawaited(_playFromLink(episode));
       return;
     }
 
-    // Not subscribed: a temp episode may already exist from an earlier preview.
-    var episode = await _findByHash(db, feed, guidHash);
+    // ── Not subscribed: preview ───────────────────────────────────────────
+    // The preview opens right away and loads the feed itself (once); an
+    // episode link then plays the shared episode out of that load. A temp
+    // episode left from an earlier preview can start without waiting.
+    final existing = hasEpisode ? await _findByHash(db, feed, guidHash) : null;
+    if (!mounted) return;
+    final loading = _openPreview(PodcastResult(
+      id: feed,
+      title: existing?.podcastTitle ?? '',
+      author: '',
+      description: '',
+      imageUrl: '',
+      feedUrl: feed,
+    ));
+    if (!hasEpisode) return;
+    var episode = existing;
     if (episode == null) {
-      final (resolved, data) = await _loadSharedFeed(feed);
-      if (!mounted) return;
-      feed = resolved;
-      final companion = data?.episodes
+      final data = await loading;
+      final match = data?.episodes
           .where((e) => ShareUtils.guidHash(e.id.value) == guidHash)
           .firstOrNull;
-      if (companion != null) {
-        await db.insertTempEpisode(companion.copyWith(podcastId: Value(feed)));
-        episode = await db.getEpisode(companion.id.value);
-      }
-      if (episode == null) {
-        // Episode no longer in the feed — still show the podcast.
-        if (mounted && data != null) {
-          _openPreview(PodcastResult(
-            id: feed, title: data.podcast.title ?? '', author: '',
-            description: '', imageUrl: '', feedUrl: feed,
-          ));
-        }
-        return;
-      }
+      // Episode no longer in the feed: the preview still shows the podcast.
+      if (match == null || !mounted) return;
+      // Inserted by the preview (insert-or-ignore, so an existing row wins).
+      episode = await db.getEpisode(match.id.value);
     }
-    if (!mounted) return;
-    _openPreview(PodcastResult(
-      id: feed, title: episode.podcastTitle, author: '',
-      description: '', imageUrl: episode.podcastImageUrl, feedUrl: feed,
-    ));
-    await player.load(episode);
-    if (!mounted) return;
+    // Not awaited: the sheet stays open until dismissed, and startup work
+    // waiting on this handler shouldn't wait on that.
+    if (episode != null && mounted) unawaited(_playFromLink(episode));
+  }
+
+  // Start the shared episode and show the player. play() sets the current
+  // episode synchronously, so the sheet opens on it while it still buffers.
+  Future<void> _playFromLink(Episode episode) async {
+    context.read<PlayerProvider>().play(episode);
     await showPlayerSheet(context, onPodcastTap: _openPodcastFromPlayer);
   }
 
@@ -349,34 +360,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── WiFi queue auto-download ──────────────────────────────────────────────
 
-  // Run once at startup: cancel stale flutter_downloader tasks (started in a
-  // previous session but never completed), delete partial files, and re-queue
-  // as markedForDownload so the dotted-bar state is shown correctly.
-  Future<void> _cleanupInterruptedDownloads() async {
-    if (!mounted) return;
-    final db = context.read<AppDatabase>();
-    final staleTaskIds = await db.resetIncompleteDownloads();
-    for (final taskId in staleTaskIds) {
-      await DownloadService.cancelAndCleanup(taskId);
-    }
-  }
-
-  // Trigger WiFi downloads — called on startup (after cleanup) and on WiFi
-  // reconnect. Does NOT touch in-progress downloads from the current session.
+  // Trigger WiFi downloads — called on startup and on WiFi reconnect. Waits
+  // for DownloadProvider.restore() so downloads that finished or kept running
+  // while the app was closed are settled before anything is re-enqueued.
   Future<void> _downloadMarkedEpisodes() async {
     if (_downloadingMarked || !mounted) return;
     _downloadingMarked = true;
     try {
+      final db = context.read<AppDatabase>();
+      final downloads = context.read<DownloadProvider>();
+      await downloads.restore();
       final connectivity = await Connectivity().checkConnectivity();
       if (!connectivity.contains(ConnectivityResult.wifi) &&
           !connectivity.contains(ConnectivityResult.ethernet)) { return; }
       if (!mounted) return;
       await DownloadService.requestNotificationPermission();
       if (!mounted) return;
-      final db = context.read<AppDatabase>();
-      final downloads = context.read<DownloadProvider>();
       final marked = await db.getMarkedForDownloadEpisodes();
       for (final ep in marked) {
+        if (downloads.isDownloading(ep.id)) continue;
         try {
           final taskId = await DownloadService.downloadEpisode(
             episodeId: ep.id, audioUrl: ep.audioUrl,
@@ -438,7 +440,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openPodcastResult(PodcastResult result) async {
     final db = context.read<AppDatabase>();
-    final player = context.read<PlayerProvider>();
     final all = await db.getAllPodcasts();
     if (!mounted) return;
     final subscribed = all
@@ -448,10 +449,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // Migrate any apple-* stubs the user may have played from search results
       // for this already-subscribed podcast. No-op if no stubs exist.
       final migrated = await db.migrateAppleEpisodeStubs(subscribed.id);
-      if (migrated.containsKey(player.currentEpisode?.id) && mounted) {
-        final rssEp = await db.getEpisode(migrated[player.currentEpisode!.id]!);
-        if (rssEp != null && mounted) await player.load(rssEp);
-      }
+      if (!mounted) return;
+      await _reloadMigratedCurrent(migrated);
       if (!mounted) return;
       _enterPodcastFilter(subscribed);
     } else {
@@ -459,7 +458,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openPreview(PodcastResult result) async {
+  /// Shows the preview for [result] at once and loads its feed into the DB as
+  /// temp rows. Returns the loaded feed (null on failure) so a deep link can
+  /// pick its episode out of the same load.
+  Future<FeedData?> _openPreview(PodcastResult result) async {
     setState(() {
       _previewResult = PodcastResult(
         id: result.id,
@@ -475,46 +477,48 @@ class _HomeScreenState extends State<HomeScreen> {
       _filter = _filter.copyWith(podcasts: true);
     });
     final db = context.read<AppDatabase>();
-    final player = context.read<PlayerProvider>();
-    final data = await PodcastService.loadFeed(result.feedUrl);
-    if (!mounted) return;
-    if (data != null) {
-      final podcastImage = data.podcast.image?.isNotEmpty == true
-          ? data.podcast.image!
-          : result.imageUrl;
-      await db.insertTempPodcast(PodcastsCompanion(
-        id: Value(result.feedUrl),
-        title: Value(data.podcast.title?.isNotEmpty == true
-            ? data.podcast.title!
-            : result.title),
-        description: Value(data.podcast.description ?? result.description),
-        imageUrl: Value(podcastImage),
-        feedUrl: Value(result.feedUrl),
-        author: Value(result.author),
-      ));
-      await db.insertTempEpisodes(data.episodes);
-      // Resolve Apple stubs (id: 'apple-*') to real RSS episodes by title-match.
-      // Migrates any saved playback progress to the RSS episode, then removes the stub.
-      final migrated = await db.migrateAppleEpisodeStubs(result.feedUrl);
-      if (migrated.containsKey(player.currentEpisode?.id) && mounted) {
-        final rssEp = await db.getEpisode(migrated[player.currentEpisode!.id]!);
-        if (rssEp != null && mounted) await player.load(rssEp);
-      }
-      setState(() {
-        _previewResult = PodcastResult(
-          id: result.id,
-          title: data.podcast.title?.isNotEmpty == true ? data.podcast.title! : result.title,
-          author: result.author,
-          description: data.podcast.description ?? result.description,
-          imageUrl: data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '',
-          feedUrl: result.feedUrl,
-        );
-        _previewLoading = false;
-      });
-    } else {
-      if (mounted) setState(() => _previewLoading = false);
+    // The URL that actually loaded (share links drop "www.") is the one the
+    // episodes reference, so the podcast row and the preview use it too.
+    final (feedUrl, data) = await _loadFeedWithWww(result.feedUrl);
+    // Still showing this preview? The user may have left or opened another.
+    bool current() =>
+        mounted &&
+        _mode == _FeedMode.previewPodcast &&
+        _previewResult?.feedUrl == result.feedUrl;
+    if (!mounted) return data;
+    if (data == null) {
+      if (current()) setState(() => _previewLoading = false);
+      return null;
     }
-    if (mounted) setState(() {});
+    final title = data.podcast.title?.isNotEmpty == true ? data.podcast.title! : result.title;
+    final image = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
+    await db.insertTempPodcast(PodcastsCompanion(
+      id: Value(feedUrl),
+      title: Value(title),
+      description: Value(data.podcast.description ?? result.description),
+      imageUrl: Value(image.isNotEmpty ? image : result.imageUrl),
+      feedUrl: Value(feedUrl),
+      author: Value(result.author),
+    ));
+    await db.insertTempEpisodes(data.episodes);
+    // Resolve Apple stubs (id: 'apple-*') to real RSS episodes by title-match.
+    // Migrates any saved playback progress to the RSS episode, then removes the stub.
+    final migrated = await db.migrateAppleEpisodeStubs(feedUrl);
+    if (!mounted) return data;
+    await _reloadMigratedCurrent(migrated);
+    if (!current()) return data;
+    setState(() {
+      _previewResult = PodcastResult(
+        id: result.id == result.feedUrl ? feedUrl : result.id,
+        title: title,
+        author: result.author,
+        description: data.podcast.description ?? result.description,
+        imageUrl: image,
+        feedUrl: feedUrl,
+      );
+      _previewLoading = false;
+    });
+    return data;
   }
 
   void _exitPreview() {
@@ -523,6 +527,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _previewResult = null;
       _filter = _filter.copyWith(podcasts: false);
     });
+    // Discover may never have loaded (app opened straight into a preview).
+    if (_mode == _FeedMode.discover && _trending.isEmpty) _loadDiscover();
   }
 
   // ── Unsubscribe ───────────────────────────────────────────────────────────
@@ -538,9 +544,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Pressing unsubscribe first stops playback of this podcast and closes the
   // player (even if the sheet is then cancelled), so no episode is "live" while
-  // the user decides. Then a bottom sheet: delete everything (primary,
-  // destructive), keep episodes → temp feed (only when something is
-  // downloaded or started), pause/resume sync (secondary), cancel (link).
+  // the user decides. Then a bottom sheet: unsubscribe & delete (destructive),
+  // then either keep episodes (temp feed; when something is downloaded or
+  // started) or, when there's nothing to keep, pause new episodes. Both leave
+  // the podcast's current episodes in place, so only one is ever offered.
   Future<void> _confirmUnsubscribe(Podcast podcast) async {
     final db = context.read<AppDatabase>();
     // Awaited: the player saves its position first, so the episode that was
@@ -550,9 +557,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ..where((e) =>
               e.podcastId.equals(podcast.id) | e.podcastId.equals(podcast.feedUrl)))
         .get();
-    final downloadedCount = eps.where((e) => e.isDownloaded).length;
     // Same test the keep action applies, so the option never keeps nothing.
     final canKeep = eps.any(AppDatabase.isKeepWorthy);
+    final downloaded = eps.where((e) => e.isDownloaded).length;
+    final started = eps
+        .where((e) => !e.isDownloaded && AppDatabase.isKeepWorthy(e))
+        .length;
     if (!mounted) return;
 
     final action = await showModalBottomSheet<String>(
@@ -561,9 +571,15 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (ctx) {
         final cs = Theme.of(ctx).colorScheme;
         final l10n = AppLocalizations.of(ctx)!;
-        final warnings = [
-          if (downloadedCount > 0) l10n.unsubscribeDeletesDownloads(downloadedCount),
-        ];
+        // What "keep episodes" would keep; neutral, since nothing is lost
+        // unless delete is chosen.
+        final found = downloaded > 0 && started > 0
+            ? l10n.foundStartedAndDownloaded
+            : downloaded > 0
+                ? l10n.foundDownloaded(downloaded)
+                : started > 0
+                    ? l10n.foundStarted(started)
+                    : null;
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -571,24 +587,24 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(podcast.title,
+                Text(l10n.unsubscribeConfirm,
                     textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
                         color: cs.onSurface)),
-                for (final w in warnings) ...[
+                if (found != null) ...[
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.info_outline_rounded, size: 16, color: cs.error),
+                      Icon(Icons.info_outline_rounded,
+                          size: 16, color: cs.onSurfaceVariant),
                       const SizedBox(width: 6),
                       Flexible(
-                        child: Text(w,
-                            style: TextStyle(fontSize: 13, color: cs.error)),
+                        child: Text(found,
+                            style: TextStyle(
+                                fontSize: 13, color: cs.onSurfaceVariant)),
                       ),
                     ],
                   ),
@@ -606,8 +622,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: Text(l10n.unsubscribeDeleteAll),
                   onPressed: () => Navigator.pop(ctx, 'delete'),
                 ),
-                if (canKeep) ...[
-                  const SizedBox(height: 10),
+                const SizedBox(height: 10),
+                if (canKeep)
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: cs.error,
@@ -617,28 +633,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: const Icon(Icons.inventory_2_outlined),
                     label: Text(l10n.unsubscribeKeepEpisodes),
                     onPressed: () => Navigator.pop(ctx, 'keep'),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48)),
+                    icon: const Icon(Icons.pause_circle_outline_rounded),
+                    label: Text(l10n.pauseNewEpisodes),
+                    onPressed: () => Navigator.pop(ctx, 'pause'),
                   ),
-                  const SizedBox(height: 4),
-                  Text(l10n.unsubscribeKeepHint,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                ],
-                const SizedBox(height: 10),
-                FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48)),
-                  icon: Icon(podcast.syncPaused
-                      ? Icons.sync_rounded
-                      : Icons.pause_circle_outline_rounded),
-                  label: Text(podcast.syncPaused ? l10n.resumeSync : l10n.pauseSync),
-                  onPressed: () => Navigator.pop(ctx, 'pause'),
-                ),
-                if (!podcast.syncPaused) ...[
-                  const SizedBox(height: 4),
-                  Text(l10n.pauseSyncHint,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                ],
                 const SizedBox(height: 6),
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
@@ -656,7 +659,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (action == 'keep') {
       await _unsubscribeKeepEpisodes(podcast);
     } else if (action == 'pause') {
-      await _setSyncPaused(podcast, !podcast.syncPaused);
+      await _setSyncPaused(podcast, true);
     }
   }
 
@@ -1055,38 +1058,36 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
 
+  // Fetch first, then write everything in one transaction: the preview list
+  // stays put while the network is busy, and the episode stream emits once,
+  // so the list diffs in place (same episodes, now subscribed) instead of
+  // emptying and refilling.
   Future<void> _subscribe(PodcastResult result) async {
     final db = context.read<AppDatabase>();
-    await db.insertPodcast(result.toCompanion());
-    // Remove Apple search stubs and unplayed preview episodes for this feed.
-    await db.deleteUnplayedTempEpisodes(result.feedUrl);
-    // Promote played/finished temp episodes (e.g. from deep link) to subscribed.
-    await db.markEpisodesSubscribed(result.feedUrl);
     final data = await PodcastService.loadFeed(result.feedUrl);
-    if (data != null) {
-      final rssImage = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
-      // If RSS has a better image than what PodcastIndex gave us, update the podcast record.
-      if (rssImage.isNotEmpty && rssImage != result.imageUrl) {
-        await db.updatePodcastImageUrl(result.feedUrl, rssImage);
-      }
-      final episodeImage = rssImage.isNotEmpty ? rssImage : result.imageUrl;
-      await db.insertEpisodes(
-        data.episodes
-            .map((e) => e.copyWith(
-                  podcastId: Value(result.feedUrl),
-                  isSubscribed: const Value(true),
-                  podcastImageUrl: Value(episodeImage),
-                ))
-            .toList(),
-      );
-      await db.migrateAppleEpisodeStubs(result.feedUrl);
-    }
+    final rssImage = data?.podcast.image?.isNotEmpty == true ? data!.podcast.image! : '';
+    final image = rssImage.isNotEmpty ? rssImage : result.imageUrl;
+    final migrated = await db.subscribePodcast(
+      result.toCompanion().copyWith(imageUrl: Value(image)),
+      data == null ? const [] : _asSubscribed(data.episodes, result.feedUrl, image),
+    );
+    await _reloadMigratedCurrent(migrated);
+  }
+
+  /// After Apple stubs were resolved: if the player holds one of them, swap
+  /// in its RSS episode.
+  Future<void> _reloadMigratedCurrent(Map<String, String> migrated) async {
+    final db = context.read<AppDatabase>();
+    final player = context.read<PlayerProvider>();
+    final rssId = migrated[player.currentEpisode?.id];
+    if (rssId == null) return;
+    final rssEp = await db.getEpisode(rssId);
+    if (rssEp != null && mounted) await player.load(rssEp);
   }
 
   // ── Cover tap → podcast filter (or preview for temp episodes) ───────────
 
   Future<void> _onCoverTap(Episode episode, AppDatabase db) async {
-    final player = context.read<PlayerProvider>();
     final all = await db.getAllPodcasts();
     final pod = all.where((p) => p.id == episode.podcastId).firstOrNull;
     if (pod == null) {
@@ -1103,10 +1104,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final migrated = await db.migrateAppleEpisodeStubs(pod.id);
-    if (migrated.containsKey(player.currentEpisode?.id) && mounted) {
-      final rssEp = await db.getEpisode(migrated[player.currentEpisode!.id]!);
-      if (rssEp != null && mounted) await player.load(rssEp);
-    }
+    if (!mounted) return;
+    await _reloadMigratedCurrent(migrated);
     if (!mounted) return;
     _enterPodcastFilter(pod);
   }
@@ -1124,38 +1123,54 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Refresh ───────────────────────────────────────────────────────────────
 
+  /// Parsed feed episodes, re-tagged as belonging to subscribed [podcastId].
+  static List<EpisodesCompanion> _asSubscribed(
+          List<EpisodesCompanion> episodes, String podcastId, String image) =>
+      [
+        for (final e in episodes)
+          e.copyWith(
+            podcastId: Value(podcastId),
+            podcastImageUrl: Value(image),
+            isSubscribed: const Value(true),
+          ),
+      ];
+
   Future<void> _refresh(AppDatabase db, {bool startup = false}) async {
-    if (startup && mounted) setState(() => _startupRefreshing = true);
-    if (startup) await _cleanupInterruptedDownloads();
-    await db.cleanupStaleTempEpisodes();
-    await db.deleteFinishedDownloads();
-    // Paused podcasts keep their episodes but are skipped by the auto-refresh
-    // (manual pull-to-refresh on the podcast page still works).
-    final pods = (await db.getAllPodcasts()).where((p) => !p.syncPaused).toList();
-    // Fetch all feeds in parallel, then write once — one DB write = one stream event.
-    final results = await Future.wait(pods.map((pod) async {
-      final data = await PodcastService.loadFeed(pod.feedUrl);
-      if (data == null) return <EpisodesCompanion>[];
-      final rssImage = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
-      // Keep Podcasts.imageUrl in sync when RSS provides a cover.
-      if (rssImage.isNotEmpty && rssImage != pod.imageUrl) {
-        await db.updatePodcastImageUrl(pod.id, rssImage);
-      }
-      // Fall back to the stored podcast cover when RSS omits the image so we
-      // never overwrite a working URL with an empty string.
-      final episodeImage = rssImage.isNotEmpty ? rssImage : pod.imageUrl;
-      return data.episodes.map((e) => EpisodesCompanion(
-        id: e.id, podcastId: Value(pod.id),
-        podcastTitle: e.podcastTitle, podcastImageUrl: Value(episodeImage),
-        title: e.title, description: e.description, audioUrl: e.audioUrl,
-        durationSeconds: e.durationSeconds, publishDate: e.publishDate,
-        chaptersUrl: e.chaptersUrl,
-        isSubscribed: const Value(true),
-      )).toList();
-    }));
-    final all = results.expand((e) => e).toList();
-    if (all.isNotEmpty) await db.insertEpisodes(all);
-    if (startup && mounted) setState(() => _startupRefreshing = false);
+    // Read before any await: the cleanup must not delete what's playing.
+    final playingId = mounted
+        ? context.read<PlayerProvider>().currentEpisode?.id
+        : null;
+    if (startup && mounted) {
+      setState(() => _startupRefreshing = true);
+      // Settle downloads from the last run early so progress shows right away.
+      context.read<DownloadProvider>().restore();
+    }
+    try {
+      await db.cleanupStaleTempEpisodes(keepId: playingId);
+      await db.deleteFinishedDownloads();
+      // Paused podcasts keep their episodes but are skipped by the auto-refresh
+      // (manual pull-to-refresh on the podcast page still works).
+      final pods = (await db.getAllPodcasts()).where((p) => !p.syncPaused).toList();
+      // Fetch all feeds in parallel, then write once — one DB write = one stream event.
+      final results = await Future.wait(pods.map((pod) async {
+        final data = await PodcastService.loadFeed(pod.feedUrl);
+        if (data == null) return <EpisodesCompanion>[];
+        final rssImage = data.podcast.image?.isNotEmpty == true ? data.podcast.image! : '';
+        // Keep Podcasts.imageUrl in sync when RSS provides a cover.
+        if (rssImage.isNotEmpty && rssImage != pod.imageUrl) {
+          await db.updatePodcastImageUrl(pod.id, rssImage);
+        }
+        // Fall back to the stored podcast cover when RSS omits the image so we
+        // never overwrite a working URL with an empty string.
+        final episodeImage = rssImage.isNotEmpty ? rssImage : pod.imageUrl;
+        return _asSubscribed(data.episodes, pod.id, episodeImage);
+      }));
+      final all = results.expand((e) => e).toList();
+      if (all.isNotEmpty) await db.insertEpisodes(all);
+    } finally {
+      // Never leave the refresh header stuck, even if a step above throws.
+      if (startup && mounted) setState(() => _startupRefreshing = false);
+    }
     _downloadMarkedEpisodes();
   }
 
@@ -1179,14 +1194,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await db.updatePodcastImageUrl(feedId, rssImage);
       }
       final episodeImage = rssImage.isNotEmpty ? rssImage : storedImage;
-      final episodes = data.episodes.map((e) => EpisodesCompanion(
-        id: e.id, podcastId: Value(feedId),
-        podcastTitle: e.podcastTitle, podcastImageUrl: Value(episodeImage),
-        title: e.title, description: e.description, audioUrl: e.audioUrl,
-        durationSeconds: e.durationSeconds, publishDate: e.publishDate,
-        chaptersUrl: e.chaptersUrl,
-        isSubscribed: const Value(true),
-      )).toList();
+      final episodes = _asSubscribed(data.episodes, feedId, episodeImage);
       if (episodes.isNotEmpty) await db.insertEpisodes(episodes);
     } else {
       // Preview: refresh temp episodes and update in-memory metadata.
@@ -1321,18 +1329,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _saveFilterPrefs();
   }
 
-  // feed and searchEpisodes share a key so EpisodeFeed is reused (no flash)
+  // feed and searchEpisodes share a key so EpisodeFeed is reused (no flash).
+  // Preview and podcast page of the same feed share one too, so subscribing
+  // or unsubscribing (keep episodes) updates the list in place.
   Key get _bodyKey {
     switch (_mode) {
       case _FeedMode.feed:
       case _FeedMode.searchEpisodes:
         return const ValueKey('episode_feed');
       case _FeedMode.podcastFilter:
-        return ValueKey('podcast_${_filterPodcastId ?? ""}');
+        return ValueKey('podcast_${_filterPodcast?.feedUrl ?? _filterPodcastId ?? ""}');
       case _FeedMode.discover:
         return const ValueKey('discover');
       case _FeedMode.previewPodcast:
-        return const ValueKey('preview');
+        return ValueKey('podcast_${_previewResult?.feedUrl ?? ""}');
     }
   }
 
@@ -1411,14 +1421,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeOut,
                   alignment: Alignment.topCenter,
-                  heightFactor: (_effectiveChipsVisible &&
+                  heightFactor: (_effectiveChipsVisible && !_linkOpening &&
                           (_mode == _FeedMode.feed ||
                            _mode == _FeedMode.searchEpisodes))
                       ? 1.0
                       : 0.0,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
-                    opacity: (_effectiveChipsVisible &&
+                    opacity: (_effectiveChipsVisible && !_linkOpening &&
                             (_mode == _FeedMode.feed ||
                              _mode == _FeedMode.searchEpisodes))
                         ? 1.0
@@ -1515,7 +1525,11 @@ class _HomeScreenState extends State<HomeScreen> {
           onFilterToggle: _onFilterToggle,
           onRefresh: () => _refreshSinglePodcast(_filterPodcastId!),
           onCoverTap: _onCoverTap,
-          onUnsubscribe: _filterPodcast != null
+          // Paused counts as not subscribed: + resumes new episodes.
+          onSubscribe: _filterPodcast?.syncPaused == true
+              ? () => _setSyncPaused(_filterPodcast!, false)
+              : null,
+          onUnsubscribe: _filterPodcast != null && !_filterPodcast!.syncPaused
               ? () => _confirmUnsubscribe(_filterPodcast!)
               : null,
           syncPaused: _filterPodcast?.syncPaused ?? false,
@@ -1541,6 +1555,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       case _FeedMode.feed:
       case _FeedMode.searchEpisodes:
+        if (_linkOpening && _mode == _FeedMode.feed) {
+          return const SizedBox.expand();
+        }
         if (_filter.podcasts && !_isSearchMode) {
           return _PodcastGrid(
             db: db, cs: cs, l10n: l10n,
@@ -2207,13 +2224,11 @@ class _DiscoverListState extends State<_DiscoverList> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              // Same neutral fill as an inactive filter chip; orange stays in
-              // the border and text.
-              color: cs.surfaceContainerHighest.withValues(alpha: 0.7),
+              // The active filter chip's color: as the border, and as a
+              // light tint behind the (orange) title.
+              color: cs.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: const Color(0xFFFF9A30).withValues(alpha: 0.55),
-                  width: 1.2),
+              border: Border.all(color: cs.primary, width: 1.5),
             ),
             child: const Text('Apple Trends',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
