@@ -17,8 +17,16 @@ class PodcastHeader extends StatefulWidget {
   final VoidCallback? onSubscribe;
   final VoidCallback? onUnsubscribe;
 
-  /// Subscribed podcast whose background refresh is paused.
+  /// Subscribed podcast that doesn't load new episodes.
   final bool syncPaused;
+
+  /// Unsubscribed feed with episodes left to finish (started or downloaded);
+  /// it tidies itself up once they're played.
+  final bool finishing;
+
+  /// Icons for the two states; the unsubscribe sheet uses them too.
+  static const stopNewEpisodesIcon = Icons.update_disabled_rounded;
+  static const finishEpisodesIcon = Icons.sports_score_rounded;
 
   const PodcastHeader({
     super.key,
@@ -30,6 +38,7 @@ class PodcastHeader extends StatefulWidget {
     this.onSubscribe,
     this.onUnsubscribe,
     this.syncPaused = false,
+    this.finishing = false,
   });
 
   @override
@@ -113,19 +122,28 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                                   fontSize: 12,
                                   color: cs.onSurfaceVariant)),
                         ],
-                        if (widget.syncPaused) ...[
+                        if (widget.syncPaused || widget.finishing) ...[
                           const SizedBox(height: 4),
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.sync_disabled_rounded,
+                              Icon(
+                                  widget.syncPaused
+                                      ? PodcastHeader.stopNewEpisodesIcon
+                                      : PodcastHeader.finishEpisodesIcon,
                                   size: 14, color: cs.onSurfaceVariant),
                               const SizedBox(width: 4),
-                              Text(l10n.newEpisodesStopped,
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: cs.onSurfaceVariant)),
+                              Flexible(
+                                child: Text(
+                                    widget.syncPaused
+                                        ? l10n.newEpisodesStopped
+                                        : l10n.finishingEpisodes,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: cs.onSurfaceVariant)),
+                              ),
                             ],
                           ),
                         ],

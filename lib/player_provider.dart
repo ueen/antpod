@@ -85,7 +85,9 @@ class PlayerProvider extends ChangeNotifier {
     handler.player.positionStream.listen((p) {
       _position = p;
       final ms = p.inMilliseconds;
-      if (ms - _lastSavedMs >= _saveIntervalMs && _currentEpisode != null) {
+      // abs(): a rewind or skip back must be saved too, not only once
+      // playback passes the last saved mark again.
+      if ((ms - _lastSavedMs).abs() >= _saveIntervalMs && _currentEpisode != null) {
         _lastSavedMs = ms;
         _db.updatePlaybackPosition(
           _currentEpisode!.id,
@@ -214,10 +216,23 @@ class PlayerProvider extends ChangeNotifier {
       _position = Duration(milliseconds: ep.lastPositionMs);
       _duration = Duration(seconds: ep.durationSeconds);
       _audioReady = false;
+      _db.livePositionEpisodeId = ep.id;
       _episodeWatchSub?.cancel();
       _episodeWatchSub = _db.watchEpisode(ep.id).listen(_onEpisodeUpdated);
       notifyListeners();
     } catch (_) {}
+  }
+
+  /// Switching episodes: save exactly where the outgoing one stopped (the
+  /// 5-second saves can be a few seconds behind) and hand the live slot to
+  /// [next], so the outgoing tile gets its final position.
+  void _switchTo(Episode next) {
+    final prev = _currentEpisode;
+    if (prev != null && prev.id != next.id && _audioReady &&
+        _position.inMilliseconds > 0) {
+      _flushPosition();
+    }
+    _db.livePositionEpisodeId = next.id;
   }
 
   void _persistLastEpisode(String id) {
@@ -250,6 +265,8 @@ class PlayerProvider extends ChangeNotifier {
     _currentEpisode = null;
     _audioReady = false;
     _chapters = [];
+    // Before the save below, so the lists pick up the final position.
+    _db.livePositionEpisodeId = null;
     notifyListeners();
 
     if (savePosition && wasReady && ms > 0) {
@@ -275,6 +292,7 @@ class PlayerProvider extends ChangeNotifier {
   /// Load episode into player without starting playback.
   Future<void> load(Episode episode) async {
     if (_currentEpisode?.id == episode.id) return;
+    _switchTo(episode);
     _lastSavedMs = 0;
     _currentEpisode = episode;
     _persistLastEpisode(episode.id);
@@ -324,6 +342,7 @@ class PlayerProvider extends ChangeNotifier {
       await audioHandler.play();
       return;
     }
+    _switchTo(episode);
     _lastSavedMs = 0;
     _currentEpisode = episode;
     _persistLastEpisode(episode.id);

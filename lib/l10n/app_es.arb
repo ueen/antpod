@@ -67,6 +67,7 @@
   "unsubscribeFinishEpisodes": "Terminar de escuchar",
   "stopNewEpisodes": "No cargar episodios nuevos",
   "newEpisodesStopped": "No se cargan episodios nuevos",
+  "finishingEpisodes": "Terminar de escuchar",
   "downloadingEpisodes": "{count, plural, =1{Descargando 1 episodio} other{Descargando {count} episodios}}",
   "downloadNotificationChannel": "Descargas"
 }

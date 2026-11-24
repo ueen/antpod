@@ -459,6 +459,12 @@ abstract class AppLocalizations {
   /// **'Not loading new episodes'**
   String get newEpisodesStopped;
 
+  /// No description provided for @finishingEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Finishing episodes'**
+  String get finishingEpisodes;
+
   /// No description provided for @downloadingEpisodes.
   ///
   /// In en, this message translates to:

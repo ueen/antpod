@@ -207,6 +207,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newEpisodesStopped => 'Not loading new episodes';
 
   @override
+  String get finishingEpisodes => 'Finishing episodes';
+
+  @override
   String downloadingEpisodes(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

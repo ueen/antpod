@@ -67,6 +67,7 @@
   "unsubscribeFinishEpisodes": "Zu Ende hören",
   "stopNewEpisodes": "Keine neuen Folgen laden",
   "newEpisodesStopped": "Lädt keine neuen Folgen",
+  "finishingEpisodes": "Zu Ende hören",
   "downloadingEpisodes": "{count, plural, =1{1 Folge wird geladen} other{{count} Folgen werden geladen}}",
   "downloadNotificationChannel": "Downloads"
 }

@@ -285,8 +285,8 @@ class EpisodeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // select() instead of watch(): tiles only rebuild on episode/playing state changes,
-    // never on position ticks. List progress bar reads episode.lastPositionMs (DB-saved
-    // every ~5s) — live position is only needed in the mini player.
+    // never on position ticks. Only the current tile's progress bar follows the
+    // player (_LiveProgressBar); the others read episode.lastPositionMs.
     final isCurrent = context.select<PlayerProvider, bool>(
         (p) => p.currentEpisode?.id == episode.id);
     final isPlaying = context.select<PlayerProvider, bool>(
@@ -382,7 +382,6 @@ class EpisodeTile extends StatelessWidget {
                       isCurrent: isCurrent,
                       cs: cs,
                       formatDuration: _fmt,
-                      effectivePositionMs: episode.lastPositionMs,
                     ),
                   ),
                 ),
@@ -620,21 +619,17 @@ class _EpisodeMetadata extends StatelessWidget {
   final bool isCurrent;
   final ColorScheme cs;
   final String Function(int) formatDuration;
-  final int effectivePositionMs;
 
   const _EpisodeMetadata({
     required this.episode, required this.isCurrent,
     required this.cs, required this.formatDuration,
-    required this.effectivePositionMs,
   });
 
   @override
   Widget build(BuildContext context) {
     final showProgress = !episode.isFinished &&
         episode.durationSeconds > 0 &&
-        (effectivePositionMs > 0 || isCurrent);
-    final progressValue =
-        showProgress ? (effectivePositionMs / 1000) / episode.durationSeconds : 0.0;
+        (episode.lastPositionMs > 0 || isCurrent);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -684,17 +679,48 @@ class _EpisodeMetadata extends StatelessWidget {
           child: showProgress
               ? Padding(
                   padding: const EdgeInsets.only(top: 5),
-                  child: LinearProgressIndicator(
-                    value: progressValue.clamp(0.0, 1.0),
-                    minHeight: 2,
-                    backgroundColor: cs.primary.withValues(alpha: 0.15),
-                    valueColor: AlwaysStoppedAnimation(cs.primary),
-                  ),
+                  child: isCurrent
+                      ? _LiveProgressBar(episode: episode, cs: cs)
+                      : _ProgressBar(
+                          value: episode.lastPositionMs /
+                              (episode.durationSeconds * 1000),
+                          cs: cs),
                 )
               : const SizedBox.shrink(),
         ),
       ],
     );
+  }
+}
+
+class _ProgressBar extends StatelessWidget {
+  final double value;
+  final ColorScheme cs;
+  const _ProgressBar({required this.value, required this.cs});
+
+  @override
+  Widget build(BuildContext context) => LinearProgressIndicator(
+        value: value.clamp(0.0, 1.0),
+        minHeight: 2,
+        backgroundColor: cs.primary.withValues(alpha: 0.15),
+        valueColor: AlwaysStoppedAnimation(cs.primary),
+      );
+}
+
+/// The current episode's bar, in step with the mini player: it follows the
+/// player position (whole seconds), not the DB value that's saved every 5 s.
+/// Own widget so the 1 Hz rebuild stays this small.
+class _LiveProgressBar extends StatelessWidget {
+  final Episode episode;
+  final ColorScheme cs;
+  const _LiveProgressBar({required this.episode, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    final (posSec, durSec) = context.select<PlayerProvider, (int, int)>(
+        (p) => (p.position.inSeconds, p.duration.inSeconds));
+    final total = durSec > 0 ? durSec : episode.durationSeconds;
+    return _ProgressBar(value: total > 0 ? posSec / total : 0.0, cs: cs);
   }
 }
 

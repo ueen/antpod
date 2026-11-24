@@ -81,6 +81,7 @@
   "unsubscribeFinishEpisodes": "Finish episodes",
   "stopNewEpisodes": "Don't load new episodes",
   "newEpisodesStopped": "Not loading new episodes",
+  "finishingEpisodes": "Finishing episodes",
   "downloadingEpisodes": "{count, plural, =1{Downloading 1 episode} other{Downloading {count} episodes}}",
   "@downloadingEpisodes": {
     "placeholders": {

@@ -633,7 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       side: BorderSide(color: cs.error.withValues(alpha: 0.6)),
                       minimumSize: const Size.fromHeight(48),
                     ),
-                    icon: const Icon(Icons.inventory_2_outlined),
+                    icon: const Icon(PodcastHeader.finishEpisodesIcon),
                     label: Text(l10n.unsubscribeFinishEpisodes),
                     onPressed: () => Navigator.pop(ctx, 'finish'),
                   ),
@@ -642,7 +642,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 FilledButton.tonalIcon(
                   style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(48)),
-                  icon: const Icon(Icons.sync_disabled_rounded),
+                  icon: const Icon(PodcastHeader.stopNewEpisodesIcon),
                   label: Text(l10n.stopNewEpisodes),
                   onPressed: () => Navigator.pop(ctx, 'stop'),
                 ),
@@ -1887,15 +1887,21 @@ class _PodcastFeed extends StatelessWidget {
       onRefresh: onRefresh ?? () async {},
       isLoading: isLoading,
       headerSlivers: [
-        PodcastHeader(
-          imageUrl: imageUrl,
-          title: title,
-          author: author,
-          description: description,
-          shareUrl: shareUrl,
-          onSubscribe: onSubscribe,
-          onUnsubscribe: onUnsubscribe,
-          syncPaused: syncPaused,
+        _FinishingWatcher(
+          db: db,
+          podcastId: feedId,
+          enabled: !isSubscribed,
+          builder: (finishing) => PodcastHeader(
+            imageUrl: imageUrl,
+            title: title,
+            author: author,
+            description: description,
+            shareUrl: shareUrl,
+            onSubscribe: onSubscribe,
+            onUnsubscribe: onUnsubscribe,
+            syncPaused: syncPaused,
+            finishing: finishing,
+          ),
         ),
         ClipRect(
           child: AnimatedAlign(
@@ -1915,6 +1921,56 @@ class _PodcastFeed extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Rebuilds [builder] with whether an unsubscribed feed still has episodes
+/// left to finish (started or downloaded). Keeps one stream per podcast.
+class _FinishingWatcher extends StatefulWidget {
+  final AppDatabase db;
+  final String podcastId;
+  final bool enabled;
+  final Widget Function(bool finishing) builder;
+
+  const _FinishingWatcher({
+    required this.db, required this.podcastId,
+    required this.enabled, required this.builder,
+  });
+
+  @override
+  State<_FinishingWatcher> createState() => _FinishingWatcherState();
+}
+
+class _FinishingWatcherState extends State<_FinishingWatcher> {
+  Stream<bool>? _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribe();
+  }
+
+  @override
+  void didUpdateWidget(_FinishingWatcher old) {
+    super.didUpdateWidget(old);
+    if (old.podcastId != widget.podcastId || old.enabled != widget.enabled ||
+        old.db != widget.db) {
+      _subscribe();
+    }
+  }
+
+  void _subscribe() => _stream = widget.enabled
+      ? widget.db.watchHasEpisodesToFinish(widget.podcastId)
+      : null;
+
+  @override
+  Widget build(BuildContext context) {
+    final stream = _stream;
+    if (stream == null) return widget.builder(false);
+    return StreamBuilder<bool>(
+      stream: stream,
+      builder: (_, snap) => widget.builder(snap.data ?? false),
     );
   }
 }

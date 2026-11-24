@@ -89,9 +89,10 @@ class Episodes extends Table {
 // ─── Stream helpers ───────────────────────────────────────────────────────────
 
 // Structural equality for episode lists: propagates changes to fields that affect
-// filtering or display, but ignores lastPositionMs / playbackPositionSeconds so
-// the 5-second position-save writes don't trigger downstream rebuilds.
-bool _episodeListEqual(List<Episode> a, List<Episode> b) {
+// filtering or display. Position changes count too, except for [liveId], the
+// episode the player is on: its 5-second saves would rebuild every list while
+// it plays, and its tile shows the live player position anyway.
+bool _episodeListEqual(List<Episode> a, List<Episode> b, String? liveId) {
   if (a.length != b.length) return false;
   for (int i = 0; i < a.length; i++) {
     final x = a[i]; final y = b[i];
@@ -100,7 +101,8 @@ bool _episodeListEqual(List<Episode> a, List<Episode> b) {
         x.isDownloaded != y.isDownloaded ||
         x.markedForDownload != y.markedForDownload ||
         x.durationSeconds != y.durationSeconds ||
-        x.localPath != y.localPath) {
+        x.localPath != y.localPath ||
+        (x.lastPositionMs != y.lastPositionMs && x.id != liveId)) {
       return false;
     }
   }
@@ -112,6 +114,15 @@ bool _episodeListEqual(List<Episode> a, List<Episode> b) {
 @DriftDatabase(tables: [Podcasts, Episodes])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'antpod'));
+
+  /// The episode the player is on, set by PlayerProvider. List streams skip
+  /// its position-only changes while it plays; every other position change
+  /// (the final save when the player stops or switches episode, mark as
+  /// unplayed) reaches the lists, so progress bars never go stale.
+  String? livePositionEpisodeId;
+
+  bool _sameEpisodeList(List<Episode> a, List<Episode> b) =>
+      _episodeListEqual(a, b, livePositionEpisodeId);
 
   @override
   int get schemaVersion => 8;
@@ -220,7 +231,7 @@ class AppDatabase extends _$AppDatabase {
           })
           ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
         .watch()
-        .distinct(_episodeListEqual);
+        .distinct(_sameEpisodeList);
   }
 
   /// Finished/played episodes (history view). Includes temp episodes still within
@@ -247,7 +258,7 @@ class AppDatabase extends _$AppDatabase {
             ..where((e) => e.podcastId.equals(podcastId))
             ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
           .watch()
-          .distinct(_episodeListEqual);
+          .distinct(_sameEpisodeList);
 
   Future<void> insertEpisode(EpisodesCompanion ep) =>
       into(episodes).insertOnConflictUpdate(ep);
@@ -476,7 +487,7 @@ class AppDatabase extends _$AppDatabase {
                e.lastPositionMs.isBiggerThanValue(0)))
           ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
         .watch()
-        .distinct(_episodeListEqual);
+        .distinct(_sameEpisodeList);
   }
 
   /// User-initiated "delete download": removes the file, and for a temp
@@ -648,6 +659,21 @@ class AppDatabase extends _$AppDatabase {
   /// unsubscribe sheet offers "finish episodes" only when an episode passes.
   static bool isKeepWorthy(Episode e) =>
       e.isDownloaded || (e.lastPositionMs > 0 && !e.isFinished);
+
+  /// Whether the unsubscribed feed [podcastId] still has episodes to finish
+  /// (the [isKeepWorthy] test): its header then says it's being finished.
+  Stream<bool> watchHasEpisodesToFinish(String podcastId) =>
+      (select(episodes)
+            ..where((e) =>
+                e.podcastId.equals(podcastId) &
+                e.isSubscribed.equals(false) &
+                (e.isDownloaded.equals(true) |
+                    (e.lastPositionMs.isBiggerThanValue(0) &
+                        e.isFinished.equals(false))))
+            ..limit(1))
+          .watch()
+          .map((rows) => rows.isNotEmpty)
+          .distinct();
 
   /// Unsubscribe, finish episodes: the podcast and all its episodes become
   /// temp, with play state, downloads and the list itself untouched. Only the
