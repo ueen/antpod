@@ -55,5 +55,5 @@ class ShareUtils {
       '$_base?f=${_enc(_stripProto(result.feedUrl))}';
 
   static String episodeUrl(Episode episode) =>
-      '$_base?f=${_enc(_stripProto(episode.podcastId))}&h=${guidHash(episode.id)}';
+      '$_base?f=${_enc(_stripProto(episode.podcastId))}&e=${guidHash(episode.id)}';
 }

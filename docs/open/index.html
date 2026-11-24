@@ -390,7 +390,7 @@
       return s.startsWith('h0:') ? 'http://' + s.slice(3) : 'https://' + s;
     }
     const feed   = restoreProto(params.get('f') || '');
-    const h      = params.get('h') || '';
+    const h      = params.get('e') || params.get('h') || '';  // 'h' kept for old links
     const pTitle = params.get('t') || '';
     const pPod   = params.get('p') || '';
 
