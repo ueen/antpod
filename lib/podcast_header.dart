@@ -49,6 +49,10 @@ class PodcastHeader extends StatefulWidget {
 class _PodcastHeaderState extends State<PodcastHeader> {
   bool _expanded = false;
   bool _subscribePressed = false;
+  /// Which note was shown last, kept so it can collapse with its text intact.
+  late bool _notePaused = widget.syncPaused;
+
+  bool get _showNote => widget.syncPaused || widget.finishing;
 
   @override
   void didUpdateWidget(PodcastHeader old) {
@@ -56,6 +60,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
     // The header outlives subscription changes (the list below updates in
     // place), so re-arm + once it's gone, ready for the next time it shows.
     if (widget.onSubscribe == null) _subscribePressed = false;
+    if (_showNote) _notePaused = widget.syncPaused;
   }
 
   @override
@@ -118,46 +123,44 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                                   fontSize: 12,
                                   color: cs.onSurfaceVariant)),
                         ],
-                        // State note: grows/shrinks the header and fades
-                        // between "new episodes stopped" / "finishing".
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 240),
-                          curve: Curves.easeOutCubic,
-                          alignment: AlignmentDirectional.topStart,
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 240),
-                            layoutBuilder: (current, previous) => Stack(
-                              alignment: AlignmentDirectional.topStart,
-                              children: [...previous, if (current != null) current],
-                            ),
-                            child: !(widget.syncPaused || widget.finishing)
-                                ? const SizedBox.shrink(key: ValueKey('none'))
-                                : Padding(
-                                    key: ValueKey(widget.syncPaused ? 'paused' : 'finishing'),
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                            widget.syncPaused
-                                                ? PodcastHeader.stopNewEpisodesIcon
-                                                : PodcastHeader.finishEpisodesIcon,
-                                            size: 14, color: cs.onSurfaceVariant),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                              widget.syncPaused
-                                                  ? l10n.newEpisodesStopped
-                                                  : l10n.finishingEpisodes,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: cs.onSurfaceVariant)),
-                                        ),
-                                      ],
+                        // State note ("new episodes stopped" / "finishing"):
+                        // grows and fades in, and on resubscribe shrinks and
+                        // fades out at the same time, like the filter bar.
+                        ClipRect(
+                          child: AnimatedAlign(
+                            duration: const Duration(milliseconds: 260),
+                            curve: Curves.easeInOutCubic,
+                            alignment: AlignmentDirectional.topStart,
+                            heightFactor: _showNote ? 1.0 : 0.0,
+                            child: AnimatedOpacity(
+                              duration: const Duration(milliseconds: 200),
+                              opacity: _showNote ? 1.0 : 0.0,
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                        _notePaused
+                                            ? PodcastHeader.stopNewEpisodesIcon
+                                            : PodcastHeader.finishEpisodesIcon,
+                                        size: 14, color: cs.onSurfaceVariant),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                          _notePaused
+                                              ? l10n.newEpisodesStopped
+                                              : l10n.finishingEpisodes,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: cs.onSurfaceVariant)),
                                     ),
-                                  ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ],

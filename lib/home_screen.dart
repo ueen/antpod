@@ -1525,13 +1525,13 @@ class _FinishingWatcherState extends State<_FinishingWatcher> {
       ? widget.db.watchHasEpisodesToFinish(widget.podcastId)
       : null;
 
+  // Always a StreamBuilder (null stream when disabled): switching widget type
+  // here would rebuild the header from scratch on (re)subscribe and cut its
+  // animations short. A dropped stream keeps its last value, hence the check.
   @override
-  Widget build(BuildContext context) {
-    final stream = _stream;
-    if (stream == null) return widget.builder(false);
-    return StreamBuilder<bool>(
-      stream: stream,
-      builder: (_, snap) => widget.builder(snap.data ?? false),
-    );
-  }
+  Widget build(BuildContext context) => StreamBuilder<bool>(
+        stream: _stream,
+        builder: (_, snap) =>
+            widget.builder(_stream != null && (snap.data ?? false)),
+      );
 }
