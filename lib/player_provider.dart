@@ -24,6 +24,9 @@ class PlayerProvider extends ChangeNotifier {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isLoading = false;
+  // False after restoreLastEpisode() — audio source is not configured until
+  // the user taps play. True once load() or play() sets up the audio handler.
+  bool _audioReady = false;
   double? _downloadProgress;
   List<PodcastChapter> _chapters = [];
   // startTimeMs → image bytes, populated from ID3v2 CHAP tags when JSON has no images
@@ -197,7 +200,14 @@ class PlayerProvider extends ChangeNotifier {
       if (id == null) return;
       final ep = await _db.getEpisode(id);
       if (ep == null || ep.isFinished) return;
-      await load(ep);
+      // Set UI state only — no network activity until the user taps play.
+      // The audio handler is configured lazily in play().
+      _currentEpisode = ep;
+      _position = Duration(milliseconds: ep.lastPositionMs);
+      _audioReady = false;
+      _episodeWatchSub?.cancel();
+      _episodeWatchSub = _db.watchEpisode(ep.id).listen(_onEpisodeUpdated);
+      notifyListeners();
     } catch (_) {}
   }
 
@@ -218,6 +228,7 @@ class PlayerProvider extends ChangeNotifier {
     _episodeWatchSub?.cancel();
     _episodeWatchSub = null;
     _currentEpisode = null;
+    _audioReady = false;
     _chapters = [];
     notifyListeners();
   }
@@ -233,6 +244,7 @@ class PlayerProvider extends ChangeNotifier {
     _position = Duration(milliseconds: startMs);
     final localPath = _resolveLocalPath(episode.localPath);
     _isLoading = localPath == null;
+    _audioReady = true;
     notifyListeners();
     _loadChapters(episode.chaptersUrl, episode.audioUrl);
     _episodeWatchSub?.cancel();
@@ -267,7 +279,9 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> play(Episode episode) async {
-    if (_currentEpisode?.id == episode.id) {
+    // Only short-circuit if the audio handler has actually been configured
+    // (i.e. not just restored from prefs without buffering).
+    if (_currentEpisode?.id == episode.id && _audioReady) {
       await audioHandler.play();
       return;
     }
@@ -280,6 +294,7 @@ class PlayerProvider extends ChangeNotifier {
     _position = Duration(milliseconds: startMs);
     final localPath = _resolveLocalPath(episode.localPath);
     _isLoading = localPath == null && episode.audioUrl.isNotEmpty;
+    _audioReady = true;
     notifyListeners();
 
     _loadChapters(episode.chaptersUrl, episode.audioUrl);
@@ -316,10 +331,11 @@ class PlayerProvider extends ChangeNotifier {
     if (_currentEpisode == null) return;
     if (updated == null) {
       // Episode was deleted from DB (e.g. unsubscribe) — stop and clear.
-      audioHandler.stop();
+      if (_audioReady) audioHandler.stop();
       _episodeWatchSub?.cancel();
       _episodeWatchSub = null;
       _currentEpisode = null;
+      _audioReady = false;
       _chapters = [];
       notifyListeners();
       return;
@@ -327,10 +343,11 @@ class PlayerProvider extends ChangeNotifier {
     // Episode marked as played externally (swipe or menu) — stop and clear,
     // same as the temp-episode-removed path above.
     if (!_currentEpisode!.isFinished && updated.isFinished) {
-      audioHandler.stop();
+      if (_audioReady) audioHandler.stop();
       _episodeWatchSub?.cancel();
       _episodeWatchSub = null;
       _currentEpisode = null;
+      _audioReady = false;
       _chapters = [];
       notifyListeners();
       return;
