@@ -117,30 +117,6 @@ abstract class AppLocalizations {
   /// **'No results found.'**
   String get searchNoResults;
 
-  /// No description provided for @sectionTrending.
-  ///
-  /// In en, this message translates to:
-  /// **'Trending this month'**
-  String get sectionTrending;
-
-  /// No description provided for @sectionRecommended.
-  ///
-  /// In en, this message translates to:
-  /// **'Recommended for you'**
-  String get sectionRecommended;
-
-  /// No description provided for @sectionRecommendedSub.
-  ///
-  /// In en, this message translates to:
-  /// **'based on your subscriptions'**
-  String get sectionRecommendedSub;
-
-  /// No description provided for @sectionSearchResults.
-  ///
-  /// In en, this message translates to:
-  /// **'Search results'**
-  String get sectionSearchResults;
-
   /// No description provided for @emptyFeedTitle.
   ///
   /// In en, this message translates to:
@@ -164,18 +140,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No subscriptions yet'**
   String get emptyPodcastsTitle;
-
-  /// No description provided for @subscribeDialogTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Subscribe'**
-  String get subscribeDialogTitle;
-
-  /// No description provided for @subscribed.
-  ///
-  /// In en, this message translates to:
-  /// **'Subscribed to \"{title}\"'**
-  String subscribed(String title);
 
   /// No description provided for @downloaded.
   ///
@@ -212,12 +176,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Listened'**
   String get filterListened;
-
-  /// No description provided for @filterPodcast.
-  ///
-  /// In en, this message translates to:
-  /// **'Podcast'**
-  String get filterPodcast;
 
   /// No description provided for @filterPodcasts.
   ///
@@ -279,29 +237,11 @@ abstract class AppLocalizations {
   /// **'Search online'**
   String get searchOnline;
 
-  /// No description provided for @discoverTabTrending.
-  ///
-  /// In en, this message translates to:
-  /// **'Trending'**
-  String get discoverTabTrending;
-
-  /// No description provided for @discoverTabSuggestions.
-  ///
-  /// In en, this message translates to:
-  /// **'Suggestions'**
-  String get discoverTabSuggestions;
-
   /// No description provided for @aboutAntpod.
   ///
   /// In en, this message translates to:
   /// **'About AntPod'**
   String get aboutAntpod;
-
-  /// No description provided for @subscriptions.
-  ///
-  /// In en, this message translates to:
-  /// **'Subscriptions'**
-  String get subscriptions;
 
   /// No description provided for @markUnplayed.
   ///
@@ -326,18 +266,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Share episode'**
   String get shareEpisode;
-
-  /// No description provided for @sharePodcast.
-  ///
-  /// In en, this message translates to:
-  /// **'Share podcast'**
-  String get sharePodcast;
-
-  /// No description provided for @unsubscribe.
-  ///
-  /// In en, this message translates to:
-  /// **'Unsubscribe'**
-  String get unsubscribe;
 
   /// No description provided for @filterRandom.
   ///
@@ -476,6 +404,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Downloads'**
   String get downloadNotificationChannel;
+
+  /// No description provided for @aboutText.
+  ///
+  /// In en, this message translates to:
+  /// **'The anthill for your podcasts — every episode carried home to the hill tirelessly. A nimble scout hatched from the spirit of the grand old AntennaPod.'**
+  String get aboutText;
+
+  /// No description provided for @tooltipFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter'**
+  String get tooltipFilter;
+
+  /// No description provided for @tooltipSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get tooltipSearch;
+
+  /// No description provided for @tooltipDiscover.
+  ///
+  /// In en, this message translates to:
+  /// **'Discover'**
+  String get tooltipDiscover;
+
+  /// No description provided for @tooltipGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'Guide'**
+  String get tooltipGuide;
+
+  /// No description provided for @trendingError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load trending podcasts'**
+  String get trendingError;
+
+  /// No description provided for @trendingEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No trending podcasts available.'**
+  String get trendingEmpty;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

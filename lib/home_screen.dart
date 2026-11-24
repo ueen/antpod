@@ -30,6 +30,7 @@ import 'player_provider.dart';
 import 'podcast_header.dart';
 import 'podcast_service.dart';
 import 'share_utils.dart';
+import 'network.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,13 +123,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Auto-download queued episodes when WiFi becomes available; track offline state.
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
-      final offline = results.every((r) =>
-          r == ConnectivityResult.none || r == ConnectivityResult.bluetooth);
-      if (offline != _isOffline) setState(() => _isOffline = offline);
-      if (results.contains(ConnectivityResult.wifi) ||
-          results.contains(ConnectivityResult.ethernet)) {
-        _downloadMarkedEpisodes();
-      }
+      if (results.isOffline != _isOffline) setState(() => _isOffline = results.isOffline);
+      if (results.isUnmetered) _downloadMarkedEpisodes();
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -311,9 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final db = context.read<AppDatabase>();
       final downloads = context.read<DownloadProvider>();
       await downloads.restore();
-      final connectivity = await Connectivity().checkConnectivity();
-      if (!connectivity.contains(ConnectivityResult.wifi) &&
-          !connectivity.contains(ConnectivityResult.ethernet)) { return; }
+      if (!(await Connectivity().checkConnectivity()).isUnmetered) return;
       if (!mounted) return;
       await DownloadService.requestNotificationPermission();
       if (!mounted) return;
@@ -666,7 +660,7 @@ class _HomeScreenState extends State<HomeScreen> {
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'About AntPod',
+      barrierLabel: AppLocalizations.of(context)!.aboutAntpod,
       barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 180),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
@@ -720,9 +714,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               const SizedBox(height: 12),
                               // Body text
                               Text(
-                                'The anthill for your podcasts — '
-                                'every episode carried home to the hill tirelessly. '
-                                'A nimble scout hatched from the spirit of the grand old AntennaPod.',
+                                AppLocalizations.of(ctx)!.aboutText,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: cs.onPrimaryContainer,
@@ -818,6 +810,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return result;
   }
 
+  /// Country for Apple's charts and episode search, from the app locale.
   String get _searchCountry {
     final locale = Localizations.localeOf(context);
     return (locale.countryCode ?? locale.languageCode).toLowerCase();
@@ -922,9 +915,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (!mounted) return;
-    final locale = Localizations.localeOf(context);
-    final country = (locale.countryCode ?? locale.languageCode).toLowerCase();
-    final lang = locale.languageCode == 'en' ? 'en' : '${locale.languageCode},en';
+    final country = _searchCountry;
+    final language = Localizations.localeOf(context).languageCode;
+    final lang = language == 'en' ? 'en' : '$language,en';
     setState(() { _loadingTrending = true; _trendingError = null; });
 
     List<PodcastResult> charts;
@@ -1347,26 +1340,28 @@ class _Toolbar extends StatelessWidget {
         ),
         if (searchCtrl.text.isNotEmpty)
           IconButton(icon: const Icon(Icons.clear_rounded, size: 20), onPressed: onClearSearch),
-        if (mode == _FeedMode.searchEpisodes)
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              IconButton(
-                icon: Icon(Icons.tune_rounded,
-                    color: filterChipsVisible ? cs.primary : cs.onSurface),
-                onPressed: onFilterToggle,
-                tooltip: 'Filter',
-              ),
-              if (filter.hasAny)
-                Positioned(right: 8, top: 8, child: Container(
-                  width: 8, height: 8,
-                  decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
-                )),
-            ],
-          ),
+        if (mode == _FeedMode.searchEpisodes) _filterButton(),
       ],
     );
   }
+
+  /// Toggles the filter chips; a dot shows while any filter is on.
+  Widget _filterButton() => Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            icon: Icon(Icons.tune_rounded,
+                color: filterChipsVisible ? cs.primary : cs.onSurface),
+            onPressed: onFilterToggle,
+            tooltip: l10n.tooltipFilter,
+          ),
+          if (filter.hasAny)
+            Positioned(right: 8, top: 8, child: Container(
+              width: 8, height: 8,
+              decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
+            )),
+        ],
+      );
 
   Widget _defaultRow() {
     final inPodcast = mode == _FeedMode.podcastFilter || mode == _FeedMode.previewPodcast;
@@ -1396,7 +1391,7 @@ class _Toolbar extends StatelessWidget {
                         color: cs.onSurface, letterSpacing: -0.5)),
                     ),
                     Tooltip(
-                      message: 'Guide',
+                      message: l10n.tooltipGuide,
                       child: GestureDetector(
                         onTap: onInfoPressed,
                         child: Padding(
@@ -1409,30 +1404,15 @@ class _Toolbar extends StatelessWidget {
                 ),
         ),
         const Spacer(),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton(
-              icon: Icon(Icons.tune_rounded,
-                  color: filterChipsVisible ? cs.primary : cs.onSurface),
-              onPressed: onFilterToggle,
-              tooltip: 'Filter',
-            ),
-            if (filter.hasAny)
-              Positioned(right: 8, top: 8, child: Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
-              )),
-          ],
-        ),
+        _filterButton(),
         IconButton(
           icon: Icon(Icons.search_rounded, color: cs.onSurface),
           onPressed: onSearchOpen,
-          tooltip: 'Search'),
+          tooltip: l10n.tooltipSearch),
         IconButton(
           icon: Icon(Icons.add_rounded, color: cs.onSurface),
           onPressed: onPlusPressed,
-          tooltip: 'Discover'),
+          tooltip: l10n.tooltipDiscover),
       ],
     );
   }
@@ -1921,7 +1901,7 @@ class _DiscoverListState extends State<_DiscoverList> {
                         Icon(Icons.wifi_off_rounded,
                             size: 40, color: cs.onSurfaceVariant),
                         const SizedBox(height: 12),
-                        Text('Could not load trending podcasts',
+                        Text(l10n.trendingError,
                             style: TextStyle(color: cs.onSurfaceVariant)),
                         const SizedBox(height: 4),
                         Text(widget.trendingError!,
@@ -1934,7 +1914,7 @@ class _DiscoverListState extends State<_DiscoverList> {
                 else if (widget.trending.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
-                    child: Center(child: Text('No trending podcasts available.',
+                    child: Center(child: Text(l10n.trendingEmpty,
                         style: TextStyle(color: cs.onSurfaceVariant))),
                   )
                 else

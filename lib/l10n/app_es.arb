@@ -3,30 +3,16 @@
   "toolbarSearchHint": "Buscar episodios…",
   "searchHint": "Buscar podcasts…",
   "searchNoResults": "No se encontraron resultados.",
-  "sectionTrending": "Tendencias esta semana",
-  "sectionRecommended": "Recomendado para ti",
-  "sectionRecommendedSub": "basado en tus suscripciones",
-  "sectionSearchResults": "Resultados de búsqueda",
   "emptyFeedTitle": "Aún no hay podcasts",
   "emptyFeedSub": "Toca + para buscar y suscribirte",
   "emptySearchTitle": "Sin resultados",
   "emptyPodcastsTitle": "Aún no hay suscripciones",
-  "subscribeDialogTitle": "Suscribirse",
-  "subscribed": "Suscrito a \"{title}\"",
-  "@subscribed": {
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
   "downloaded": "Descargado",
   "downloading": "Descargar",
   "deleteDownload": "Eliminar descarga",
   "shownotes": "Notas del episodio",
   "filterNew": "Nuevo",
   "filterListened": "Escuchados",
-  "filterPodcast": "Podcast",
   "filterPodcasts": "Podcasts",
   "filterDownloaded": "Descargados",
   "filterAlphabetical": "A–Z",
@@ -37,16 +23,11 @@
   "addByRssUrl": "Añadir por URL RSS",
   "subscribeToRss": "Suscribirse al feed RSS",
   "searchOnline": "Buscar en línea",
-  "discoverTabTrending": "Tendencias",
-  "discoverTabSuggestions": "Sugerencias",
   "aboutAntpod": "Sobre AntPod",
-  "subscriptions": "Suscripciones",
   "markUnplayed": "Marcar como no escuchado",
   "markPlayed": "Marcar como escuchado",
   "cancel": "Cancelar",
   "shareEpisode": "Compartir episodio",
-  "sharePodcast": "Compartir podcast",
-  "unsubscribe": "Cancelar suscripción",
   "filterRandom": "Aleatorio",
   "removeEpisode": "Eliminar episodio",
   "exportFile": "Exportar archivo",
@@ -69,5 +50,12 @@
   "newEpisodesStopped": "No se cargan episodios nuevos",
   "finishingEpisodes": "Terminar de escuchar",
   "downloadingEpisodes": "{count, plural, =1{Descargando 1 episodio} other{Descargando {count} episodios}}",
-  "downloadNotificationChannel": "Descargas"
+  "downloadNotificationChannel": "Descargas",
+  "aboutText": "El hormiguero de tus podcasts: cada episodio, acarreado sin descanso hasta casa. Una exploradora ágil, nacida del espíritu del venerable AntennaPod.",
+  "tooltipFilter": "Filtrar",
+  "tooltipSearch": "Buscar",
+  "tooltipDiscover": "Descubrir",
+  "tooltipGuide": "Guía",
+  "trendingError": "No se pudieron cargar las tendencias",
+  "trendingEmpty": "No hay tendencias disponibles."
 }

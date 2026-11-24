@@ -12,6 +12,7 @@ import 'download_service.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
 import 'share_utils.dart';
+import 'network.dart';
 
 // ─── WiFi download helper ─────────────────────────────────────────────────────
 
@@ -24,11 +25,8 @@ Future<void> triggerDownload({
   required DownloadProvider downloads,
 }) async {
   final result = await Connectivity().checkConnectivity();
-  final isWifi = result.contains(ConnectivityResult.wifi) ||
-      result.contains(ConnectivityResult.ethernet);
-  final hasMobile = result.contains(ConnectivityResult.mobile) ||
-      result.contains(ConnectivityResult.vpn);
-  final hasConnection = isWifi || hasMobile;
+  final isWifi = result.isUnmetered;
+  final hasConnection = !result.isOffline;
 
   if (!context.mounted) return;
 

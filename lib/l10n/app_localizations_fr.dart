@@ -18,18 +18,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get searchNoResults => 'Aucun résultat trouvé.';
 
   @override
-  String get sectionTrending => 'Tendances cette semaine';
-
-  @override
-  String get sectionRecommended => 'Recommandé pour vous';
-
-  @override
-  String get sectionRecommendedSub => 'basé sur vos abonnements';
-
-  @override
-  String get sectionSearchResults => 'Résultats de recherche';
-
-  @override
   String get emptyFeedTitle => 'Aucun podcast pour l\'instant';
 
   @override
@@ -40,14 +28,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get emptyPodcastsTitle => 'Aucun abonnement pour l\'instant';
-
-  @override
-  String get subscribeDialogTitle => 'S\'abonner';
-
-  @override
-  String subscribed(String title) {
-    return 'Abonné à \"$title\"';
-  }
 
   @override
   String get downloaded => 'Téléchargé';
@@ -66,9 +46,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get filterListened => 'Écoutés';
-
-  @override
-  String get filterPodcast => 'Podcast';
 
   @override
   String get filterPodcasts => 'Podcasts';
@@ -101,16 +78,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get searchOnline => 'Rechercher en ligne';
 
   @override
-  String get discoverTabTrending => 'Tendances';
-
-  @override
-  String get discoverTabSuggestions => 'Suggestions';
-
-  @override
   String get aboutAntpod => 'À propos d\'AntPod';
-
-  @override
-  String get subscriptions => 'Abonnements';
 
   @override
   String get markUnplayed => 'Marquer comme non écouté';
@@ -123,12 +91,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get shareEpisode => 'Partager l\'épisode';
-
-  @override
-  String get sharePodcast => 'Partager le podcast';
-
-  @override
-  String get unsubscribe => 'Se désabonner';
 
   @override
   String get filterRandom => 'Aléatoire';
@@ -207,7 +169,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get newEpisodesStopped => 'Nouveaux épisodes non chargés';
 
   @override
-  String get finishingEpisodes => 'Finir d’écouter';
+  String get finishingEpisodes => 'Finir d\'écouter';
 
   @override
   String downloadingEpisodes(int count) {
@@ -215,11 +177,32 @@ class AppLocalizationsFr extends AppLocalizations {
       count,
       locale: localeName,
       other: 'Téléchargement de $count épisodes',
-      one: 'Téléchargement d’1 épisode',
+      one: 'Téléchargement d\'1 épisode',
     );
     return '$_temp0';
   }
 
   @override
   String get downloadNotificationChannel => 'Téléchargements';
+
+  @override
+  String get aboutText => 'La fourmilière de vos podcasts — chaque épisode y est porté sans relâche. Une éclaireuse agile, éclose de l\'esprit du vénérable AntennaPod.';
+
+  @override
+  String get tooltipFilter => 'Filtrer';
+
+  @override
+  String get tooltipSearch => 'Rechercher';
+
+  @override
+  String get tooltipDiscover => 'Découvrir';
+
+  @override
+  String get tooltipGuide => 'Guide';
+
+  @override
+  String get trendingError => 'Impossible de charger les tendances';
+
+  @override
+  String get trendingEmpty => 'Aucune tendance disponible.';
 }

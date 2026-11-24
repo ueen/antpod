@@ -3,30 +3,16 @@
   "toolbarSearchHint": "Search episodes…",
   "searchHint": "Search podcasts…",
   "searchNoResults": "No results found.",
-  "sectionTrending": "Trending this month",
-  "sectionRecommended": "Recommended for you",
-  "sectionRecommendedSub": "based on your subscriptions",
-  "sectionSearchResults": "Search results",
   "emptyFeedTitle": "No podcasts yet",
   "emptyFeedSub": "Tap + to search and subscribe",
   "emptySearchTitle": "No results",
   "emptyPodcastsTitle": "No subscriptions yet",
-  "subscribeDialogTitle": "Subscribe",
-  "subscribed": "Subscribed to \"{title}\"",
-  "@subscribed": {
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
   "downloaded": "Downloaded",
   "downloading": "Download",
   "deleteDownload": "Delete download",
   "shownotes": "Show notes",
   "filterNew": "New",
   "filterListened": "Listened",
-  "filterPodcast": "Podcast",
   "filterPodcasts": "Podcasts",
   "filterDownloaded": "Downloaded",
   "filterAlphabetical": "A–Z",
@@ -37,16 +23,11 @@
   "addByRssUrl": "Add by RSS URL",
   "subscribeToRss": "Subscribe to RSS feed",
   "searchOnline": "Search online",
-  "discoverTabTrending": "Trending",
-  "discoverTabSuggestions": "Suggestions",
   "aboutAntpod": "About AntPod",
-  "subscriptions": "Subscriptions",
   "markUnplayed": "Mark as unplayed",
   "markPlayed": "Mark as played",
   "cancel": "Cancel",
   "shareEpisode": "Share episode",
-  "sharePodcast": "Share podcast",
-  "unsubscribe": "Unsubscribe",
   "filterRandom": "Random",
   "removeEpisode": "Remove episode",
   "exportFile": "Export file",
@@ -90,5 +71,12 @@
       }
     }
   },
-  "downloadNotificationChannel": "Downloads"
+  "downloadNotificationChannel": "Downloads",
+  "aboutText": "The anthill for your podcasts — every episode carried home to the hill tirelessly. A nimble scout hatched from the spirit of the grand old AntennaPod.",
+  "tooltipFilter": "Filter",
+  "tooltipSearch": "Search",
+  "tooltipDiscover": "Discover",
+  "tooltipGuide": "Guide",
+  "trendingError": "Could not load trending podcasts",
+  "trendingEmpty": "No trending podcasts available."
 }

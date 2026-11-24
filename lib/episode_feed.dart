@@ -13,6 +13,7 @@ import 'episode_tile.dart';
 import 'feed_state.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
+import 'network.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Episode feed — animated list with diff
@@ -394,8 +395,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
           _pullDrag.value = 0;
           setState(() => _localRefreshing = true);
           Connectivity().checkConnectivity().then((results) {
-            final offline = results.every((r) => r == ConnectivityResult.none);
-            if (offline) {
+            if (results.isOffline) {
               if (mounted) setState(() => _localRefreshing = false);
               return;
             }

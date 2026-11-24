@@ -3,30 +3,16 @@
   "toolbarSearchHint": "Episoden suchen…",
   "searchHint": "Podcast suchen…",
   "searchNoResults": "Keine Ergebnisse gefunden.",
-  "sectionTrending": "Trending diesen Monat",
-  "sectionRecommended": "Empfehlungen für dich",
-  "sectionRecommendedSub": "basierend auf deinen Abos",
-  "sectionSearchResults": "Suchergebnisse",
   "emptyFeedTitle": "Noch keine Podcasts",
   "emptyFeedSub": "Tippe auf + um zu suchen und zu abonnieren",
   "emptySearchTitle": "Keine Ergebnisse",
   "emptyPodcastsTitle": "Noch keine Abonnements",
-  "subscribeDialogTitle": "Abonnieren",
-  "subscribed": "{title} abonniert",
-  "@subscribed": {
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
   "downloaded": "Heruntergeladen",
   "downloading": "Herunterladen",
   "deleteDownload": "Download löschen",
   "shownotes": "Shownotes",
   "filterNew": "Neu",
   "filterListened": "Gehört",
-  "filterPodcast": "Podcast",
   "filterPodcasts": "Podcasts",
   "filterDownloaded": "Offline",
   "filterAlphabetical": "A–Z",
@@ -37,16 +23,11 @@
   "addByRssUrl": "RSS-URL hinzufügen",
   "subscribeToRss": "RSS-Feed abonnieren",
   "searchOnline": "Online suchen",
-  "discoverTabTrending": "Trends",
-  "discoverTabSuggestions": "Vorschläge",
   "aboutAntpod": "Über AntPod",
-  "subscriptions": "Abonnements",
   "markUnplayed": "Als ungehört markieren",
   "markPlayed": "Als gehört markieren",
   "cancel": "Abbrechen",
   "shareEpisode": "Episode teilen",
-  "sharePodcast": "Podcast teilen",
-  "unsubscribe": "Abonnement beenden",
   "filterRandom": "Zufällig",
   "removeEpisode": "Episode entfernen",
   "exportFile": "Datei exportieren",
@@ -69,5 +50,12 @@
   "newEpisodesStopped": "Lädt keine neuen Folgen",
   "finishingEpisodes": "Zu Ende hören",
   "downloadingEpisodes": "{count, plural, =1{1 Folge wird geladen} other{{count} Folgen werden geladen}}",
-  "downloadNotificationChannel": "Downloads"
+  "downloadNotificationChannel": "Downloads",
+  "aboutText": "Der Ameisenhaufen für deine Podcasts – jede Folge, unermüdlich heimgetragen. Eine flinke Kundschafterin, geschlüpft aus dem Geist des ehrwürdigen AntennaPod.",
+  "tooltipFilter": "Filter",
+  "tooltipSearch": "Suchen",
+  "tooltipDiscover": "Entdecken",
+  "tooltipGuide": "Anleitung",
+  "trendingError": "Trends konnten nicht geladen werden",
+  "trendingEmpty": "Gerade keine Trends verfügbar."
 }

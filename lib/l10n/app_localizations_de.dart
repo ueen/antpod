@@ -18,18 +18,6 @@ class AppLocalizationsDe extends AppLocalizations {
   String get searchNoResults => 'Keine Ergebnisse gefunden.';
 
   @override
-  String get sectionTrending => 'Trending diesen Monat';
-
-  @override
-  String get sectionRecommended => 'Empfehlungen für dich';
-
-  @override
-  String get sectionRecommendedSub => 'basierend auf deinen Abos';
-
-  @override
-  String get sectionSearchResults => 'Suchergebnisse';
-
-  @override
   String get emptyFeedTitle => 'Noch keine Podcasts';
 
   @override
@@ -40,14 +28,6 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get emptyPodcastsTitle => 'Noch keine Abonnements';
-
-  @override
-  String get subscribeDialogTitle => 'Abonnieren';
-
-  @override
-  String subscribed(String title) {
-    return '$title abonniert';
-  }
 
   @override
   String get downloaded => 'Heruntergeladen';
@@ -66,9 +46,6 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get filterListened => 'Gehört';
-
-  @override
-  String get filterPodcast => 'Podcast';
 
   @override
   String get filterPodcasts => 'Podcasts';
@@ -101,16 +78,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get searchOnline => 'Online suchen';
 
   @override
-  String get discoverTabTrending => 'Trends';
-
-  @override
-  String get discoverTabSuggestions => 'Vorschläge';
-
-  @override
   String get aboutAntpod => 'Über AntPod';
-
-  @override
-  String get subscriptions => 'Abonnements';
 
   @override
   String get markUnplayed => 'Als ungehört markieren';
@@ -123,12 +91,6 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get shareEpisode => 'Episode teilen';
-
-  @override
-  String get sharePodcast => 'Podcast teilen';
-
-  @override
-  String get unsubscribe => 'Abonnement beenden';
 
   @override
   String get filterRandom => 'Zufällig';
@@ -222,4 +184,25 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get downloadNotificationChannel => 'Downloads';
+
+  @override
+  String get aboutText => 'Der Ameisenhaufen für deine Podcasts – jede Folge, unermüdlich heimgetragen. Eine flinke Kundschafterin, geschlüpft aus dem Geist des ehrwürdigen AntennaPod.';
+
+  @override
+  String get tooltipFilter => 'Filter';
+
+  @override
+  String get tooltipSearch => 'Suchen';
+
+  @override
+  String get tooltipDiscover => 'Entdecken';
+
+  @override
+  String get tooltipGuide => 'Anleitung';
+
+  @override
+  String get trendingError => 'Trends konnten nicht geladen werden';
+
+  @override
+  String get trendingEmpty => 'Gerade keine Trends verfügbar.';
 }

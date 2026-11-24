@@ -1,12 +1,13 @@
 // lib/podcast_service.dart
 //
-// Ausschließlich PodcastIndex.org – kein iTunes.
+// Podcast directories and feeds.
 //
-// Endpoints genutzt:
-//   /api/1.0/search/byterm        → Suche
-//   /api/1.0/podcasts/trending    → Trending (30-day window)
-//   /api/1.0/podcasts/byfeedurl   → Empfehlungen: Kategorien der Abos ermitteln
-//   /api/1.0/search/byterm        → Empfehlungen: Suche nach Kategoriebegriffen
+//   PodcastIndex /search/byterm        → podcast search
+//   PodcastIndex /podcasts/trending    → trending fallback (30-day window)
+//   PodcastIndex /episodes/byfeedurl   → real RSS GUIDs for episode search hits
+//   Apple charts + lookup              → trending by country
+//   Apple search (podcastEpisode)      → episode search
+//   RSS (podcast_search)               → feeds themselves, parsed off-isolate
 
 import 'dart:convert';
 import 'dart:isolate';
@@ -144,7 +145,7 @@ class PodcastResult {
 typedef FeedData = ({ps.Podcast podcast, List<EpisodesCompanion> episodes});
 
 class PodcastService {
-  // ── Suche ──────────────────────────────────────────────────────────────────
+  // ── Search ─────────────────────────────────────────────────────────────────
 
   static Future<List<PodcastResult>> search(String query, {int offset = 0}) async {
     try {
@@ -288,25 +289,6 @@ class PodcastService {
     }
   }
 
-  static Future<List<PodcastResult>> appleSearch(String query, {String country = 'us'}) async {
-    try {
-      final uri = Uri.parse('https://itunes.apple.com/search').replace(
-        queryParameters: {'term': query, 'media': 'podcast', 'entity': 'podcast',
-                          'limit': '20', 'country': country},
-      );
-      final res = await http.get(uri);
-      if (res.statusCode != 200) return [];
-      final json = jsonDecode(res.body) as Map<String, dynamic>;
-      final results = json['results'] as List? ?? [];
-      return results
-          .map((r) => PodcastResult.fromAppleJson(r as Map<String, dynamic>))
-          .where((p) => p.feedUrl.isNotEmpty)
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
   // ── Trending ───────────────────────────────────────────────────────────────
   // PodcastIndex /podcasts/trending — 30-day window for consistent popularity
   // (not viral spikes). Regionalized via `lang`: passing "de,en" returns
@@ -315,7 +297,6 @@ class PodcastService {
   static Future<List<PodcastResult>> trending({
     int max = 10,
     String lang = 'en',
-    String? cat,
   }) async {
     final since = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 2592000;
     final params = <String, String>{
@@ -323,7 +304,6 @@ class PodcastService {
       'lang': lang,
       'since': '$since', // 30-day window
     };
-    if (cat != null && cat.isNotEmpty) params['cat'] = cat;
 
     final uri =
         Uri.parse('$_baseUrl/podcasts/trending').replace(queryParameters: params);
@@ -339,95 +319,7 @@ class PodcastService {
         .toList();
   }
 
-  // ── Recommendations ───────────────────────────────────────────────────────
-  // Two-pass strategy:
-  //   Pass 1 — trending-in-category: look up categories for all subscriptions,
-  //             fetch trending filtered by the top 3 matching categories (7-day
-  //             window), deduplicate against subscriptions.
-  //   Pass 2 — search-by-term: for each top category, search by keyword so
-  //             well-known topical podcasts surface even if not trending right now.
-  //   Results from both passes are merged, deduped, and trimmed to `max`.
-  //   Fallback: broad trending excluding subscriptions.
-
-  static Future<List<PodcastResult>> recommendations({
-    required List<Podcast> subscribed,
-    int max = 10,
-    String lang = 'en',
-  }) async {
-    if (subscribed.isEmpty) return trending(max: max, lang: lang);
-
-    final subscribedFeedUrls = subscribed.map((p) => p.feedUrl).toSet();
-    final seen = <String>{...subscribedFeedUrls};
-    final results = <PodcastResult>[];
-
-    void add(PodcastResult r) {
-      if (seen.add(r.feedUrl) && r.feedUrl.isNotEmpty) results.add(r);
-    }
-
-    // Step 1: collect categories from all subscribed podcasts in parallel.
-    final categoryCount = <String, int>{};
-    await Future.wait(subscribed.map((podcast) async {
-      try {
-        final uri = Uri.parse('$_baseUrl/podcasts/byfeedurl')
-            .replace(queryParameters: {'url': podcast.feedUrl});
-        final res = await http.get(uri, headers: _authHeaders());
-        if (res.statusCode == 200) {
-          final feed = (jsonDecode(res.body) as Map<String, dynamic>)['feed']
-              as Map<String, dynamic>?;
-          final cats = feed?['categories'];
-          if (cats is Map) {
-            for (final v in cats.values) {
-              final cat = v.toString();
-              categoryCount[cat] = (categoryCount[cat] ?? 0) + 1;
-            }
-          }
-        }
-      } catch (_) {}
-    }));
-
-    // Top 3 categories by subscription overlap.
-    final topCats = (categoryCount.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value)))
-        .take(3)
-        .map((e) => e.key)
-        .toList();
-
-    // Step 2a — trending filtered by the top categories (7-day window).
-    if (topCats.isNotEmpty) {
-      try {
-        final trendCat = await trending(max: max * 3, lang: lang, cat: topCats.join(','));
-        for (final r in trendCat) { add(r); }
-      } catch (_) {}
-    }
-
-    // Step 2b — keyword search per category: surfaces well-known shows even if
-    // they aren't trending this week but are the go-to for that topic.
-    await Future.wait(topCats.take(2).map((cat) async {
-      try {
-        final uri = Uri.parse('$_baseUrl/search/byterm')
-            .replace(queryParameters: {'q': cat, 'max': '10', 'lang': lang});
-        final res = await http.get(uri, headers: _authHeaders());
-        if (res.statusCode == 200) {
-          final feeds = (jsonDecode(res.body) as Map<String, dynamic>)['feeds']
-              as List? ?? [];
-          for (final f in feeds) {
-            add(PodcastResult.fromJson(f as Map<String, dynamic>));
-          }
-        }
-      } catch (_) {}
-    }));
-
-    if (results.length >= 3) return results.take(max).toList();
-
-    // Fallback: broad trending, excluding subscriptions.
-    try {
-      final broad = await trending(max: max * 3, lang: lang);
-      for (final r in broad) { add(r); }
-    } catch (_) {}
-    return results.take(max).toList();
-  }
-
-  // ── RSS-Feed laden (bleibt via podcast_search) ────────────────────────────
+  // ── RSS feeds ─────────────────────────────────────────────────────────────
 
   static Future<FeedData?> loadFeed(
     String feedUrl,

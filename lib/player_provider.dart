@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_database.dart';
 import 'audio_handler.dart';
 import 'id3_chapters.dart';
+import 'network.dart';
 
 class PodcastChapter {
   final String title;
@@ -44,15 +45,10 @@ class PlayerProvider extends ChangeNotifier {
 
   PlayerProvider(this._db) {
     // Track connectivity for offline indicators in UI.
-    Connectivity().checkConnectivity().then((results) {
-      _isOffline = results.every((r) =>
-          r == ConnectivityResult.none || r == ConnectivityResult.bluetooth);
-    });
+    Connectivity().checkConnectivity().then((results) => _isOffline = results.isOffline);
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
-      final offline = results.every((r) =>
-          r == ConnectivityResult.none || r == ConnectivityResult.bluetooth);
-      if (offline != _isOffline) {
-        _isOffline = offline;
+      if (results.isOffline != _isOffline) {
+        _isOffline = results.isOffline;
         notifyListeners();
       }
     });

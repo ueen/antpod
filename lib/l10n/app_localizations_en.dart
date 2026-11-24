@@ -18,18 +18,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchNoResults => 'No results found.';
 
   @override
-  String get sectionTrending => 'Trending this month';
-
-  @override
-  String get sectionRecommended => 'Recommended for you';
-
-  @override
-  String get sectionRecommendedSub => 'based on your subscriptions';
-
-  @override
-  String get sectionSearchResults => 'Search results';
-
-  @override
   String get emptyFeedTitle => 'No podcasts yet';
 
   @override
@@ -40,14 +28,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get emptyPodcastsTitle => 'No subscriptions yet';
-
-  @override
-  String get subscribeDialogTitle => 'Subscribe';
-
-  @override
-  String subscribed(String title) {
-    return 'Subscribed to \"$title\"';
-  }
 
   @override
   String get downloaded => 'Downloaded';
@@ -66,9 +46,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get filterListened => 'Listened';
-
-  @override
-  String get filterPodcast => 'Podcast';
 
   @override
   String get filterPodcasts => 'Podcasts';
@@ -101,16 +78,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchOnline => 'Search online';
 
   @override
-  String get discoverTabTrending => 'Trending';
-
-  @override
-  String get discoverTabSuggestions => 'Suggestions';
-
-  @override
   String get aboutAntpod => 'About AntPod';
-
-  @override
-  String get subscriptions => 'Subscriptions';
 
   @override
   String get markUnplayed => 'Mark as unplayed';
@@ -123,12 +91,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shareEpisode => 'Share episode';
-
-  @override
-  String get sharePodcast => 'Share podcast';
-
-  @override
-  String get unsubscribe => 'Unsubscribe';
 
   @override
   String get filterRandom => 'Random';
@@ -222,4 +184,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get downloadNotificationChannel => 'Downloads';
+
+  @override
+  String get aboutText => 'The anthill for your podcasts — every episode carried home to the hill tirelessly. A nimble scout hatched from the spirit of the grand old AntennaPod.';
+
+  @override
+  String get tooltipFilter => 'Filter';
+
+  @override
+  String get tooltipSearch => 'Search';
+
+  @override
+  String get tooltipDiscover => 'Discover';
+
+  @override
+  String get tooltipGuide => 'Guide';
+
+  @override
+  String get trendingError => 'Could not load trending podcasts';
+
+  @override
+  String get trendingEmpty => 'No trending podcasts available.';
 }
