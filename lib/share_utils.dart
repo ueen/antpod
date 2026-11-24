@@ -49,11 +49,11 @@ class ShareUtils {
   }
 
   static String podcastUrl(Podcast podcast) =>
-      '$_base?f=${_enc(_stripProto(podcast.feedUrl))}';
+      '$_base?p=${_enc(_stripProto(podcast.feedUrl))}';
 
   static String podcastResultUrl(PodcastResult result) =>
-      '$_base?f=${_enc(_stripProto(result.feedUrl))}';
+      '$_base?p=${_enc(_stripProto(result.feedUrl))}';
 
   static String episodeUrl(Episode episode) =>
-      '$_base?f=${_enc(_stripProto(episode.podcastId))}&e=${guidHash(episode.id)}';
+      '$_base?p=${_enc(_stripProto(episode.podcastId))}&e=${guidHash(episode.id)}';
 }

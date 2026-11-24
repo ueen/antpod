@@ -389,10 +389,10 @@
       if (!s || s.startsWith('https://') || s.startsWith('http://')) return s;
       return s.startsWith('h0:') ? 'http://' + s.slice(3) : 'https://' + s;
     }
-    const feed   = restoreProto(params.get('f') || '');
-    const h      = params.get('e') || params.get('h') || '';  // 'h' kept for old links
+    const feed   = restoreProto(params.get('p') || '');
+    const h      = params.get('e') || '';
     const pTitle = params.get('t') || '';
-    const pPod   = params.get('p') || '';
+    const pPod   = '';
 
     function render(rFeed, rTitle, rPodcast, rCover, rAudio) {
       const isEpisode = !!h;
