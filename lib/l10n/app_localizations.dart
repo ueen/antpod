@@ -458,6 +458,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 downloaded episode will be deleted.} other{{count} downloaded episodes will be deleted.}}'**
   String unsubscribeDeletesDownloads(int count);
+
+  /// No description provided for @downloadingEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Downloading 1 episode} other{Downloading {count} episodes}}'**
+  String downloadingEpisodes(int count);
+
+  /// No description provided for @downloadNotificationChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloads'**
+  String get downloadNotificationChannel;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

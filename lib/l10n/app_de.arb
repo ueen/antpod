@@ -66,5 +66,7 @@
   "resumeSync": "Sync fortsetzen",
   "syncPaused": "Sync pausiert",
   "pauseSyncHint": "Folgen behalten, nicht mehr nach neuen suchen",
-  "unsubscribeDeletesDownloads": "{count, plural, =1{1 heruntergeladene Folge wird gelöscht.} other{{count} heruntergeladene Folgen werden gelöscht.}}"
+  "unsubscribeDeletesDownloads": "{count, plural, =1{1 heruntergeladene Folge wird gelöscht.} other{{count} heruntergeladene Folgen werden gelöscht.}}",
+  "downloadingEpisodes": "{count, plural, =1{1 Folge wird geladen} other{{count} Folgen werden geladen}}",
+  "downloadNotificationChannel": "Downloads"
 }

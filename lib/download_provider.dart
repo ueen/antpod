@@ -4,24 +4,25 @@
 // Polls flutter_downloader's task DB every second while downloads are active.
 // Polling is more robust than the IsolateNameServer callback, which silently
 // drops messages.
+// Also drives the single download notification (see download_notification.dart):
+// it mirrors [_downloads] and disappears once that map is empty.
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'app_database.dart';
+import 'download_notification.dart';
 
 class _EpDownload {
   final String taskId;
+  final String title;
   final double progress;
-  const _EpDownload(this.taskId, this.progress);
+  const _EpDownload(this.taskId, this.title, this.progress);
 }
 
 class DownloadProvider extends ChangeNotifier {
-  static const _notifChannel = MethodChannel('de.ueen.antpod/notifications');
-
   final AppDatabase _db;
   // episodeId → active download state. Non-null means actively downloading.
   final Map<String, _EpDownload> _downloads = {};
@@ -35,10 +36,20 @@ class DownloadProvider extends ChangeNotifier {
   double? progressForEpisode(String episodeId) => _downloads[episodeId]?.progress;
 
   /// Call immediately after DownloadService.downloadEpisode() returns a taskId.
-  void trackDownload(String taskId, {required String episodeId}) {
-    _downloads[episodeId] = _EpDownload(taskId, 0.0);
+  void trackDownload(String taskId,
+      {required String episodeId, required String title}) {
+    _downloads[episodeId] = _EpDownload(taskId, title, 0.0);
     notifyListeners();
+    _syncNotification();
     _ensurePolling();
+  }
+
+  /// Mirror the active downloads into the one notification; empty → gone.
+  void _syncNotification() {
+    DownloadNotification.update([
+      for (final d in _downloads.values)
+        DownloadNotificationItem(d.title, d.progress),
+    ]);
   }
 
   // ── Polling ────────────────────────────────────────────────────────────────
@@ -73,7 +84,8 @@ class DownloadProvider extends ChangeNotifier {
         await _markComplete(taskId, episodeId: episodeId);
         changed = true;
       } else if (entry.value.progress != prog) {
-        _downloads[entry.key] = _EpDownload(entry.value.taskId, prog);
+        final d = entry.value;
+        _downloads[entry.key] = _EpDownload(d.taskId, d.title, prog);
         changed = true;
       }
     }
@@ -82,7 +94,10 @@ class DownloadProvider extends ChangeNotifier {
       _pollTimer?.cancel();
       _pollTimer = null;
     }
-    if (changed) notifyListeners();
+    if (changed) {
+      notifyListeners();
+      _syncNotification();
+    }
   }
 
   // ── Mark complete ──────────────────────────────────────────────────────────
@@ -103,7 +118,7 @@ class DownloadProvider extends ChangeNotifier {
       if (episode != null && !episode.isDownloaded && File(fullPath).existsSync()) {
         await _db.updateEpisodeDownload(episode.id, true, fullPath, taskId);
       }
-      await _dismissNotification(taskId);
+      await _removeTask(taskId);
       return;
     }
 
@@ -122,7 +137,7 @@ class DownloadProvider extends ChangeNotifier {
         final file = File(p.join(dir.path, 'episodes', fileName));
         if (file.existsSync()) await file.delete();
       } catch (_) {}
-      await _dismissNotification(taskId);
+      await _removeTask(taskId);
     }
   }
 
@@ -135,9 +150,9 @@ class DownloadProvider extends ChangeNotifier {
         .getSingleOrNull();
   }
 
-  Future<void> _dismissNotification(String taskId) async {
+  /// Drop the finished task record (the file stays).
+  Future<void> _removeTask(String taskId) async {
     try { await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: false); } catch (_) {}
-    try { await _notifChannel.invokeMethod('dismissDownloadNotifications'); } catch (_) {}
   }
 
   // ── Cancel in-progress download ───────────────────────────────────────────
@@ -157,7 +172,6 @@ class DownloadProvider extends ChangeNotifier {
     } catch (_) {}
 
     try { await FlutterDownloader.cancel(taskId: taskId); } catch (_) {}
-    try { await _notifChannel.invokeMethod('dismissDownloadNotifications'); } catch (_) {}
 
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -175,13 +189,14 @@ class DownloadProvider extends ChangeNotifier {
       _pollTimer = null;
     }
     notifyListeners();
+    _syncNotification();
   }
 
   // ── Startup reconciliation ─────────────────────────────────────────────────
 
   Future<void> _reconcileTerminalTasks() async {
     try {
-      // Handle both completed (3) and failed (4) tasks — clears lingering notifications.
+      // Handle both completed (3) and failed (4) tasks left from a previous run.
       final tasks = await FlutterDownloader.loadTasksWithRawQuery(
         query: 'SELECT * FROM task WHERE status IN (3, 4)',
       );
@@ -195,6 +210,7 @@ class DownloadProvider extends ChangeNotifier {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    DownloadNotification.clear();
     super.dispose();
   }
 }

@@ -197,4 +197,18 @@ class AppLocalizationsEs extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String downloadingEpisodes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Descargando $count episodios',
+      one: 'Descargando 1 episodio',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get downloadNotificationChannel => 'Descargas';
 }

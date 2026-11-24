@@ -66,5 +66,7 @@
   "resumeSync": "Reprendre la synchro",
   "syncPaused": "Synchro suspendue",
   "pauseSyncHint": "Garder les épisodes, ne plus chercher de nouveaux",
-  "unsubscribeDeletesDownloads": "{count, plural, =1{1 épisode téléchargé sera supprimé.} other{{count} épisodes téléchargés seront supprimés.}}"
+  "unsubscribeDeletesDownloads": "{count, plural, =1{1 épisode téléchargé sera supprimé.} other{{count} épisodes téléchargés seront supprimés.}}",
+  "downloadingEpisodes": "{count, plural, =1{Téléchargement d’1 épisode} other{Téléchargement de {count} épisodes}}",
+  "downloadNotificationChannel": "Téléchargements"
 }

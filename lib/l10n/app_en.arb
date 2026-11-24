@@ -73,5 +73,14 @@
         "type": "int"
       }
     }
-  }
+  },
+  "downloadingEpisodes": "{count, plural, =1{Downloading 1 episode} other{Downloading {count} episodes}}",
+  "@downloadingEpisodes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "downloadNotificationChannel": "Downloads"
 }

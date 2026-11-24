@@ -37,7 +37,7 @@ Future<void> triggerDownload({
       episodeId: episode.id, audioUrl: episode.audioUrl,
       episodeTitle: episode.title, db: db,
     );
-    if (taskId != null) downloads.trackDownload(taskId, episodeId: episode.id);
+    if (taskId != null) downloads.trackDownload(taskId, episodeId: episode.id, title: episode.title);
     return;
   }
 
@@ -68,7 +68,7 @@ Future<void> triggerDownload({
           episodeId: episode.id, audioUrl: episode.audioUrl,
           episodeTitle: episode.title, db: db,
         );
-        if (taskId != null) downloads.trackDownload(taskId, episodeId: episode.id);
+        if (taskId != null) downloads.trackDownload(taskId, episodeId: episode.id, title: episode.title);
       },
       onSaveForWifi: () {
         Navigator.pop(ctx);

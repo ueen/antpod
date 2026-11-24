@@ -382,7 +382,7 @@ class _HomeScreenState extends State<HomeScreen> {
             episodeId: ep.id, audioUrl: ep.audioUrl,
             episodeTitle: ep.title, db: db,
           );
-          if (taskId != null) downloads.trackDownload(taskId, episodeId: ep.id);
+          if (taskId != null) downloads.trackDownload(taskId, episodeId: ep.id, title: ep.title);
           // If taskId is null, mark is preserved for retry on next WiFi connect.
         } catch (_) {
           // Keep mark set so the episode retries on next WiFi connect.
