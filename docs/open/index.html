@@ -101,7 +101,7 @@
     }
     .desc-panel.open {
       max-height: 160px; padding: 0.75rem 0.875rem;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
       overflow-y: auto; opacity: 1;
     }
 
@@ -109,7 +109,7 @@
     .podcast-name a:hover { color: #FF9A30; }
 
     /* Episode list on podcast share */
-    .ep-list { margin-top: 0.5rem; padding-bottom: 0.25rem; display: none; }
+    .ep-list { margin-top: 0.75rem; padding-bottom: 0.75rem; display: none; }
     .ep-list-label { font-size: 0.72rem; font-weight: 600; color: #9E7056; margin-bottom: 0.35rem; }
     .ep-item {
       display: flex; align-items: center; gap: 0.5rem;
@@ -130,7 +130,7 @@
       transition: opacity 0.3s ease, transform 0.3s ease;
       background: #FFFAF5; border: 1px solid #F0E4D4;
       border-radius: 0.75rem; padding: 0.75rem 1rem;
-      margin-bottom: 1.125rem;
+      margin-bottom: 0.75rem;
     }
     .cp {
       display: flex; align-items: center; gap: 0.875rem;
@@ -173,7 +173,7 @@
       box-shadow: 0 2px 10px rgba(255,154,48,.35);
       border: none; cursor: pointer;
       transition: background 0.15s, transform 0.1s;
-      margin-bottom: 0.625rem;
+      margin-bottom: 0.75rem;
     }
     .btn-open:hover { background: #E07E18; transform: translateY(-1px); }
     .btn-open:active { transform: translateY(0); }
@@ -187,6 +187,7 @@
       border: 1.5px solid #F0E4D4;
       text-decoration: none;
       transition: border-color 0.15s;
+      margin-bottom: 0.75rem;
     }
     .btn-other:hover { border-color: #FF9A30; }
 
@@ -299,9 +300,7 @@
 
         <!-- Open in AntPod -->
         <button class="btn-open" id="btn-open" onclick="openInApp()">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#E86000;flex-shrink:0;">
-            <img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg" width="22" height="22" alt="" style="border-radius:50%;display:block;" />
-          </span>
+          <img src="https://raw.githubusercontent.com/ueen/antpod/master/antpodlogo.svg" width="26" height="26" alt="" style="border-radius:50%;display:block;flex-shrink:0;" />
           <span id="btn-open-label"></span>
         </button>
 
@@ -423,17 +422,58 @@
     // ── URL params ────────────────────────────────────────────────────────────
     // f = feed URL (https:// stripped), h = episode guid hash (11-char MD5),
     // t = title (episode title or podcast name), p = podcast name (episodes only)
-    const params = new URLSearchParams(location.search);
+    let params = new URLSearchParams(location.search);
     function restoreProto(s) {
       if (!s || s.startsWith('https://') || s.startsWith('http://')) return s;
       return s.startsWith('h0:') ? 'http://' + s.slice(3) : 'https://' + s;
     }
-    const feed   = restoreProto(params.get('p') || '');
-    const h      = params.get('e') || '';
+    let feed = restoreProto(params.get('p') || '');
+    let h    = params.get('e') || '';
     const pTitle = params.get('t') || '';
     const pPod   = '';
 
     let _feedUrl = '';
+
+    function resetPage() {
+      _desc = '';
+      const audioEl = document.getElementById('audio-el');
+      audioEl.pause(); audioEl.removeAttribute('src');
+      document.getElementById('badge').style.display = 'none';
+      document.getElementById('podcast-name').innerHTML = '';
+      document.getElementById('ep-title').textContent = '';
+      const descBtn = document.getElementById('desc-btn');
+      descBtn.style.display = 'none'; descBtn.classList.remove('open');
+      const descPanel = document.getElementById('desc-panel');
+      descPanel.classList.remove('open'); descPanel.textContent = '';
+      const playerEl = document.getElementById('player');
+      playerEl.style.opacity = '0'; playerEl.style.transform = 'translateY(6px)';
+      playerEl.style.display = 'none';
+      const wf = document.getElementById('waveform');
+      while (wf.firstChild) wf.removeChild(wf.firstChild);
+      document.getElementById('not-installed').style.display = 'none';
+      const wrap = document.getElementById('cover-wrap');
+      wrap.removeAttribute('href'); wrap.style.cursor = 'default'; wrap.onclick = null;
+      document.getElementById('feed-row').style.display = 'none';
+      document.getElementById('feed-url-text').innerHTML = '';
+      _feedUrl = '';
+      const epList = document.getElementById('ep-list');
+      epList.style.display = 'none';
+      while (epList.children.length > 1) epList.removeChild(epList.lastChild);
+    }
+
+    function _doNavigate(search) {
+      params = new URLSearchParams(search.replace(/^\?/, ''));
+      feed   = restoreProto(params.get('p') || '');
+      h      = params.get('e') || '';
+      resetPage();
+      if (feed) tryFetchRSS(feed);
+    }
+    function navigate(search) {
+      history.pushState(null, '', search);
+      _doNavigate(search);
+    }
+    window.addEventListener('popstate', () => _doNavigate(location.search));
+
     function copyFeed() {
       if (!_feedUrl) return;
       navigator.clipboard?.writeText(_feedUrl).then(() => {
@@ -675,13 +715,18 @@
     // Make podcast name + cover clickable on episode pages, linking back to podcast share.
     function linkPodcastName(podTitle) {
       if (!podTitle || !h) return;
-      const podUrl = '?' + new URLSearchParams({p: params.get('p')}).toString();
+      const podSearch = '?' + new URLSearchParams({p: params.get('p')}).toString();
       const el = document.getElementById('podcast-name');
-      el.innerHTML = '<a href="' + podUrl + '">' +
-        podTitle.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</a>';
+      const a = document.createElement('a');
+      a.href = podSearch;
+      a.textContent = podTitle;
+      a.onclick = e => { e.preventDefault(); navigate(podSearch); };
+      el.textContent = '';
+      el.appendChild(a);
       const wrap = document.getElementById('cover-wrap');
-      wrap.href = podUrl;
+      wrap.href = podSearch;
       wrap.style.cursor = 'pointer';
+      wrap.onclick = e => { e.preventDefault(); navigate(podSearch); };
     }
 
     function fmtDuration(raw) {
