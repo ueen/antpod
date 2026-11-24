@@ -1889,8 +1889,8 @@ class _DiscoverListState extends State<_DiscoverList> {
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
           child: Center(
             child: Text('Apple Trends',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-                    color: cs.inversePrimary)),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
+                    color: Color(0xFFFF9A30))),
           ),
         ),
         Expanded(

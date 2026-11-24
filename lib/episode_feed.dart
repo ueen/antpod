@@ -349,7 +349,18 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
         !_showMarked &&
         _markedCount > 0;
 
-    final child = Listener(
+    final child = Column(
+      children: [
+        AnimatedContainer(
+          duration: _pullDrag > 0 ? Duration.zero : const Duration(milliseconds: 350),
+          curve: Curves.easeOut,
+          height: _bannerHeight,
+          color: widget.cs.surfaceContainerHighest,
+          child: _bannerHeight > 20
+              ? Center(child: _AntSpinner(color: widget.cs.primary))
+              : null,
+        ),
+        Expanded(child: Listener(
       onPointerDown: (e) {
         _pullEligible = _scrollCtrl.hasClients && _scrollCtrl.offset <= 0;
         if (_pullEligible) _pullDrag = 0;
@@ -397,21 +408,6 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
           if (widget.headerSlivers != null)
             for (final w in widget.headerSlivers!)
               SliverToBoxAdapter(child: w),
-          SliverToBoxAdapter(
-            child: Builder(builder: (ctx) {
-              final cs = Theme.of(ctx).colorScheme;
-              final h = _bannerHeight;
-              return AnimatedContainer(
-                duration: _pullDrag > 0 ? Duration.zero : const Duration(milliseconds: 350),
-                curve: Curves.easeOut,
-                height: h,
-                color: cs.surfaceContainerHighest,
-                child: h > 20
-                    ? Center(child: _AntSpinner(color: cs.primary))
-                    : null,
-              );
-            }),
-          ),
           SliverAnimatedList(
             key: _listKey,
             initialItemCount: _displayed.length,
@@ -513,6 +509,9 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
           const SliverToBoxAdapter(child: SizedBox(height: 88)),
         ],
       ),
+    ),
+    ),
+    ],
     );
 
     if (!_showScrollTop) return child;
@@ -558,7 +557,7 @@ class _SmoothScrollPhysics extends ClampingScrollPhysics {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pull-to-refresh spinner — 2 "ants" (3-segment dots) orbiting opposite
+// Pull-to-refresh spinner — 8 ring dots (60% speed) + prominent disc (full speed)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AntSpinner extends StatefulWidget {
@@ -600,28 +599,24 @@ class _AntsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
+    final cx = size.width / 2;
+    final cy = size.height / 2;
     final radius = size.width * 0.40;
     final paint = Paint()..style = PaintingStyle.fill;
 
-    // 2 ants, 180° apart; each ant = 3 segments (head, thorax, abdomen)
-    const segSpacing = 0.09; // fraction of full circle between segments
-    const segRadii = [2.2, 1.7, 1.3];
-    const segOpacity = [1.0, 0.6, 0.30];
-
-    for (int ant = 0; ant < 2; ant++) {
-      final base = progress + ant * 0.5;
-      for (int seg = 0; seg < 3; seg++) {
-        final angle = (base - seg * segSpacing) * 2 * pi - pi / 2;
-        paint.color = color.withValues(alpha: segOpacity[seg]);
-        canvas.drawCircle(
-          Offset(center.dx + cos(angle) * radius,
-              center.dy + sin(angle) * radius),
-          segRadii[seg],
-          paint,
-        );
-      }
+    // 8 background dots distributed around ring, rotating at 60% speed
+    const dotCount = 8;
+    final ringPhase = progress * 0.6;
+    for (int i = 0; i < dotCount; i++) {
+      final angle = (i / dotCount + ringPhase) * 2 * pi - pi / 2;
+      paint.color = color.withValues(alpha: 0.35);
+      canvas.drawCircle(Offset(cx + cos(angle) * radius, cy + sin(angle) * radius), 1.5, paint);
     }
+
+    // Prominent disc orbiting at full speed, visually moving through the dots
+    final discAngle = progress * 2 * pi - pi / 2;
+    paint.color = color.withValues(alpha: 1.0);
+    canvas.drawCircle(Offset(cx + cos(discAngle) * radius, cy + sin(discAngle) * radius), 2.8, paint);
   }
 
   @override
