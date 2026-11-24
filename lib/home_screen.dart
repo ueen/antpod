@@ -2019,17 +2019,6 @@ class _DiscoverListState extends State<_DiscoverList> {
     );
   }
 
-  Widget _podcastList(List<PodcastResult> results, {bool showRank = true}) =>
-      ListView.builder(
-        padding: const EdgeInsets.only(bottom: 88),
-        itemCount: results.length,
-        itemBuilder: (_, i) => _DiscoverPodcastTile(
-          result: results[i], rank: i + 1, showRank: showRank,
-          cs: widget.cs, l10n: widget.l10n,
-          onPreview: widget.onPreview,
-        ),
-      );
-
   Widget _unifiedList(List<_UnifiedResult> results) {
     final itemCount = results.length + (widget.loadingMoreSearch ? 1 : 0);
     return ListView.builder(
@@ -2153,59 +2142,85 @@ class _DiscoverListState extends State<_DiscoverList> {
           ),
         ),
         Divider(height: 1, color: cs.outlineVariant),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-          child: Center(
-            // Tab-like pill so the section title reads as a label, not body text.
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                // Same neutral fill as an inactive filter chip; orange stays in
-                // the border and text.
-                color: cs.surfaceContainerHighest.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: const Color(0xFFFF9A30).withValues(alpha: 0.55),
-                    width: 1.2),
-              ),
-              child: const Text('Apple Trends',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
-                      color: Color(0xFFFF9A30))),
-            ),
-          ),
-        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: widget.onRefresh,
-            child: widget.loadingTrending
-                ? const Center(child: CircularProgressIndicator())
-                : widget.trendingError != null
-                    ? ListView(children: [
-                        Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(children: [
-                            Icon(Icons.wifi_off_rounded,
-                                size: 40, color: cs.onSurfaceVariant),
-                            const SizedBox(height: 12),
-                            Text('Could not load trending podcasts',
-                                style: TextStyle(color: cs.onSurfaceVariant)),
-                            const SizedBox(height: 4),
-                            Text(widget.trendingError!,
-                                style: TextStyle(fontSize: 12,
-                                    color: cs.onSurfaceVariant),
-                                textAlign: TextAlign.center),
-                          ]),
-                        ),
-                      ])
-                    : widget.trending.isEmpty
-                        ? Center(child: Text('No trending podcasts available.',
-                            style: TextStyle(color: cs.onSurfaceVariant)))
-                        : _podcastList(widget.trending),
+            // One scroll view in every state: the title scrolls away with the
+            // list, and pull-to-refresh also works while loading/empty/error.
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(child: _trendsTitle(cs)),
+                if (widget.loadingTrending)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (widget.trendingError != null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(children: [
+                        Icon(Icons.wifi_off_rounded,
+                            size: 40, color: cs.onSurfaceVariant),
+                        const SizedBox(height: 12),
+                        Text('Could not load trending podcasts',
+                            style: TextStyle(color: cs.onSurfaceVariant)),
+                        const SizedBox(height: 4),
+                        Text(widget.trendingError!,
+                            style: TextStyle(fontSize: 12,
+                                color: cs.onSurfaceVariant),
+                            textAlign: TextAlign.center),
+                      ]),
+                    ),
+                  )
+                else if (widget.trending.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: Text('No trending podcasts available.',
+                        style: TextStyle(color: cs.onSurfaceVariant))),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.only(bottom: 88),
+                    sliver: SliverList.builder(
+                      itemCount: widget.trending.length,
+                      itemBuilder: (_, i) => _DiscoverPodcastTile(
+                        result: widget.trending[i], rank: i + 1,
+                        cs: widget.cs, l10n: widget.l10n,
+                        onPreview: widget.onPreview,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
+
+  // Tab-like pill so the section title reads as a label, not body text.
+  Widget _trendsTitle(ColorScheme cs) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              // Same neutral fill as an inactive filter chip; orange stays in
+              // the border and text.
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: const Color(0xFFFF9A30).withValues(alpha: 0.55),
+                  width: 1.2),
+            ),
+            child: const Text('Apple Trends',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                    color: Color(0xFFFF9A30))),
+          ),
+        ),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
