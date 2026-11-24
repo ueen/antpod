@@ -494,8 +494,8 @@
       const N = 55;
       let v = 0.5;
       for (let i = 0; i < N; i++) {
-        v += (Math.random() - 0.5) * 0.15;
-        v = Math.max(0.25, Math.min(0.85, v));
+        v += (Math.random() - 0.5) * 0.08;
+        v = Math.max(0.40, Math.min(0.60, v));
         const bar = document.createElement('div');
         bar.className = 'wf-bar';
         bar.style.height = Math.round(v * 100) + '%';
