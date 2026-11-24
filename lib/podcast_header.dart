@@ -13,8 +13,12 @@ class PodcastHeader extends StatefulWidget {
   final String shareUrl;
 
   /// Provide exactly one of these; the other should be null.
+  /// [onUnsubscribe] is called on tap — the caller shows the confirmation.
   final VoidCallback? onSubscribe;
   final VoidCallback? onUnsubscribe;
+
+  /// Subscribed podcast whose background refresh is paused.
+  final bool syncPaused;
 
   const PodcastHeader({
     super.key,
@@ -25,6 +29,7 @@ class PodcastHeader extends StatefulWidget {
     required this.shareUrl,
     this.onSubscribe,
     this.onUnsubscribe,
+    this.syncPaused = false,
   });
 
   @override
@@ -38,28 +43,6 @@ class _PodcastHeaderState extends State<PodcastHeader> {
   void _share() {
     SharePlus.instance.share(
         ShareParams(text: '${widget.title}\n${widget.shareUrl}', subject: widget.title));
-  }
-
-  Future<void> _confirmUnsubscribe(BuildContext context, AppLocalizations l10n) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.unsubscribe),
-        content: Text(widget.title),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.unsubscribe,
-                style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) widget.onUnsubscribe?.call();
   }
 
   @override
@@ -122,6 +105,22 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                                   fontSize: 12,
                                   color: cs.onSurfaceVariant)),
                         ],
+                        if (widget.syncPaused) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.pause_circle_outline_rounded,
+                                  size: 14, color: cs.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Text(l10n.syncPaused,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: cs.onSurfaceVariant)),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -160,7 +159,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
-                        onTap: () => _confirmUnsubscribe(context, l10n),
+                        onTap: widget.onUnsubscribe,
                         child: Icon(Icons.remove_circle_outline_rounded,
                             color: cs.error, size: 32),
                       ),

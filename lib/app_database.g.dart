@@ -65,6 +65,16 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("is_subscribed" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _syncPausedMeta =
+      const VerificationMeta('syncPaused');
+  @override
+  late final GeneratedColumn<bool> syncPaused = GeneratedColumn<bool>(
+      'sync_paused', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("sync_paused" IN (0, 1))'),
+      defaultValue: const Constant(false));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -75,7 +85,8 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
         author,
         website,
         subscribedAt,
-        isSubscribed
+        isSubscribed,
+        syncPaused
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -140,6 +151,12 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
           isSubscribed.isAcceptableOrUnknown(
               data['is_subscribed']!, _isSubscribedMeta));
     }
+    if (data.containsKey('sync_paused')) {
+      context.handle(
+          _syncPausedMeta,
+          syncPaused.isAcceptableOrUnknown(
+              data['sync_paused']!, _syncPausedMeta));
+    }
     return context;
   }
 
@@ -167,6 +184,8 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
           DriftSqlType.dateTime, data['${effectivePrefix}subscribed_at'])!,
       isSubscribed: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_subscribed'])!,
+      syncPaused: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}sync_paused'])!,
     );
   }
 
@@ -188,6 +207,9 @@ class Podcast extends DataClass implements Insertable<Podcast> {
 
   /// true = active subscription; false = temporary preview (not yet subscribed)
   final bool isSubscribed;
+
+  /// true = skip this feed during background auto-refresh (user manually paused sync)
+  final bool syncPaused;
   const Podcast(
       {required this.id,
       required this.title,
@@ -197,7 +219,8 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       required this.author,
       this.website,
       required this.subscribedAt,
-      required this.isSubscribed});
+      required this.isSubscribed,
+      required this.syncPaused});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -212,6 +235,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
     }
     map['subscribed_at'] = Variable<DateTime>(subscribedAt);
     map['is_subscribed'] = Variable<bool>(isSubscribed);
+    map['sync_paused'] = Variable<bool>(syncPaused);
     return map;
   }
 
@@ -228,6 +252,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           : Value(website),
       subscribedAt: Value(subscribedAt),
       isSubscribed: Value(isSubscribed),
+      syncPaused: Value(syncPaused),
     );
   }
 
@@ -244,6 +269,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       website: serializer.fromJson<String?>(json['website']),
       subscribedAt: serializer.fromJson<DateTime>(json['subscribedAt']),
       isSubscribed: serializer.fromJson<bool>(json['isSubscribed']),
+      syncPaused: serializer.fromJson<bool>(json['syncPaused']),
     );
   }
   @override
@@ -259,6 +285,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       'website': serializer.toJson<String?>(website),
       'subscribedAt': serializer.toJson<DateTime>(subscribedAt),
       'isSubscribed': serializer.toJson<bool>(isSubscribed),
+      'syncPaused': serializer.toJson<bool>(syncPaused),
     };
   }
 
@@ -271,7 +298,8 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           String? author,
           Value<String?> website = const Value.absent(),
           DateTime? subscribedAt,
-          bool? isSubscribed}) =>
+          bool? isSubscribed,
+          bool? syncPaused}) =>
       Podcast(
         id: id ?? this.id,
         title: title ?? this.title,
@@ -282,6 +310,7 @@ class Podcast extends DataClass implements Insertable<Podcast> {
         website: website.present ? website.value : this.website,
         subscribedAt: subscribedAt ?? this.subscribedAt,
         isSubscribed: isSubscribed ?? this.isSubscribed,
+        syncPaused: syncPaused ?? this.syncPaused,
       );
   Podcast copyWithCompanion(PodcastsCompanion data) {
     return Podcast(
@@ -299,6 +328,8 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       isSubscribed: data.isSubscribed.present
           ? data.isSubscribed.value
           : this.isSubscribed,
+      syncPaused:
+          data.syncPaused.present ? data.syncPaused.value : this.syncPaused,
     );
   }
 
@@ -313,14 +344,15 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           ..write('author: $author, ')
           ..write('website: $website, ')
           ..write('subscribedAt: $subscribedAt, ')
-          ..write('isSubscribed: $isSubscribed')
+          ..write('isSubscribed: $isSubscribed, ')
+          ..write('syncPaused: $syncPaused')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(id, title, description, imageUrl, feedUrl,
-      author, website, subscribedAt, isSubscribed);
+      author, website, subscribedAt, isSubscribed, syncPaused);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -333,7 +365,8 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           other.author == this.author &&
           other.website == this.website &&
           other.subscribedAt == this.subscribedAt &&
-          other.isSubscribed == this.isSubscribed);
+          other.isSubscribed == this.isSubscribed &&
+          other.syncPaused == this.syncPaused);
 }
 
 class PodcastsCompanion extends UpdateCompanion<Podcast> {
@@ -346,6 +379,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
   final Value<String?> website;
   final Value<DateTime> subscribedAt;
   final Value<bool> isSubscribed;
+  final Value<bool> syncPaused;
   final Value<int> rowid;
   const PodcastsCompanion({
     this.id = const Value.absent(),
@@ -357,6 +391,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     this.website = const Value.absent(),
     this.subscribedAt = const Value.absent(),
     this.isSubscribed = const Value.absent(),
+    this.syncPaused = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PodcastsCompanion.insert({
@@ -369,6 +404,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     this.website = const Value.absent(),
     this.subscribedAt = const Value.absent(),
     this.isSubscribed = const Value.absent(),
+    this.syncPaused = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         title = Value(title),
@@ -386,6 +422,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     Expression<String>? website,
     Expression<DateTime>? subscribedAt,
     Expression<bool>? isSubscribed,
+    Expression<bool>? syncPaused,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -398,6 +435,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       if (website != null) 'website': website,
       if (subscribedAt != null) 'subscribed_at': subscribedAt,
       if (isSubscribed != null) 'is_subscribed': isSubscribed,
+      if (syncPaused != null) 'sync_paused': syncPaused,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -412,6 +450,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       Value<String?>? website,
       Value<DateTime>? subscribedAt,
       Value<bool>? isSubscribed,
+      Value<bool>? syncPaused,
       Value<int>? rowid}) {
     return PodcastsCompanion(
       id: id ?? this.id,
@@ -423,6 +462,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       website: website ?? this.website,
       subscribedAt: subscribedAt ?? this.subscribedAt,
       isSubscribed: isSubscribed ?? this.isSubscribed,
+      syncPaused: syncPaused ?? this.syncPaused,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -457,6 +497,9 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     if (isSubscribed.present) {
       map['is_subscribed'] = Variable<bool>(isSubscribed.value);
     }
+    if (syncPaused.present) {
+      map['sync_paused'] = Variable<bool>(syncPaused.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -475,6 +518,7 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
           ..write('website: $website, ')
           ..write('subscribedAt: $subscribedAt, ')
           ..write('isSubscribed: $isSubscribed, ')
+          ..write('syncPaused: $syncPaused, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1450,6 +1494,7 @@ typedef $$PodcastsTableCreateCompanionBuilder = PodcastsCompanion Function({
   Value<String?> website,
   Value<DateTime> subscribedAt,
   Value<bool> isSubscribed,
+  Value<bool> syncPaused,
   Value<int> rowid,
 });
 typedef $$PodcastsTableUpdateCompanionBuilder = PodcastsCompanion Function({
@@ -1462,6 +1507,7 @@ typedef $$PodcastsTableUpdateCompanionBuilder = PodcastsCompanion Function({
   Value<String?> website,
   Value<DateTime> subscribedAt,
   Value<bool> isSubscribed,
+  Value<bool> syncPaused,
   Value<int> rowid,
 });
 
@@ -1500,6 +1546,9 @@ class $$PodcastsTableFilterComposer
 
   ColumnFilters<bool> get isSubscribed => $composableBuilder(
       column: $table.isSubscribed, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get syncPaused => $composableBuilder(
+      column: $table.syncPaused, builder: (column) => ColumnFilters(column));
 }
 
 class $$PodcastsTableOrderingComposer
@@ -1539,6 +1588,9 @@ class $$PodcastsTableOrderingComposer
   ColumnOrderings<bool> get isSubscribed => $composableBuilder(
       column: $table.isSubscribed,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get syncPaused => $composableBuilder(
+      column: $table.syncPaused, builder: (column) => ColumnOrderings(column));
 }
 
 class $$PodcastsTableAnnotationComposer
@@ -1576,6 +1628,9 @@ class $$PodcastsTableAnnotationComposer
 
   GeneratedColumn<bool> get isSubscribed => $composableBuilder(
       column: $table.isSubscribed, builder: (column) => column);
+
+  GeneratedColumn<bool> get syncPaused => $composableBuilder(
+      column: $table.syncPaused, builder: (column) => column);
 }
 
 class $$PodcastsTableTableManager extends RootTableManager<
@@ -1610,6 +1665,7 @@ class $$PodcastsTableTableManager extends RootTableManager<
             Value<String?> website = const Value.absent(),
             Value<DateTime> subscribedAt = const Value.absent(),
             Value<bool> isSubscribed = const Value.absent(),
+            Value<bool> syncPaused = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PodcastsCompanion(
@@ -1622,6 +1678,7 @@ class $$PodcastsTableTableManager extends RootTableManager<
             website: website,
             subscribedAt: subscribedAt,
             isSubscribed: isSubscribed,
+            syncPaused: syncPaused,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1634,6 +1691,7 @@ class $$PodcastsTableTableManager extends RootTableManager<
             Value<String?> website = const Value.absent(),
             Value<DateTime> subscribedAt = const Value.absent(),
             Value<bool> isSubscribed = const Value.absent(),
+            Value<bool> syncPaused = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PodcastsCompanion.insert(
@@ -1646,6 +1704,7 @@ class $$PodcastsTableTableManager extends RootTableManager<
             website: website,
             subscribedAt: subscribedAt,
             isSubscribed: isSubscribed,
+            syncPaused: syncPaused,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

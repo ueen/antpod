@@ -37,9 +37,7 @@ Future<void> triggerDownload({
       episodeId: episode.id, audioUrl: episode.audioUrl,
       episodeTitle: episode.title, db: db,
     );
-    if (taskId != null && context.mounted) {
-      downloads.trackDownload(taskId, episodeId: episode.id);
-    }
+    if (taskId != null) downloads.trackDownload(taskId, episodeId: episode.id);
     return;
   }
 
@@ -306,9 +304,8 @@ class EpisodeTile extends StatelessWidget {
 
     // select() instead of watch(): only rebuilds when THIS episode's download progress changes,
     // not on every progress tick from any other episode's download.
-    // Falls back to episodeId lookup in case the DB stream hasn't yet emitted the new taskId.
     final dlProgress = context.select<DownloadProvider, double?>(
-        (d) => d.progressForTask(episode.downloadTaskId) ?? d.progressForEpisode(episode.id));
+        (d) => d.progressForEpisode(episode.id));
     final db = context.read<AppDatabase>();
     final l10n = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
@@ -316,8 +313,7 @@ class EpisodeTile extends StatelessWidget {
     final opacity = dimmed ? _kFinishedOpacity : 1.0;
 
     final ringProgress = episode.isDownloaded ? 1.0 : dlProgress;
-    final activeTaskId = episode.downloadTaskId;
-    final isDownloading = (activeTaskId != null || dlProgress != null) && !episode.isDownloaded;
+    final isDownloading = dlProgress != null && !episode.isDownloaded;
     final isMarked = episode.markedForDownload;
 
     return _StickySwipeable(
@@ -337,8 +333,7 @@ class EpisodeTile extends StatelessWidget {
       onSwipeEnd: () async {
         final downloads = context.read<DownloadProvider>();
         if (isDownloading) {
-          final taskId = activeTaskId ?? downloads.taskIdForEpisode(episode.id);
-          if (taskId != null) await downloads.cancelDownload(taskId, episode.id);
+          await downloads.cancelDownload(episode.id, episode.downloadTaskId);
         } else if (episode.isDownloaded) {
           await db.deleteLocalFile(episode.id);
           if (!episode.isSubscribed) {

@@ -264,7 +264,7 @@ abstract class AppLocalizations {
   /// No description provided for @addByRssUrl.
   ///
   /// In en, this message translates to:
-  /// **'Add by RSS feed URL'**
+  /// **'Add by RSS URL'**
   String get addByRssUrl;
 
   /// No description provided for @subscribeToRss.
@@ -410,6 +410,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'You\'re offline'**
   String get offlineSub;
+
+  /// No description provided for @unsubscribeDeleteAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsubscribe & delete all'**
+  String get unsubscribeDeleteAll;
+
+  /// No description provided for @unsubscribeKeepEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsubscribe, keep episodes'**
+  String get unsubscribeKeepEpisodes;
+
+  /// No description provided for @unsubscribeKeepHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded and started episodes stay until played'**
+  String get unsubscribeKeepHint;
+
+  /// No description provided for @pauseSync.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause sync'**
+  String get pauseSync;
+
+  /// No description provided for @resumeSync.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume sync'**
+  String get resumeSync;
+
+  /// No description provided for @syncPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync paused'**
+  String get syncPaused;
+
+  /// No description provided for @pauseSyncHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep episodes, stop checking for new ones'**
+  String get pauseSyncHint;
+
+  /// No description provided for @unsubscribeStopsPlayback.
+  ///
+  /// In en, this message translates to:
+  /// **'Playback of this podcast will stop.'**
+  String get unsubscribeStopsPlayback;
+
+  /// No description provided for @unsubscribeDeletesDownloads.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 downloaded episode will be deleted.} other{{count} downloaded episodes will be deleted.}}'**
+  String unsubscribeDeletesDownloads(int count);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

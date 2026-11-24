@@ -1,6 +1,6 @@
 // lib/app_database.dart
 //
-// Schema version: 7
+// Schema version: 8
 //   v1 → v2: Episodes.isSubscribed added
 //   v2 → v3: Episodes.isFinished added (true = fully listened)
 //            Episodes.lastPositionMs added (millisecond precision resume point)
@@ -8,6 +8,7 @@
 //   v4 → v5: Episodes.lastPlayed added (timestamp of most recent playback)
 //   v5 → v6: Episodes.markedForDownload added (queued for WiFi download)
 //   v6 → v7: Podcasts.isSubscribed added (false = temporary preview feed)
+//   v7 → v8: Podcasts.syncPaused added (true = skip background refresh)
 //
 // Regenerate after schema changes:
 //   dart run build_runner build --delete-conflicting-outputs
@@ -32,6 +33,8 @@ class Podcasts extends Table {
       dateTime().withDefault(currentDateAndTime)();
   /// true = active subscription; false = temporary preview (not yet subscribed)
   BoolColumn get isSubscribed => boolean().withDefault(const Constant(true))();
+  /// true = skip this feed during background auto-refresh (user manually paused sync)
+  BoolColumn get syncPaused => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -97,7 +100,9 @@ bool _episodeListEqual(List<Episode> a, List<Episode> b) {
         x.isDownloaded != y.isDownloaded ||
         x.markedForDownload != y.markedForDownload ||
         x.durationSeconds != y.durationSeconds ||
-        x.localPath != y.localPath) return false;
+        x.localPath != y.localPath) {
+      return false;
+    }
   }
   return true;
 }
@@ -109,7 +114,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'antpod'));
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -136,6 +141,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 7) {
         await m.database.customStatement(
             'ALTER TABLE podcasts ADD COLUMN is_subscribed INTEGER NOT NULL DEFAULT 1');
+      }
+      if (from < 8) {
+        await m.database.customStatement(
+            'ALTER TABLE podcasts ADD COLUMN sync_paused INTEGER NOT NULL DEFAULT 0');
       }
     },
   );
@@ -514,9 +523,11 @@ class AppDatabase extends _$AppDatabase {
                 // Played: wait 7 days from last playback before removing
                 (e.isFinished.equals(true) &
                     e.lastPlayed.isSmallerThanValue(cutoff)) |
-                // Never started: no play mark and old content
+                // Never started: no play mark and old content. Downloaded
+                // ones stay — the user fetched them to listen later.
                 (e.lastPositionMs.equals(0) &
                     e.isFinished.equals(false) &
+                    e.isDownloaded.equals(false) &
                     e.publishDate.isSmallerThanValue(cutoff))
               )))
         .get();
@@ -610,6 +621,51 @@ class AppDatabase extends _$AppDatabase {
     }
     await (delete(podcasts)..where((p) => p.id.equals(podcastId))).go();
   }
+
+  /// Unsubscribe but keep what the user still cares about: downloaded
+  /// episodes, started-but-unfinished ones, and [keepIds] (e.g. the episode
+  /// loaded in the player). Everything else is deleted and the podcast becomes
+  /// a temp feed, which the temp cleanup removes once those are played.
+  /// Returns the deleted episodes so the caller can cancel their downloads.
+  Future<List<Episode>> demoteToTempFeed(Podcast pod,
+      {Set<String> keepIds = const {}}) {
+    final feedUrl = pod.feedUrl;
+    return transaction(() async {
+      final eps = await (select(episodes)
+            ..where((e) => e.podcastId.equals(pod.id) | e.podcastId.equals(feedUrl)))
+          .get();
+      bool keep(Episode e) =>
+          e.isDownloaded ||
+          keepIds.contains(e.id) ||
+          (e.lastPositionMs > 0 && !e.isFinished);
+      final kept = eps.where(keep).map((e) => e.id).toList();
+      final dropped = eps.where((e) => !keep(e)).toList();
+
+      if (dropped.isNotEmpty) {
+        final ids = dropped.map((e) => e.id).toList();
+        await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
+      }
+      if (kept.isNotEmpty) {
+        await (update(episodes)..where((e) => e.id.isIn(kept))).write(
+            EpisodesCompanion(
+                podcastId: Value(feedUrl),
+                isSubscribed: const Value(false),
+                markedForDownload: const Value(false)));
+      }
+      // Re-key on feedUrl (legacy rows may use an iTunes id) as a temp feed.
+      await (delete(podcasts)..where((p) => p.id.equals(pod.id))).go();
+      await into(podcasts).insertOnConflictUpdate(pod.toCompanion(true).copyWith(
+            id: Value(feedUrl),
+            isSubscribed: const Value(false),
+            syncPaused: const Value(false),
+          ));
+      return dropped;
+    });
+  }
+
+  Future<void> setPodcastSyncPaused(String id, bool paused) =>
+      (update(podcasts)..where((p) => p.id.equals(id)))
+          .write(PodcastsCompanion(syncPaused: Value(paused)));
 
   /// Update the podcast cover URL. Called during refresh when RSS provides a
   /// non-empty image so the grid/header stays in sync with the feed.

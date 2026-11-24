@@ -5,7 +5,7 @@ import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Value, BooleanExpressionOperators;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -93,6 +93,9 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<Uri>? _linkSub;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Uri? _pendingDeepLink;
+  bool _appReady = false;
+  String? _lastDeepLink;
+  DateTime _lastDeepLinkAt = DateTime.fromMillisecondsSinceEpoch(0);
   bool _downloadingMarked = false;
   bool _isOffline = false;
 
@@ -100,10 +103,16 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
-    final links = AppLinks();
-    // Store initial link; process it only after the widget is fully initialized
-    links.getInitialLink().then((uri) { if (uri != null) _pendingDeepLink = uri; });
-    _linkSub = links.uriLinkStream.listen((uri) => _handleDeepLink(uri));
+    // app_links ≥6 emits the initial link on uriLinkStream too, so this single
+    // listener covers cold start and warm links. Links that arrive before the
+    // app has finished initializing are parked and handled at the end of init.
+    _linkSub = AppLinks().uriLinkStream.listen((uri) {
+      if (_appReady) {
+        _handleDeepLink(uri);
+      } else {
+        _pendingDeepLink = uri;
+      }
+    });
 
     // Auto-download queued episodes when WiFi becomes available; track offline state.
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
@@ -136,6 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
         player.restoreLastEpisode();
       }
       // Process initial deep link after the app has finished initializing
+      _appReady = true;
       final pending = _pendingDeepLink;
       _pendingDeepLink = null;
       if (pending != null) _handleDeepLink(pending);
@@ -159,63 +169,121 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
+  // Share links strip the protocol and a leading "www." from the feed URL, so
+  // compare feeds in that same reduced form.
+  static String _normFeed(String url) => url
+      .replaceFirst(RegExp(r'^https?://'), '')
+      .replaceFirst(RegExp(r'^www\.'), '')
+      .replaceFirst(RegExp(r'/+$'), '');
+
+  // Load a feed restored from a share link. The share URL dropped "www.", which
+  // some hosts don't redirect, so retry with it before giving up.
+  Future<(String, FeedData?)> _loadSharedFeed(String feed) async {
+    final data = await PodcastService.loadFeed(feed);
+    if (data != null) return (feed, data);
+    final withWww = feed.replaceFirstMapped(
+        RegExp(r'^(https?://)(?!www\.)'), (m) => '${m[1]}www.');
+    if (withWww == feed) return (feed, null);
+    final retry = await PodcastService.loadFeed(withWww);
+    return retry != null ? (withWww, retry) : (feed, null);
+  }
+
   Future<void> _handleDeepLink(Uri uri) async {
-    final rawFeed = uri.queryParameters['f'];
-    final feed = rawFeed != null && rawFeed.isNotEmpty ? _restoreProto(rawFeed) : null;
-    if (feed == null || !mounted) return;
+    // Android can deliver the same intent twice (cold start + onNewIntent).
+    final key = uri.toString();
+    final now = DateTime.now();
+    if (key == _lastDeepLink && now.difference(_lastDeepLinkAt).inSeconds < 3) return;
+    _lastDeepLink = key;
+    _lastDeepLinkAt = now;
+
+    // p = podcast feed (proto stripped), e = episode guid hash.
+    // f / h are the legacy names from earlier builds.
+    final q = uri.queryParameters;
+    final rawFeed = q['p'] ?? q['f'];
+    if (rawFeed == null || rawFeed.isEmpty || !mounted) return;
+    var feed = _restoreProto(rawFeed);
+    final guidHash = q['e'] ?? q['h'];
     final db = context.read<AppDatabase>();
     final player = context.read<PlayerProvider>();
-    final guidHash = uri.queryParameters['h'];
+
+    // Close any open player sheet / dialog / pushed page so the target is visible.
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    if (_mode != _FeedMode.feed || _searchQuery.isNotEmpty) _exitToFeed();
 
     final all = await db.getAllPodcasts();
     if (!mounted) return;
-    final subscribed = all.where((p) => p.feedUrl == feed || p.id == feed).firstOrNull;
+    final norm = _normFeed(feed);
+    final subscribed = all
+        .where((p) => p.id == feed || _normFeed(p.feedUrl) == norm)
+        .firstOrNull;
 
-    if (guidHash != null && guidHash.isNotEmpty) {
-      // Episode link — find by hash in DB, or fetch feed and hash-match.
-      var episode = await _findByHash(db, feed, guidHash);
-
-      if (episode == null && subscribed == null) {
-        final data = await PodcastService.loadFeed(feed);
-        if (!mounted) return;
-        final companion = data?.episodes
-            .where((e) => ShareUtils.guidHash(e.id.value) == guidHash)
-            .firstOrNull;
-        if (companion != null) {
-          await db.insertTempEpisode(companion);
-          episode = await db.getEpisode(companion.id.value);
-        }
-      }
-
+    // ── Podcast-only link ─────────────────────────────────────────────────
+    if (guidHash == null || guidHash.isEmpty) {
       if (subscribed != null) {
         _enterPodcastFilter(subscribed);
-        if (episode != null && mounted) {
-          await player.load(episode);
-          if (!mounted) return;
-          await showPlayerSheet(context, onPodcastTap: _openPodcastFromPlayer);
-        }
         return;
       }
-
-      if (episode == null || !mounted) return;
+      final (resolved, data) = await _loadSharedFeed(feed);
+      if (!mounted) return;
       _openPreview(PodcastResult(
-        id: feed, title: episode.podcastTitle, author: '',
-        description: '', imageUrl: episode.podcastImageUrl, feedUrl: feed,
+        id: resolved,
+        title: data?.podcast.title ?? '',
+        author: '',
+        description: '',
+        imageUrl: '',
+        feedUrl: resolved,
       ));
+      return;
+    }
+
+    // ── Episode link ──────────────────────────────────────────────────────
+    if (subscribed != null) {
+      _enterPodcastFilter(subscribed);
+      var episode = await _findByHash(db, subscribed.id, guidHash);
+      if (episode == null) {
+        // Not in the DB yet (feed not refreshed since it was published).
+        await _refreshSinglePodcast(subscribed.id);
+        episode = await _findByHash(db, subscribed.id, guidHash);
+      }
+      if (episode == null || !mounted) return;
       await player.load(episode);
       if (!mounted) return;
       await showPlayerSheet(context, onPodcastTap: _openPodcastFromPlayer);
       return;
     }
 
-    // Podcast-only link.
-    if (subscribed != null) {
-      _enterPodcastFilter(subscribed);
-    } else {
-      _openPreview(PodcastResult(
-        id: feed, title: '', author: '', description: '', imageUrl: '', feedUrl: feed,
-      ));
+    // Not subscribed: a temp episode may already exist from an earlier preview.
+    var episode = await _findByHash(db, feed, guidHash);
+    if (episode == null) {
+      final (resolved, data) = await _loadSharedFeed(feed);
+      if (!mounted) return;
+      feed = resolved;
+      final companion = data?.episodes
+          .where((e) => ShareUtils.guidHash(e.id.value) == guidHash)
+          .firstOrNull;
+      if (companion != null) {
+        await db.insertTempEpisode(companion.copyWith(podcastId: Value(feed)));
+        episode = await db.getEpisode(companion.id.value);
+      }
+      if (episode == null) {
+        // Episode no longer in the feed — still show the podcast.
+        if (mounted && data != null) {
+          _openPreview(PodcastResult(
+            id: feed, title: data.podcast.title ?? '', author: '',
+            description: '', imageUrl: '', feedUrl: feed,
+          ));
+        }
+        return;
+      }
     }
+    if (!mounted) return;
+    _openPreview(PodcastResult(
+      id: feed, title: episode.podcastTitle, author: '',
+      description: '', imageUrl: episode.podcastImageUrl, feedUrl: feed,
+    ));
+    await player.load(episode);
+    if (!mounted) return;
+    await showPlayerSheet(context, onPodcastTap: _openPodcastFromPlayer);
   }
 
   void _openPodcastFromPlayer() {
@@ -459,6 +527,143 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Unsubscribe ───────────────────────────────────────────────────────────
 
+  // Bottom sheet: delete everything (primary, destructive), keep episodes →
+  // temp feed (only when something is playing/downloaded/started), pause/resume
+  // sync (secondary), cancel (link). Warns when playback or downloads are affected.
+  Future<void> _confirmUnsubscribe(Podcast podcast) async {
+    final db = context.read<AppDatabase>();
+    final player = context.read<PlayerProvider>();
+    final epPodId = player.currentEpisode?.podcastId;
+    final affectsPlayback =
+        epPodId != null && (epPodId == podcast.id || epPodId == podcast.feedUrl);
+    final eps = await (db.select(db.episodes)
+          ..where((e) =>
+              e.podcastId.equals(podcast.id) | e.podcastId.equals(podcast.feedUrl)))
+        .get();
+    final downloadedCount = eps.where((e) => e.isDownloaded).length;
+    final startedCount =
+        eps.where((e) => e.lastPositionMs > 0 && !e.isFinished).length;
+    // Something worth keeping → offer "unsubscribe, keep episodes".
+    final canKeep = affectsPlayback || downloadedCount > 0 || startedCount > 0;
+    if (!mounted) return;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final l10n = AppLocalizations.of(ctx)!;
+        final warnings = [
+          if (affectsPlayback) l10n.unsubscribeStopsPlayback,
+          if (downloadedCount > 0) l10n.unsubscribeDeletesDownloads(downloadedCount),
+        ];
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(podcast.title,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface)),
+                for (final w in warnings) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 16, color: cs.error),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(w,
+                            style: TextStyle(fontSize: 13, color: cs.error)),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: cs.error,
+                    foregroundColor: cs.onError,
+                    minimumSize: const Size.fromHeight(52),
+                    textStyle: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: Text(l10n.unsubscribeDeleteAll),
+                  onPressed: () => Navigator.pop(ctx, 'delete'),
+                ),
+                if (canKeep) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: cs.error,
+                      side: BorderSide(color: cs.error.withValues(alpha: 0.6)),
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                    icon: const Icon(Icons.inventory_2_outlined),
+                    label: Text(l10n.unsubscribeKeepEpisodes),
+                    onPressed: () => Navigator.pop(ctx, 'keep'),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(l10n.unsubscribeKeepHint,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                ],
+                const SizedBox(height: 10),
+                FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48)),
+                  icon: Icon(podcast.syncPaused
+                      ? Icons.sync_rounded
+                      : Icons.pause_circle_outline_rounded),
+                  label: Text(podcast.syncPaused ? l10n.resumeSync : l10n.pauseSync),
+                  onPressed: () => Navigator.pop(ctx, 'pause'),
+                ),
+                if (!podcast.syncPaused) ...[
+                  const SizedBox(height: 4),
+                  Text(l10n.pauseSyncHint,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                ],
+                const SizedBox(height: 6),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(l10n.cancel),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (!mounted) return;
+    if (action == 'delete') {
+      await _unsubscribe(podcast);
+    } else if (action == 'keep') {
+      await _unsubscribeKeepEpisodes(podcast);
+    } else if (action == 'pause') {
+      await _setSyncPaused(podcast, !podcast.syncPaused);
+    }
+  }
+
+  Future<void> _setSyncPaused(Podcast podcast, bool paused) async {
+    final db = context.read<AppDatabase>();
+    await db.setPodcastSyncPaused(podcast.id, paused);
+    if (!mounted) return;
+    if (_filterPodcastId == podcast.id) {
+      setState(() => _filterPodcast = podcast.copyWith(syncPaused: paused));
+    }
+    // Resuming: catch up on what was missed while paused.
+    if (!paused) _refreshSinglePodcast(podcast.id);
+  }
+
   Future<void> _unsubscribe(Podcast podcast) async {
     final db        = context.read<AppDatabase>();
     final player    = context.read<PlayerProvider>();
@@ -473,12 +678,14 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // Cancel any in-progress downloads for this podcast's episodes.
       final eps = await (db.select(db.episodes)
-            ..where((e) => e.podcastId.equals(podcast.feedUrl))
-            ..where((e) => e.downloadTaskId.isNotNull()))
+            ..where((e) =>
+                e.podcastId.equals(podcast.id) | e.podcastId.equals(podcast.feedUrl))
+            ..where((e) => e.downloadTaskId.isNotNull())
+            ..where((e) => e.isDownloaded.equals(false)))
           .get();
       for (final ep in eps) {
         if (ep.downloadTaskId != null) {
-          await downloads.cancelDownload(ep.downloadTaskId!, ep.id);
+          await downloads.cancelDownload(ep.id, ep.downloadTaskId);
         }
       }
       await db.deletePodcast(podcast.id);
@@ -487,6 +694,45 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) _exitToFeed();
     }
+  }
+
+  /// Unsubscribe but keep downloaded/started episodes (and whatever is in the
+  /// player). The podcast becomes a temp feed — cleaned up once those are
+  /// played — and stays open, now with a subscribe button to come back.
+  Future<void> _unsubscribeKeepEpisodes(Podcast podcast) async {
+    final db        = context.read<AppDatabase>();
+    final player    = context.read<PlayerProvider>();
+    final downloads = context.read<DownloadProvider>();
+    final currentId = player.currentEpisode?.id;
+
+    try {
+      final dropped = await db.demoteToTempFeed(podcast,
+          keepIds: {if (currentId != null) currentId});
+      for (final ep in dropped) {
+        if (ep.downloadTaskId != null && !ep.isDownloaded) {
+          await downloads.cancelDownload(ep.id, ep.downloadTaskId);
+        }
+      }
+    } catch (e, st) {
+      debugPrint('[unsub-keep] ERROR: $e\n$st');
+    }
+    if (!mounted) return;
+    setState(() {
+      _previewResult = PodcastResult(
+        id: podcast.feedUrl,
+        title: podcast.title,
+        author: podcast.author,
+        description: podcast.description,
+        imageUrl: podcast.imageUrl,
+        feedUrl: podcast.feedUrl,
+      );
+      _previewLoading = false;
+      _previewFrom = _FeedMode.feed;   // back → home
+      _mode = _FeedMode.previewPodcast;
+      _filterPodcastId = null;
+      _filterPodcast = null;
+      _filter = _filter.copyWith(podcasts: true);
+    });
   }
 
   void _toggleFilterChips() {
@@ -878,7 +1124,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (startup) await _cleanupInterruptedDownloads();
     await db.cleanupStaleTempEpisodes();
     await db.deleteFinishedDownloads();
-    final pods = await db.getAllPodcasts();
+    // Paused podcasts keep their episodes but are skipped by the auto-refresh
+    // (manual pull-to-refresh on the podcast page still works).
+    final pods = (await db.getAllPodcasts()).where((p) => !p.syncPaused).toList();
     // Fetch all feeds in parallel, then write once — one DB write = one stream event.
     final results = await Future.wait(pods.map((pod) async {
       final data = await PodcastService.loadFeed(pod.feedUrl);
@@ -1228,12 +1476,22 @@ class _HomeScreenState extends State<HomeScreen> {
           filterChipsVisible: _filterChipsVisible,
           onFilterToggle: _onFilterToggle,
           onRefresh: () => _refreshSinglePodcast(_previewResult!.feedUrl, isSubscribed: false),
-          onSubscribe: () {
+          onSubscribe: () async {
             final result = _previewResult!;
-            _exitToFeed();
-            _subscribe(result).then((_) {
-              if (mounted) _refresh(context.read<AppDatabase>());
-            });
+            final db = context.read<AppDatabase>();
+            await _subscribe(result);
+            if (!mounted) return;
+            // Land on the new podcast's page; back from there returns home.
+            final pod = await (db.select(db.podcasts)
+                  ..where((p) => p.id.equals(result.feedUrl)))
+                .getSingleOrNull();
+            if (!mounted) return;
+            _previewResult = null;
+            if (pod != null) {
+              _enterPodcastFilter(pod);
+            } else {
+              _exitToFeed();
+            }
           },
         );
 
@@ -1252,7 +1510,10 @@ class _HomeScreenState extends State<HomeScreen> {
           onFilterToggle: _onFilterToggle,
           onRefresh: () => _refreshSinglePodcast(_filterPodcastId!),
           onCoverTap: _onCoverTap,
-          onUnsubscribe: _filterPodcast != null ? () => _unsubscribe(_filterPodcast!) : null,
+          onUnsubscribe: _filterPodcast != null
+              ? () => _confirmUnsubscribe(_filterPodcast!)
+              : null,
+          syncPaused: _filterPodcast?.syncPaused ?? false,
         );
 
       case _FeedMode.discover:
@@ -1583,6 +1844,7 @@ class _PodcastFeed extends StatelessWidget {
   final VoidCallback? onUnsubscribe;
   final Future<void> Function()? onRefresh;
   final bool isLoading;
+  final bool syncPaused;
 
   const _PodcastFeed({
     required this.db, required this.cs, required this.l10n,
@@ -1592,7 +1854,7 @@ class _PodcastFeed extends StatelessWidget {
     required this.filter, required this.filterChipsVisible,
     required this.onFilterToggle,
     this.onCoverTap, this.onSubscribe, this.onUnsubscribe,
-    this.onRefresh, this.isLoading = false,
+    this.onRefresh, this.isLoading = false, this.syncPaused = false,
   });
 
   @override
@@ -1613,6 +1875,7 @@ class _PodcastFeed extends StatelessWidget {
           shareUrl: shareUrl,
           onSubscribe: onSubscribe,
           onUnsubscribe: onUnsubscribe,
+          syncPaused: syncPaused,
         ),
         ClipRect(
           child: AnimatedAlign(
@@ -1888,9 +2151,20 @@ class _DiscoverListState extends State<_DiscoverList> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
           child: Center(
-            child: Text('Apple Trends',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-                    color: Color(0xFFFF9A30))),
+            // Tab-like pill so the section title reads as a label, not body text.
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF9A30).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: const Color(0xFFFF9A30).withValues(alpha: 0.55),
+                    width: 1.2),
+              ),
+              child: const Text('Apple Trends',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                      color: Color(0xFFFF9A30))),
+            ),
           ),
         ),
         Expanded(

@@ -13,7 +13,13 @@
   "emptyPodcastsTitle": "Aún no hay suscripciones",
   "subscribeDialogTitle": "Suscribirse",
   "subscribed": "Suscrito a \"{title}\"",
-  "@subscribed": { "placeholders": { "title": { "type": "String" } } },
+  "@subscribed": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "downloaded": "Descargado",
   "downloading": "Descargar",
   "deleteDownload": "Eliminar descarga",
@@ -52,5 +58,14 @@
   "noWifi": "Sin WiFi",
   "onMobileData": "Estás usando datos móviles",
   "noConnection": "Sin conexión",
-  "offlineSub": "Estás sin conexión"
+  "offlineSub": "Estás sin conexión",
+  "unsubscribeDeleteAll": "Cancelar suscripción y borrar todo",
+  "unsubscribeKeepEpisodes": "Cancelar suscripción, conservar episodios",
+  "unsubscribeKeepHint": "Los episodios descargados y empezados se quedan hasta escucharlos",
+  "pauseSync": "Pausar sincronización",
+  "resumeSync": "Reanudar sincronización",
+  "syncPaused": "Sincronización en pausa",
+  "pauseSyncHint": "Conserva los episodios, sin buscar nuevos",
+  "unsubscribeStopsPlayback": "Se detendrá la reproducción de este podcast.",
+  "unsubscribeDeletesDownloads": "{count, plural, =1{Se borrará 1 episodio descargado.} other{Se borrarán {count} episodios descargados.}}"
 }

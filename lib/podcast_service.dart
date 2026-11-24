@@ -115,6 +115,9 @@ class PodcastResult {
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
+/// A parsed RSS feed: podcast metadata plus its episodes as DB companions.
+typedef FeedData = ({ps.Podcast podcast, List<EpisodesCompanion> episodes});
+
 class PodcastService {
   // ── Suche ──────────────────────────────────────────────────────────────────
 
@@ -401,7 +404,7 @@ class PodcastService {
 
   // ── RSS-Feed laden (bleibt via podcast_search) ────────────────────────────
 
-  static Future<({ps.Podcast podcast, List<EpisodesCompanion> episodes})?> loadFeed(
+  static Future<FeedData?> loadFeed(
     String feedUrl,
   ) async {
     try {

@@ -165,4 +165,39 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get offlineSub => 'Du bist offline';
+
+  @override
+  String get unsubscribeDeleteAll => 'Abo beenden & alles löschen';
+
+  @override
+  String get unsubscribeKeepEpisodes => 'Abo beenden, Folgen behalten';
+
+  @override
+  String get unsubscribeKeepHint => 'Heruntergeladene und angefangene Folgen bleiben, bis sie gehört sind';
+
+  @override
+  String get pauseSync => 'Sync pausieren';
+
+  @override
+  String get resumeSync => 'Sync fortsetzen';
+
+  @override
+  String get syncPaused => 'Sync pausiert';
+
+  @override
+  String get pauseSyncHint => 'Folgen behalten, nicht mehr nach neuen suchen';
+
+  @override
+  String get unsubscribeStopsPlayback => 'Die Wiedergabe dieses Podcasts wird beendet.';
+
+  @override
+  String unsubscribeDeletesDownloads(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count heruntergeladene Folgen werden gelöscht.',
+      one: '1 heruntergeladene Folge wird gelöscht.',
+    );
+    return '$_temp0';
+  }
 }
