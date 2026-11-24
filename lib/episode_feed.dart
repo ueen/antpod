@@ -1,6 +1,8 @@
 // lib/episode_feed.dart
 import 'dart:async';
+import 'dart:math' show pi, cos, sin;
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 import 'package:provider/provider.dart';
@@ -54,7 +56,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
 
   // Pull-to-refresh state
   bool _pullEligible = false;
-  bool _pullTriggered = false;
+  bool _localRefreshing = false;
   double _pullDrag = 0.0;
   static const double _pullThreshold = 55.0;
   static const double _pullMax = 70.0;
@@ -101,7 +103,6 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
       _diffUpdate(_applyFilters(_raw));
     }
     if (old.refreshing != widget.refreshing) {
-      if (widget.refreshing) _pullTriggered = false;
       setState(() {});
     }
 
@@ -301,7 +302,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
       );
 
   double get _bannerHeight {
-    if (widget.refreshing || _pullTriggered) return 52.0;
+    if (widget.refreshing || _localRefreshing) return 52.0;
     return (_pullDrag / _pullMax * 52.0).clamp(0.0, 52.0);
   }
 
@@ -361,6 +362,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
           return;
         }
         final dy = e.delta.dy;
+        if (dy <= 0 && _pullDrag == 0) return;
         if (dy == 0) return;
         final newDrag = (_pullDrag + dy * 0.5).clamp(0.0, _pullMax);
         if ((newDrag - _pullDrag).abs() > 0.5) setState(() => _pullDrag = newDrag);
@@ -368,9 +370,18 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
       onPointerUp: (e) {
         if (!_pullEligible) return;
         _pullEligible = false;
-        if (_pullDrag >= _pullThreshold && !widget.refreshing) {
-          setState(() { _pullDrag = 0; _pullTriggered = true; });
-          widget.onRefresh();
+        if (_pullDrag >= _pullThreshold && !_localRefreshing) {
+          setState(() { _pullDrag = 0; _localRefreshing = true; });
+          Connectivity().checkConnectivity().then((results) {
+            final offline = results.every((r) => r == ConnectivityResult.none);
+            if (offline) {
+              if (mounted) setState(() => _localRefreshing = false);
+              return;
+            }
+            widget.onRefresh().whenComplete(() {
+              if (mounted) setState(() => _localRefreshing = false);
+            });
+          });
         } else {
           setState(() => _pullDrag = 0);
         }
@@ -396,13 +407,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
                 height: h,
                 color: cs.surfaceContainerHighest,
                 child: h > 20
-                    ? Center(
-                        child: SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: cs.primary),
-                        ),
-                      )
+                    ? Center(child: _AntSpinner(color: cs.primary))
                     : null,
               );
             }),
@@ -550,4 +555,75 @@ class _SmoothScrollPhysics extends ClampingScrollPhysics {
       tolerance: tolerance,
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pull-to-refresh spinner — 2 "ants" (3-segment dots) orbiting opposite
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AntSpinner extends StatefulWidget {
+  final Color color;
+  const _AntSpinner({required this.color});
+
+  @override
+  State<_AntSpinner> createState() => _AntSpinnerState();
+}
+
+class _AntSpinnerState extends State<_AntSpinner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _ctrl,
+        builder: (_, __) => CustomPaint(
+          size: const Size(22, 22),
+          painter: _AntsPainter(progress: _ctrl.value, color: widget.color),
+        ),
+      );
+}
+
+class _AntsPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+
+  const _AntsPainter({required this.progress, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width * 0.40;
+    final paint = Paint()..style = PaintingStyle.fill;
+
+    // 2 ants, 180° apart; each ant = 3 segments (head, thorax, abdomen)
+    const segSpacing = 0.09; // fraction of full circle between segments
+    const segRadii = [2.2, 1.7, 1.3];
+    const segOpacity = [1.0, 0.6, 0.30];
+
+    for (int ant = 0; ant < 2; ant++) {
+      final base = progress + ant * 0.5;
+      for (int seg = 0; seg < 3; seg++) {
+        final angle = (base - seg * segSpacing) * 2 * pi - pi / 2;
+        paint.color = color.withValues(alpha: segOpacity[seg]);
+        canvas.drawCircle(
+          Offset(center.dx + cos(angle) * radius,
+              center.dy + sin(angle) * radius),
+          segRadii[seg],
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AntsPainter old) => old.progress != progress;
 }

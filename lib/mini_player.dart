@@ -337,6 +337,7 @@ class _PlayerSheet extends StatelessWidget {
   }
 
   void _showCoverFullscreen(BuildContext context, PlayerProvider player, String fallbackUrl) {
+    final screenWidth = MediaQuery.of(context).size.width;
     showDialog(
       context: context,
       barrierColor: Colors.black87,
@@ -348,7 +349,7 @@ class _PlayerSheet extends StatelessWidget {
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: _ChapterCover(player: player, fallbackUrl: fallbackUrl),
+              child: _ChapterCover(player: player, fallbackUrl: fallbackUrl, size: screenWidth),
             ),
           ),
         ),
@@ -747,20 +748,22 @@ class _ChapterListSheet extends StatelessWidget {
 class _ChapterCover extends StatelessWidget {
   final PlayerProvider player;
   final String fallbackUrl;
-  const _ChapterCover({required this.player, required this.fallbackUrl});
+  final double? size;
+  const _ChapterCover({required this.player, required this.fallbackUrl, this.size});
 
   @override
   Widget build(BuildContext context) {
     final bytes = player.currentChapterImageBytes;
     final url = player.currentCoverImageUrl;
     final idx = player.currentChapterIndex;
+    final dim = size ?? 220.0;
 
     Widget image;
     if (bytes != null) {
       image = Image.memory(
         bytes,
         key: ValueKey('chap_$idx'),
-        width: 220, height: 220, fit: BoxFit.cover,
+        width: dim, height: dim, fit: BoxFit.cover,
         gaplessPlayback: true,
       );
     } else {
@@ -768,8 +771,8 @@ class _ChapterCover extends StatelessWidget {
       image = CachedNetworkImage(
         key: ValueKey('cover_$src'),
         imageUrl: src,
-        width: 220, height: 220, fit: BoxFit.cover,
-        errorWidget: (_, __, ___) => const SizedBox(width: 220, height: 220),
+        width: dim, height: dim, fit: BoxFit.cover,
+        errorWidget: (_, __, ___) => SizedBox(width: dim, height: dim),
       );
     }
 

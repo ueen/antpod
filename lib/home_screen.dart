@@ -1890,7 +1890,7 @@ class _DiscoverListState extends State<_DiscoverList> {
           child: Center(
             child: Text('Apple Trends',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-                    color: cs.onSurface)),
+                    color: cs.inversePrimary)),
           ),
         ),
         Expanded(
