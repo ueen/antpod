@@ -156,6 +156,7 @@ class PlayerProvider extends ChangeNotifier {
 
   /// The episode's chapters from the feed and from the audio file, read at
   /// once: the feed's show first, then the two merged (see chapters.dart).
+  /// Without either, timestamps listed in the show notes.
   Future<void> _loadChapters(Episode episode) async {
     final localPath = _resolveLocalPath(episode.localPath);
     final url = episode.chaptersUrl;
@@ -191,6 +192,18 @@ class PlayerProvider extends ChangeNotifier {
     // Nothing read because a fetch failed (offline?): the next play retries.
     final feedFailed = hasFeed && feed == null;
     if (_chapters.isEmpty && (file == null || feedFailed)) _chaptersKey = null;
+
+    // Neither has chapters: timestamps in the show notes, if any.
+    if (_chapters.isEmpty) {
+      final secs = episode.durationSeconds > _duration.inSeconds
+          ? episode.durationSeconds
+          : _duration.inSeconds;
+      final notes = notesChapters(episode.description, secs);
+      if (notes.isNotEmpty) {
+        _chapters = notes;
+        notifyListeners();
+      }
+    }
   }
 
   // ── Playback ──────────────────────────────────────────────────────────────

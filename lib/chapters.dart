@@ -12,11 +12,15 @@
 // over once read: they describe the audio actually played, while hosts with
 // dynamic ad insertion shift the audio (and its tag) but not the feed. Where
 // one has what the other lacks, a title or a picture, the two are merged.
+//
+// Episodes with neither often list timestamps in their show notes; those
+// make the chapters then (see notesChapters).
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'file_chapters.dart';
+import 'html_utils.dart';
 
 class PodcastChapter {
   final String title;
@@ -155,4 +159,49 @@ List<PodcastChapter> mergeChapters(
     merged = feedPictures && !filePictures ? fromFeed : fromFile;
   }
   return merged.where((c) => c.title.isNotEmpty).toList();
+}
+
+// A line opening with a timestamp, "1:02:03", "12:34", "(12:34)" or
+// "[12:34]", maybe after a bullet, then the title. A letter right after the
+// time ("20:15h") means it isn't one.
+final _notesLine = RegExp(
+    r'^[\s•·*>\-–—]*[(\[]?(?:(\d{1,2}):)?(\d{1,3}):(\d{2})[)\]]?(?!\w|:\d)'
+    r'[\s\-–—:|.)\]]*(.+)$');
+// A time of day: "20:15 Uhr", "8:30 am" (but "Am Ende" is a title).
+final _clockWord = RegExp(r"^(?:uhr|h|a\.m\.|p\.m\.|o'?clock)(?!\p{L})",
+    caseSensitive: false, unicode: true);
+final _amPm = RegExp(r'^(?:am|pm|AM|PM)(?!\p{L})', unicode: true);
+final _hasWord = RegExp(r'[\p{L}\p{N}]', unicode: true);
+
+/// Chapters from timestamps listed in the show notes, one per line: at
+/// least three, in order, all within [durationSeconds] when that's known.
+/// Empty when the notes don't have such a list.
+List<PodcastChapter> notesChapters(String description, int durationSeconds) {
+  if (!description.contains(':')) return const [];
+  // Timestamps are often links (to the web player's position): keep the text.
+  final text = htmlToText(
+      description.replaceAll(RegExp(r'</?a\b[^>]*>', caseSensitive: false), ''));
+  final chapters = <PodcastChapter>[];
+  for (final line in text.split('\n')) {
+    final m = _notesLine.firstMatch(line.trim());
+    if (m == null) continue;
+    final h = int.parse(m.group(1) ?? '0');
+    final min = int.parse(m.group(2)!);
+    final sec = int.parse(m.group(3)!);
+    if (sec >= 60 || (m.group(1) != null && min >= 60)) continue;
+    var title = m.group(4)!.trim();
+    if (_clockWord.hasMatch(title) || _amPm.hasMatch(title)) continue;
+    if (!_hasWord.hasMatch(title)) continue;
+    if (title.length > 120) title = '${title.substring(0, 119)}…';
+    final start = (h * 3600 + min * 60 + sec).toDouble();
+    if (chapters.isNotEmpty && start <= chapters.last.startTimeSeconds) {
+      return const [];
+    }
+    chapters.add(PodcastChapter(title: title, startTimeSeconds: start));
+  }
+  if (chapters.length < 3) return const [];
+  if (durationSeconds > 0 && chapters.last.startTimeSeconds >= durationSeconds) {
+    return const [];
+  }
+  return chapters;
 }
