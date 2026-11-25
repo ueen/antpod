@@ -376,27 +376,27 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Save resume position (ms + seconds) and optionally mark finished.
+  /// Save the resume position (ms + seconds). It never marks the episode as
+  /// played: only a pause in the last minute or the natural end does that
+  /// (PlayerProvider), so the periodic saves can't close the player early.
+  /// A save before the last minute un-marks it: it's being listened again.
   Future<void> updatePlaybackPosition(
     String id, {
     required int positionMs,
     required int durationMs,
   }) async {
     final posSeconds = positionMs ~/ 1000;
-    // Consider finished if within last 60 seconds of total duration
-    final finished = durationMs > 0 && positionMs >= durationMs - 60000;
+    final nearEnd = durationMs > 0 && positionMs >= durationMs - 60000;
 
     await (update(episodes)..where((e) => e.id.equals(id))).write(
       EpisodesCompanion(
         lastPositionMs: Value(positionMs),
         playbackPositionSeconds: Value(posSeconds),
-        isFinished: Value(finished),
+        isFinished: nearEnd ? const Value.absent() : const Value(false),
         lastPlayed: Value(DateTime.now()),
         // Keep durationSeconds in sync with actual audio — RSS values are often
         // rounded or wrong, causing the progress bar to exceed 100%.
         durationSeconds: durationMs > 0 ? Value(durationMs ~/ 1000) : const Value.absent(),
-        // Clear the WiFi queue mark once the episode is finished
-        markedForDownload: finished ? const Value(false) : const Value.absent(),
       ),
     );
   }
@@ -525,14 +525,13 @@ class AppDatabase extends _$AppDatabase {
     if (!ep.isSubscribed) await cleanupTempFeedIfDone(ep.podcastId);
   }
 
-  /// Delete local files for finished subscribed episodes downloaded more than
-  /// 2 days ago. Temp episodes are always deleted immediately via
-  /// cleanupTempEpisode() and never reach this routine.
+  /// Delete local files of episodes finished more than 2 days ago, temp ones
+  /// included (those stay in history until their feed's week is up, see
+  /// cleanupStaleTempEpisodes).
   Future<void> deleteFinishedDownloads() async {
     final cutoff = DateTime.now().subtract(const Duration(days: 2));
     final finished = await (select(episodes)
           ..where((e) =>
-              e.isSubscribed.equals(true) &
               e.isFinished.equals(true) &
               e.isDownloaded.equals(true) &
               e.lastPlayed.isSmallerThanValue(cutoff)))
@@ -556,12 +555,32 @@ class AppDatabase extends _$AppDatabase {
 
   /// Delete stale temp episodes and orphaned podcasts.
   ///
+  /// A temp feed that was played goes once nothing in it is in use any more
+  /// (see [_tempFeedInUse]): a week after its last play.
   /// Played episodes: removed 7 days after last playback.
   /// Never-started episodes: removed if publish date is >7 days old.
   /// In-progress episodes (started but not finished) are always kept, and so
   /// is [keepId] (the loaded episode, e.g. an old one just opened from a link).
   Future<void> cleanupStaleTempEpisodes({String? keepId}) async {
-    final cutoff = DateTime.now().subtract(const Duration(days: 7));
+    final cutoff = DateTime.now().subtract(_tempWeek);
+
+    // Feeds first, while their played episodes still say when they were
+    // last played.
+    final tempPods = await (select(podcasts)
+          ..where((p) => p.isSubscribed.equals(false)))
+        .get();
+    for (final pod in tempPods) {
+      final eps = await (select(episodes)
+            ..where((e) => e.podcastId.equals(pod.id)))
+          .get();
+      if (eps.isNotEmpty) {
+        if (_tempFeedInUse(eps, keepId: keepId)) continue;
+        // Never played, only browsed: its episodes age out below, and the
+        // feed with the last of them.
+        if (eps.every((e) => e.lastPlayed == null)) continue;
+      }
+      await _purgeTempFeed(pod.id, eps);
+    }
 
     final stale = await (select(episodes)
           ..where((e) =>
@@ -591,38 +610,60 @@ class AppDatabase extends _$AppDatabase {
       await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
     }
 
-    // Feed-level cleanup: for each temp podcast, delete the whole feed if
-    // all episodes are finished and the most recent play was > 7 days ago.
-    final tempPods = await (select(podcasts)
-          ..where((p) => p.isSubscribed.equals(false)))
-        .get();
+    // Feeds whose last episodes just aged out.
     for (final pod in tempPods) {
-      final eps = await (select(episodes)
-            ..where((e) => e.podcastId.equals(pod.id)))
+      final left = await (select(episodes)
+            ..where((e) => e.podcastId.equals(pod.id))
+            ..limit(1))
           .get();
-      if (eps.isEmpty) {
+      if (left.isEmpty) {
         await (delete(podcasts)..where((p) => p.id.equals(pod.id))).go();
-        continue;
       }
-      // Keep feed if any episode is unfinished (in-progress or never started)
-      if (eps.any((e) => !e.isFinished)) continue;
-      // Keep feed if the most recently played episode is still recent
-      final lastPlay = eps
-          .where((e) => e.lastPlayed != null)
-          .map((e) => e.lastPlayed!)
-          .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
-      if (lastPlay == null || lastPlay.isAfter(cutoff)) continue;
-      // All finished and idle for 7+ days — remove the feed
-      for (final ep in eps) {
-        if (ep.localPath != null) {
-          final f = File(ep.localPath!);
-          if (f.existsSync()) f.deleteSync();
-        }
+    }
+  }
+
+  static const _tempWeek = Duration(days: 7);
+
+  /// Podcasts whose episode list is on screen (EpisodeFeed): their temp feed
+  /// isn't purged from under it; the startup cleanup takes it later.
+  final openFeeds = <String>[];
+
+  /// Whether something in a temp feed is still in use: an episode loaded in
+  /// the player ([keepId]), downloaded or on its way, in progress, or played
+  /// within the past week.
+  static bool _tempFeedInUse(List<Episode> eps, {String? keepId}) {
+    final cutoff = DateTime.now().subtract(_tempWeek);
+    return eps.any((e) =>
+        e.id == keepId ||
+        e.isDownloaded ||
+        e.markedForDownload ||
+        e.downloadTaskId != null ||
+        (e.lastPositionMs > 0 && !e.isFinished) ||
+        (e.lastPlayed?.isAfter(cutoff) ?? false));
+  }
+
+  /// Delete a temp podcast with all its episodes and their files.
+  Future<void> _purgeTempFeed(String podcastId, List<Episode> eps) async {
+    for (final ep in eps) {
+      if (ep.localPath != null) {
+        final f = File(ep.localPath!);
+        if (f.existsSync()) f.deleteSync();
       }
+    }
+    if (eps.isNotEmpty) {
       final ids = eps.map((e) => e.id).toList();
       await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
-      await (delete(podcasts)..where((p) => p.id.equals(pod.id))).go();
     }
+    await (delete(podcasts)..where((p) => p.id.equals(podcastId))).go();
+  }
+
+  /// Mark as played from the menu. A temp episode is deleted instead, and
+  /// its feed with it when nothing else in it is in use.
+  Future<void> markPlayedByUser(String id) async {
+    final ep = await getEpisode(id);
+    if (ep == null) return;
+    if (ep.isSubscribed) return markFinished(id);
+    await cleanupTempEpisode(id);
   }
 
   Future<void> cleanupTempEpisode(String id) async {
@@ -665,10 +706,11 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  /// Delete a temp podcast and all its episodes if no episode is still active
-  /// (in-progress or downloaded). Called after a temp episode's download is
-  /// deleted or the episode is manually removed.
+  /// Delete a temp podcast and all its episodes right away if nothing in it
+  /// is in use ([_tempFeedInUse]) and its list isn't open. Called after a
+  /// temp episode is marked as played or its download is deleted.
   Future<void> cleanupTempFeedIfDone(String podcastId) async {
+    if (openFeeds.contains(podcastId)) return;
     final pod = await (select(podcasts)
           ..where((p) => p.id.equals(podcastId)))
         .getSingleOrNull();
@@ -677,23 +719,8 @@ class AppDatabase extends _$AppDatabase {
     final eps = await (select(episodes)
           ..where((e) => e.podcastId.equals(podcastId)))
         .get();
-
-    // Keep feed if any episode is unfinished (never started, in-progress, or
-    // still downloaded — the user might still want to listen to it)
-    final hasActive = eps.any((e) => e.isDownloaded || !e.isFinished);
-    if (hasActive) return;
-
-    for (final ep in eps) {
-      if (ep.localPath != null) {
-        final f = File(ep.localPath!);
-        if (f.existsSync()) f.deleteSync();
-      }
-    }
-    if (eps.isNotEmpty) {
-      final ids = eps.map((e) => e.id).toList();
-      await (delete(episodes)..where((e) => e.id.isIn(ids))).go();
-    }
-    await (delete(podcasts)..where((p) => p.id.equals(podcastId))).go();
+    if (_tempFeedInUse(eps)) return;
+    await _purgeTempFeed(podcastId, eps);
   }
 
   /// Something left to finish: downloaded, or started but not finished. The

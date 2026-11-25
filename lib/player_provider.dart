@@ -48,6 +48,11 @@ class PlayerProvider extends ChangeNotifier {
     });
 
     final handler = audioHandler as AntPodAudioHandler;
+    handler.onUserPause = () {
+      _position = handler.player.position;
+      _flushPosition();
+      _maybeComplete();
+    };
 
     handler.playbackState.listen((state) {
       _isPlaying = state.playing;
@@ -235,15 +240,15 @@ class PlayerProvider extends ChangeNotifier {
   /// away) and forgets the episode so it isn't restored on the next launch.
   Future<void> stopAndClear() => _closePlayer(savePosition: true);
 
-  /// Mark an episode as played (into Listened) or unplayed (back to New,
-  /// progress cleared). Either way, if it's the episode in the player, the
-  /// player closes first, so no position save can land after the write and
-  /// undo it.
+  /// Mark an episode as played (into Listened; a temp episode is deleted,
+  /// see AppDatabase.markPlayedByUser) or unplayed (back to New, progress
+  /// cleared). Either way, if it's the episode in the player, the player
+  /// closes first, so no position save can land after the write and undo it.
   Future<void> setPlayed(String id, bool played) async {
     // _closePlayer() clears the player state synchronously, before its
     // first await, so the write below is the last one either way.
     final closing = _currentEpisode?.id == id ? _closePlayer() : null;
-    await (played ? _db.markFinished(id) : _db.markUnfinished(id));
+    await (played ? _db.markPlayedByUser(id) : _db.markUnfinished(id));
     await closing;
   }
 
@@ -259,8 +264,8 @@ class PlayerProvider extends ChangeNotifier {
   /// episode marked as played or unplayed, episode deleted from the DB.
   ///
   /// [savePosition] must stay false when the episode was just marked as
-  /// played: updatePlaybackPosition() rewrites isFinished from the position
-  /// and would silently un-mark it. It is pointless for deleted episodes.
+  /// played: updatePlaybackPosition() un-marks an episode saved before its
+  /// last minute. It is pointless for deleted episodes.
   Future<void> _closePlayer({bool savePosition = false}) async {
     final ep = _currentEpisode;
     if (ep == null) return;
@@ -448,14 +453,13 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
     if (_isPlaying) {
-      await audioHandler.pause();
-      _flushPosition();
-      _maybeComplete();
+      await audioHandler.pause(); // saves, and may complete: see onUserPause
     } else {
       await audioHandler.play();
     }
   }
 
+  /// A pause in the last minute counts as played (outros, trailers).
   void _maybeComplete() {
     if (_currentEpisode == null) return;
     if (_duration.inSeconds <= 0) return;
@@ -463,9 +467,9 @@ class PlayerProvider extends ChangeNotifier {
     _finishCurrent();
   }
 
-  /// Record the current episode as fully played. Temp episodes are removed;
-  /// a subscribed episode's download is kept and deleted by the startup
-  /// cleanup 2 days after it was last played.
+  /// Record the current episode as fully played; marking it closes the
+  /// player (_onEpisodeUpdated). The download, temp or not, is deleted by the
+  /// startup cleanup 2 days later; a temp episode and its feed go after a week.
   Future<void> _finishCurrent() async {
     final ep = _currentEpisode;
     if (ep == null) return;
@@ -473,7 +477,6 @@ class PlayerProvider extends ChangeNotifier {
         positionMs: _duration.inMilliseconds,
         durationMs: _duration.inMilliseconds);
     await _db.markFinished(ep.id);
-    await _db.cleanupTempEpisode(ep.id);
   }
 
   Future<void> seekTo(Duration pos) async {

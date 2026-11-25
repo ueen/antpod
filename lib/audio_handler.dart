@@ -77,8 +77,16 @@ class AntPodAudioHandler extends BaseAudioHandler
   @override
   Future<void> play() => _player.play();
 
+  /// Called after a pause the user asked for: app, notification, lock screen
+  /// or headset button. Interruptions (a call, unplugged headphones) pause
+  /// the player directly and don't come through here.
+  VoidCallback? onUserPause;
+
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() async {
+    await _player.pause();
+    onUserPause?.call();
+  }
 
   @override
   Future<void> stop() async {

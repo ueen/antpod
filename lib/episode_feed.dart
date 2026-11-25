@@ -116,6 +116,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   void dispose() {
     _diffDebounce?.cancel();
     _sub?.cancel();
+    if (_openFeed != null) widget.db.openFeeds.remove(_openFeed);
     _markedSub?.cancel();
     _downloadedCountSub?.cancel();
     _scrollCtrl.dispose();
@@ -123,8 +124,14 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     super.dispose();
   }
 
+  /// The podcast this list shows, registered in AppDatabase.openFeeds.
+  String? _openFeed;
+
   void _subscribe() {
     _sub?.cancel();
+    if (_openFeed != null) widget.db.openFeeds.remove(_openFeed);
+    _openFeed = widget.podcastIdFilter;
+    if (_openFeed != null) widget.db.openFeeds.add(_openFeed!);
     _sub = (widget.podcastIdFilter != null
             ? widget.db.watchEpisodesForPodcast(widget.podcastIdFilter!)
             : widget.filter.downloaded

@@ -235,9 +235,14 @@ class EpisodeTile extends StatelessWidget {
         cs: cs,
         l10n: l10n,
         onMarkPlayed: !episode.isFinished
-            ? () {
-                context.read<PlayerProvider>().setPlayed(episode.id, true);
+            ? () async {
+                final player = context.read<PlayerProvider>();
                 Navigator.pop(context);
+                // A temp episode is deleted: its download stops first.
+                if (!episode.isSubscribed && isDownloading) {
+                  await downloads.cancelDownload(episode.id, episode.downloadTaskId);
+                }
+                await player.setPlayed(episode.id, true);
               }
             : null,
         // isCurrent: the list doesn't follow the playing episode's position
