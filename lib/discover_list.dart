@@ -26,7 +26,7 @@ class DiscoverList extends StatefulWidget {
   final bool loadingTrending, searchingPI;
   final bool searchHasMore, loadingMoreSearch;
   final bool isOffline;
-  final String? trendingError;
+  final bool trendingFailed;
   final ColorScheme cs;
   final AppLocalizations l10n;
   /// Opens a podcast: its page when subscribed, a preview otherwise.
@@ -41,7 +41,7 @@ class DiscoverList extends StatefulWidget {
     required this.loadingTrending, required this.searchingPI,
     required this.searchHasMore, required this.loadingMoreSearch,
     this.isOffline = false,
-    this.trendingError,
+    this.trendingFailed = false,
     required this.cs, required this.l10n,
     required this.onOpen, required this.onRefresh,
     required this.onLoadMore,
@@ -242,7 +242,7 @@ class _DiscoverListState extends State<DiscoverList> {
                     hasScrollBody: false,
                     child: Center(child: CircularProgressIndicator()),
                   )
-                else if (widget.trendingError != null)
+                else if (widget.trendingFailed)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
@@ -252,11 +252,6 @@ class _DiscoverListState extends State<DiscoverList> {
                         const SizedBox(height: 12),
                         Text(l10n.trendingError,
                             style: TextStyle(color: cs.onSurfaceVariant)),
-                        const SizedBox(height: 4),
-                        Text(widget.trendingError!,
-                            style: TextStyle(fontSize: 12,
-                                color: cs.onSurfaceVariant),
-                            textAlign: TextAlign.center),
                       ]),
                     ),
                   )

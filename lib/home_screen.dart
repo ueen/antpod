@@ -86,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingMoreSearch = false;
   bool _loadingTrending = false;
   bool _searchingPI = false;
-  String? _trendingError;
+  bool _trendingFailed = false;
 
   // Preview (unsubscribed podcast header + episodes)
   PodcastResult? _previewResult;
@@ -800,7 +800,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final country = _searchCountry;
     final language = Localizations.localeOf(context).languageCode;
     final lang = language == 'en' ? 'en' : '$language,en';
-    setState(() { _loadingTrending = true; _trendingError = null; });
+    setState(() { _loadingTrending = true; _trendingFailed = false; });
 
     List<PodcastResult> charts;
     try {
@@ -813,8 +813,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (charts.isEmpty) {
       try {
         charts = await PodcastService.trending(max: 10, lang: lang);
-      } catch (e) {
-        if (mounted) setState(() { _trendingError = e.toString(); _loadingTrending = false; });
+      } catch (_) {
+        if (mounted) setState(() { _trendingFailed = true; _loadingTrending = false; });
         return;
       }
     }
@@ -1130,7 +1130,7 @@ class _HomeScreenState extends State<HomeScreen> {
           searchHasMore: _searchHasMore,
           loadingMoreSearch: _loadingMoreSearch,
           isOffline: _isOffline,
-          trendingError: _trendingError,
+          trendingFailed: _trendingFailed,
           cs: cs, l10n: l10n,
           onOpen: _openPodcast,
           onRefresh: () => _loadDiscover(forceRefresh: true),
