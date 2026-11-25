@@ -903,7 +903,8 @@ class Episode extends DataClass implements Insertable<Episode> {
   /// false = temporary Discover episode (deleted after playback)
   final bool isSubscribed;
 
-  /// URL of the PodcastIndex chapters JSON file, if the episode has chapters.
+  /// Where the feed's chapters are: the podcast:chapters JSON file, or a
+  /// data: URI of the same JSON made from inline Podlove chapters.
   final String? chaptersUrl;
 
   /// Timestamp of the most recent playback interaction.

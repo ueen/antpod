@@ -8,15 +8,19 @@
 //   Apple charts + lookup              → trending by country
 //   Apple search (podcastEpisode)      → episode search
 //   RSS (podcast_search)               → feeds themselves, parsed off-isolate
+//                                        (plus their Podlove chapters)
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:podcast_search/podcast_search.dart' as ps;
 import 'app_database.dart';
+import 'chapters.dart';
 
 // ── Zugangsdaten ──────────────────────────────────────────────────────────────
 
@@ -321,16 +325,44 @@ class PodcastService {
 
   // ── RSS feeds ─────────────────────────────────────────────────────────────
 
+  /// The feed at [feedUrl], parsed by podcast_search, which leaves out
+  /// Podlove Simple Chapters: so the XML is fetched here and those read from
+  /// it too (chapters.dart).
   static Future<FeedData?> loadFeed(
     String feedUrl,
   ) async {
     try {
+      final tempDir = await getTemporaryDirectory()
+          .then((d) => d.path, onError: (_) => Directory.systemTemp.path);
       // Run HTTP fetch + XML parse on a background isolate so the main thread
       // is never blocked by RssFeed.parse() on large feeds.
       return await Isolate.run(() async {
-        final podcast = await ps.Feed.loadFeed(url: feedUrl);
+        final xml = await _fetchFeed(feedUrl);
+        if (xml == null) return null;
+        // podcast_search parses from a string only via a file.
+        final file = File('$tempDir/feed-${feedUrl.hashCode}-'
+            '${DateTime.now().microsecondsSinceEpoch}.xml');
+        final ps.Podcast podcast;
+        try {
+          await file.writeAsString(xml);
+          podcast = await ps.Feed.loadFeedFile(file: file.path);
+        } finally {
+          file.delete().ignore();
+        }
+        // One episode per item, in order, so they pair up by position.
+        List<String?>? podlove;
+        if (xml.contains('<psc:chapter')) {
+          final items = _item.allMatches(xml).toList();
+          if (items.length == podcast.episodes.length) {
+            podlove = [for (final m in items) podloveChaptersUri(m.group(0)!)];
+          }
+        }
+        var index = 0;
         final episodes = podcast.episodes.map((ep) {
-          final chapUrl = ep.chapters?.url;
+          final i = index++;
+          final pcUrl = ep.chapters?.url;
+          final chapUrl =
+              pcUrl != null && pcUrl.isNotEmpty ? pcUrl : podlove?[i];
           return EpisodesCompanion(
             id: Value(ep.guid.isNotEmpty ? ep.guid : '${feedUrl}_${ep.title}'),
             podcastId: Value(feedUrl),
@@ -341,13 +373,35 @@ class PodcastService {
             audioUrl: Value(ep.contentUrl ?? ''),
             durationSeconds: Value((ep.duration ?? Duration.zero).inSeconds),
             publishDate: Value(ep.publicationDate ?? DateTime.now()),
-            chaptersUrl: Value(chapUrl != null && chapUrl.isNotEmpty ? chapUrl : null),
+            chaptersUrl: Value(chapUrl),
           );
         }).toList();
         return (podcast: podcast, episodes: episodes);
       });
     } catch (_) {
       return null;
+    }
+  }
+
+  static final _item = RegExp(r'<item[\s>][\s\S]*?</item>');
+
+  /// The feed's XML, or null if the server didn't send it.
+  static Future<String?> _fetchFeed(String url) async {
+    const timeout = Duration(seconds: 20);
+    final client = http.Client();
+    try {
+      final res = await client
+          .send(http.Request('GET', Uri.parse(url))
+            ..headers['User-Agent'] = _userAgent)
+          .timeout(timeout);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        res.stream.listen(null).cancel().ignore();
+        return null;
+      }
+      final bytes = await http.ByteStream(res.stream.timeout(timeout)).toBytes();
+      return utf8.decode(bytes, allowMalformed: true);
+    } finally {
+      client.close();
     }
   }
 }

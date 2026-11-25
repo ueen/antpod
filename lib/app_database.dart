@@ -71,7 +71,8 @@ class Episodes extends Table {
   /// false = temporary Discover episode (deleted after playback)
   BoolColumn get isSubscribed => boolean().withDefault(const Constant(true))();
 
-  /// URL of the PodcastIndex chapters JSON file, if the episode has chapters.
+  /// Where the feed's chapters are: the podcast:chapters JSON file, or a
+  /// data: URI of the same JSON made from inline Podlove chapters.
   TextColumn get chaptersUrl => text().nullable()();
 
   /// Timestamp of the most recent playback interaction.

@@ -4,26 +4,12 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:podcast_search/podcast_search.dart' as ps;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_database.dart';
 import 'audio_handler.dart';
-import 'id3_chapters.dart';
+import 'chapters.dart';
+import 'file_chapters.dart';
 import 'network.dart';
-
-class PodcastChapter {
-  final String title;
-  final double startTimeSeconds;
-  final String? imageUrl;
-  /// Picture embedded in the audio file's tag; wins over [imageUrl].
-  final Uint8List? imageBytes;
-  const PodcastChapter({
-    required this.title,
-    required this.startTimeSeconds,
-    this.imageUrl,
-    this.imageBytes,
-  });
-}
 
 class PlayerProvider extends ChangeNotifier {
   final AppDatabase _db;
@@ -163,11 +149,8 @@ class PlayerProvider extends ChangeNotifier {
     if (i > 0) seekToChapter(_chapters[i - 1]);
   }
 
-  /// Chapters come from two places: the feed's chapters JSON and the audio
-  /// file's own ID3 tag. Both are read at once; the JSON (small, quick) shows
-  /// first, and the file's chapters take over once in, since they match the
-  /// audio actually played (see id3_chapters.dart). Also covers feeds whose
-  /// chapters only live in the file.
+  /// The episode's chapters from the feed and from the audio file, read at
+  /// once: the feed's show first, then the two merged (see chapters.dart).
   Future<void> _loadChapters(Episode episode) async {
     final localPath = _resolveLocalPath(episode.localPath);
     final url = episode.chaptersUrl;
@@ -180,69 +163,29 @@ class PlayerProvider extends ChangeNotifier {
     if (!again) _chapters = [];
     bool stale() => _chaptersKey != key;
 
-    final id3Future =
-        readId3Chapters(localPath: localPath, audioUrl: episode.audioUrl);
+    final fileFuture =
+        readFileChapters(localPath: localPath, audioUrl: episode.audioUrl);
 
-    List<PodcastChapter>? json;
-    if (url != null && url.isNotEmpty) {
-      try {
-        final result = await ps.Feed.loadChaptersByUrl(url: url);
-        json = [
-          for (final c in result.chapters)
-            if (c.toc)
-              PodcastChapter(
-                title: c.title,
-                startTimeSeconds: c.startTime,
-                imageUrl: c.imageUrl.isNotEmpty ? c.imageUrl : null,
-              ),
-        ];
-      } catch (e) {
-        debugPrint('[chapters] $url: $e');
-      }
+    final hasFeed = url != null && url.isNotEmpty;
+    List<PodcastChapter>? feed;
+    if (hasFeed) {
+      feed = await loadFeedChapters(url);
       if (stale()) return;
-      if (!again && json != null && json.isNotEmpty) {
-        _chapters = json.where((c) => c.title.isNotEmpty).toList();
+      if (!again && feed != null && feed.isNotEmpty) {
+        _chapters = mergeChapters(feed, null);
         notifyListeners();
       }
     }
 
-    final id3 = await id3Future;
+    final file = await fileFuture;
     if (stale()) return;
-    final best = _chaptersFromFile(id3, json) ??
-        json?.where((c) => c.title.isNotEmpty).toList();
-    if (best != null) {
-      _chapters = best;
+    if (file != null || (!again && feed != null)) {
+      _chapters = mergeChapters(feed, file);
       notifyListeners();
     }
     // Nothing read because a fetch failed (offline?): the next play retries.
-    final jsonFailed = url != null && url.isNotEmpty && json == null;
-    if (_chapters.isEmpty && (id3 == null || jsonFailed)) _chaptersKey = null;
-  }
-
-  /// The file's chapters, with titles and images from the JSON (paired by
-  /// position) filling any gaps; null to keep the JSON's: the file has none,
-  /// or only the JSON has images and the two don't pair up.
-  static List<PodcastChapter>? _chaptersFromFile(
-      List<Id3Chapter>? id3, List<PodcastChapter>? json) {
-    if (id3 == null || id3.isEmpty) return null;
-    final paired = json != null && json.length == id3.length;
-    if (!paired &&
-        json != null &&
-        id3.every((c) => c.image == null) &&
-        json.any((c) => c.imageUrl != null)) {
-      return null;
-    }
-    return [
-      for (var i = 0; i < id3.length; i++)
-        PodcastChapter(
-          title: id3[i].title.isNotEmpty
-              ? id3[i].title
-              : (paired ? json[i].title : ''),
-          startTimeSeconds: id3[i].startMs / 1000,
-          imageBytes: id3[i].image,
-          imageUrl: id3[i].image == null && paired ? json[i].imageUrl : null,
-        ),
-    ].where((c) => c.title.isNotEmpty).toList();
+    final feedFailed = hasFeed && feed == null;
+    if (_chapters.isEmpty && (file == null || feedFailed)) _chaptersKey = null;
   }
 
   // ── Playback ──────────────────────────────────────────────────────────────
