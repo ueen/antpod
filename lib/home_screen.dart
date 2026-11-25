@@ -891,7 +891,15 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onFilterToggle(String key) {
     // Search mode: update ephemeral search filter only, never persist.
     if (_isSearchMode) {
-      setState(() => _searchFilter = _searchFilter.toggle(key));
+      setState(() {
+        if (key == 'podcasts') {
+          // Dropping the podcast scope turns this into the search from home.
+          _searchPodcastId = null;
+          _searchFilter = _searchFilter.copyWith(podcasts: false);
+        } else {
+          _searchFilter = _searchFilter.toggle(key);
+        }
+      });
       return;
     }
 
@@ -969,22 +977,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     onClearSearch: () => setState(() {
                       _searchQuery = ''; _searchCtrl.clear(); 
                     }),
-                    onSearchOpen: () {
-                      final fromPodcast = _mode == _FeedMode.podcastFilter;
-                      setState(() {
-                        _mode = _FeedMode.searchEpisodes;
-                        _searchQuery = ''; _searchCtrl.clear();
-                        if (fromPodcast) {
-                          _searchPodcastId = _filterPodcastId;
-                          _searchFilter = const FilterState(newOnly: false, podcasts: true);
-                          _searchFilterChipsVisible = true;
-                        } else {
-                          _searchPodcastId = null;
-                          _searchFilter = const FilterState(newOnly: false);
-                          _searchFilterChipsVisible = false;
-                        }
-                      });
-                    },
+                    // One search everywhere. From a podcast page it starts
+                    // scoped to that podcast (Podcasts chip on); deselecting
+                    // the chip leaves exactly the search from home.
+                    onSearchOpen: () => setState(() {
+                      final scope =
+                          _mode == _FeedMode.podcastFilter ? _filterPodcastId : null;
+                      _mode = _FeedMode.searchEpisodes;
+                      _searchQuery = ''; _searchCtrl.clear();
+                      _searchPodcastId = scope;
+                      _searchFilter = FilterState(newOnly: false, podcasts: scope != null);
+                      _searchFilterChipsVisible = scope != null;
+                    }),
                     onPlusPressed: _enterDiscover,
                     onFilterToggle: _toggleFilterChips,
                     onLogoTap: () => _showAbout(context),
