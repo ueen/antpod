@@ -278,11 +278,27 @@ class EpisodeTile extends StatelessWidget {
         onDeleteDownload: episode.isDownloaded
             ? () { Navigator.pop(context); db.deleteDownload(episode.id); }
             : null,
-        onRemoveEpisode: !episode.isSubscribed
-            ? () { Navigator.pop(context); db.cleanupTempEpisode(episode.id); }
+        onRemoveEpisode: !episode.isSubscribed &&
+                (isCurrent || isDownloading || isMarked || episode.isDownloaded ||
+                    episode.isFinished || episode.lastPositionMs > 0)
+            ? () {
+                Navigator.pop(context);
+                _removeTemp(context, isDownloading: isDownloading);
+              }
             : null,
       ),
     );
+  }
+
+  /// A temp episode is reset rather than deleted: it leaves the home feed
+  /// but stays in its podcast's list, unplayed, like before it was touched.
+  Future<void> _removeTemp(BuildContext context, {required bool isDownloading}) async {
+    final player = context.read<PlayerProvider>();
+    if (isDownloading) {
+      await context.read<DownloadProvider>()
+          .cancelDownload(episode.id, episode.downloadTaskId);
+    }
+    await player.resetTemp(episode.id);
   }
 
   @override
@@ -319,7 +335,7 @@ class EpisodeTile extends StatelessWidget {
           isDownloading: isDownloading, isMarked: isMarked),
       onSwipeStart: () async {
         if (!episode.isSubscribed) {
-          await db.cleanupTempEpisode(episode.id);
+          await _removeTemp(context, isDownloading: isDownloading);
         } else {
           await context.read<PlayerProvider>()
               .setPlayed(episode.id, !episode.isFinished);

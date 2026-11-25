@@ -247,6 +247,14 @@ class PlayerProvider extends ChangeNotifier {
     await closing;
   }
 
+  /// Remove a temp episode (see AppDatabase.resetTempEpisode), closing the
+  /// player first if it's this episode, as [setPlayed] does.
+  Future<void> resetTemp(String id) async {
+    final closing = _currentEpisode?.id == id ? _closePlayer() : null;
+    await _db.resetTempEpisode(id);
+    await closing;
+  }
+
   /// Single teardown path for every "close the player" case: unsubscribe,
   /// episode marked as played or unplayed, episode deleted from the DB.
   ///

@@ -639,6 +639,32 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// Remove a temp episode (swipe or menu): its play state and download go,
+  /// as if it had never been played. The row stays, so its preview feed still
+  /// lists it; the home feed, which shows temp episodes only while they're in
+  /// use, drops it. The startup cleanup deletes the row once it's stale.
+  Future<void> resetTempEpisode(String id) async {
+    final ep = await (select(episodes)..where((e) => e.id.equals(id)))
+        .getSingleOrNull();
+    if (ep == null || ep.isSubscribed) return;
+    if (ep.localPath != null) {
+      final f = File(ep.localPath!);
+      if (f.existsSync()) f.deleteSync();
+    }
+    await (update(episodes)..where((e) => e.id.equals(id))).write(
+      const EpisodesCompanion(
+        isFinished: Value(false),
+        lastPositionMs: Value(0),
+        playbackPositionSeconds: Value(0),
+        lastPlayed: Value(null),
+        isDownloaded: Value(false),
+        localPath: Value(null),
+        downloadTaskId: Value(null),
+        markedForDownload: Value(false),
+      ),
+    );
+  }
+
   /// Delete a temp podcast and all its episodes if no episode is still active
   /// (in-progress or downloaded). Called after a temp episode's download is
   /// deleted or the episode is manually removed.
