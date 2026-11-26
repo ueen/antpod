@@ -501,7 +501,7 @@ class PlayerSheetRoute extends PopupRoute<void> {
       _LetGoPhysics(parent: AlwaysScrollableScrollPhysics());
 
   /// Slower than this, in pixels per second, a release is still.
-  static const _still = 40.0;
+  static const _still = 20.0;
 
   /// The finger opens it: no motion of its own on push.
   final bool _tracking;
@@ -667,7 +667,7 @@ class PlayerSheetRoute extends PopupRoute<void> {
     if (t < 1) {
       final open = still ? t >= 0.5 : vy > 0;
       if (open) {
-        c.animateWith(_Settle(t, 1, vy / _travel));
+        c.animateWith(_Glide(t, 1, vy / _travel));
       } else {
         _leave = _Settle(t, 0, vy / _travel);
         navigator?.pop();
@@ -826,6 +826,48 @@ class _Settle extends Simulation {
 
   @override
   bool isDone(double time) => time >= _time;
+}
+
+/// From [from] to [to] as in a vacuum: on at [velocity] (but never slower
+/// than [minSpeed], the full way in 2 s), then coming to rest over the last
+/// stretch on an ease-out cubic of [_brake] seconds (or over all of it, if
+/// that's shorter). However slowly the finger let go, it goes on as slowly.
+class _Glide extends Simulation {
+  _Glide(this.from, this.to, double velocity)
+      : _d = (to - from).abs(),
+        _v = math.max(velocity * (to - from).sign, minSpeed) {
+    _b = math.min(_d, _v * _brake / 3);
+    _cruise = (_d - _b) / _v;
+    _end = _cruise + 3 * _b / _v;
+  }
+
+  static const minSpeed = 0.5;
+  static const _brake = 0.3;
+
+  final double from, to;
+  final double _d, _v;
+  late final double _b, _cruise, _end;
+
+  double get _sign => (to - from).sign;
+
+  @override
+  double x(double time) {
+    if (time >= _end) return to;
+    if (time <= _cruise) return from + _sign * _v * time;
+    final s = 1 - (time - _cruise) / (_end - _cruise);
+    return to - _sign * _b * s * s * s;
+  }
+
+  @override
+  double dx(double time) {
+    if (time >= _end) return 0;
+    if (time <= _cruise) return _sign * _v;
+    final s = 1 - (time - _cruise) / (_end - _cruise);
+    return _sign * _v * s * s;
+  }
+
+  @override
+  bool isDone(double time) => time >= _end;
 }
 
 /// Every release is a fling, however slow or short: the sheet goes on at

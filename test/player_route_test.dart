@@ -113,17 +113,34 @@ void main() {
     route.release(720); // 2 travels per second
     await tester.pump();
     final v0 = route.animation!.value;
-    await tester.pump(const Duration(milliseconds: 16));
-    final v1 = route.animation!.value;
-    // Not slower than the finger at first: no gap behind it.
-    expect((v1 - v0) / 0.016, greaterThanOrEqualTo(2 - 0.1));
-    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 100));
+    // Just as fast as the finger: no jump ahead, no gap behind.
+    expect((route.animation!.value - v0) / 0.1, closeTo(2, 0.05));
+    await tester.pump(const Duration(milliseconds: 280));
     final v2 = route.animation!.value;
     await tester.pump(const Duration(milliseconds: 16));
-    expect((route.animation!.value - v2) / 0.016, lessThan(1),
+    expect((route.animation!.value - v2) / 0.016, lessThan(0.5),
         reason: 'slower near the end');
     await tester.pumpAndSettle();
     expect(route.animation!.value, 1);
+  });
+
+  testWidgets('let go slowly, it goes on slowly: up to 2 s to open',
+      (tester) async {
+    final route = await push(tester, tracking: true);
+    route.drag(36); // a tenth of the way
+    await tester.pump();
+    route.release(30); // crawling: it goes on at the slowest glide
+    await tester.pump();
+    final v0 = route.animation!.value;
+    await tester.pump(const Duration(seconds: 1));
+    expect(route.animation!.value - v0, closeTo(0.5, 0.02),
+        reason: 'half the way a second, steady');
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(route.animation!.value, lessThan(1), reason: 'still on its way');
+    await tester.pumpAndSettle();
+    expect(route.animation!.value, 1);
+    expect(route.isCurrent, isTrue);
   });
 
   testWidgets('open, a drag up grows the sheet before its content scrolls',
