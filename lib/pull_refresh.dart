@@ -218,8 +218,8 @@ class _RenderStableTopSliver extends RenderSliverToBoxAdapter {
 // Ant spinner — a ring of 8 dots turning slowly clockwise while two
 // "prominent" highlights hop dot-to-dot, each hop a short crossfade (next dot
 // fades in while the previous one fades out). One circles counterclockwise,
-// the other clockwise from a quarter turn further on, at two thirds its speed,
-// so where they cross wanders round the ring.
+// the other clockwise from a quarter turn further on, a sixth faster, so
+// where they cross wanders round the ring.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AntSpinner extends StatefulWidget {
@@ -235,7 +235,7 @@ class _AntSpinnerState extends State<AntSpinner>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 5250),
+    duration: const Duration(milliseconds: 10500),
   )..repeat();
 
   @override
@@ -263,15 +263,15 @@ class AntsPainter extends CustomPainter {
   static const dotCount = 8;
 
   /// Prominence (0–1) of ring dot [j] at [progress]. Dot j sits at
-  /// (j + 6·progress) eighths of a turn clockwise from the top.
+  /// (j + 12·progress) eighths of a turn clockwise from the top.
   static double prominenceOf(int j, double progress) {
-    // The ring turns 6 dot-positions clockwise per cycle. The first highlight
-    // steps 30 dots counterclockwise against it (net: three turns
+    // The ring turns 12 dot-positions clockwise per cycle. The first
+    // highlight steps 60 dots counterclockwise against it (net: six turns
     // counterclockwise per cycle); the second, starting 2 dots (a quarter
-    // turn) on, steps 10 dots clockwise with it (net: two turns clockwise).
-    // Both loop seamlessly: each step count matches the ring's mod 8.
-    final ccw = _prominence((progress * 30 + j) % dotCount);
-    final cw = _prominence((progress * 10 - j + 2) % dotCount);
+    // turn) on, steps 44 dots clockwise with it (net: seven turns clockwise).
+    // Both loop seamlessly: their steps match the ring's mod 8.
+    final ccw = _prominence((progress * 60 + j) % dotCount);
+    final cw = _prominence((progress * 44 - j + 2) % dotCount);
     return ccw > cw ? ccw : cw;
   }
 
@@ -283,7 +283,7 @@ class AntsPainter extends CustomPainter {
     final scale = size.width / 22;
     final paint = Paint()..style = PaintingStyle.fill;
 
-    final ringPhase = progress * 6 / dotCount;
+    final ringPhase = progress * 12 / dotCount;
     for (int j = 0; j < dotCount; j++) {
       final angle = (j / dotCount + ringPhase) * 2 * pi - pi / 2;
       final p = prominenceOf(j, progress);
