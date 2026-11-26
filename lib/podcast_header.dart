@@ -207,7 +207,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                       onPressed: () =>
                           ShareUtils.sharePodcast(widget.title, widget.feedUrl),
                       tooltip: l10n.sharePodcast,
-                      color: cs.onSurfaceVariant,
+                      color: cs.primary,
                       padding: const EdgeInsets.all(8), // 40×40
                       style: _compactTapTarget,
                       icon: const Icon(Icons.share_rounded, size: 24),
