@@ -79,7 +79,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
   @override
   Widget build(BuildContext context) {
     // select() avoids rebuilding the whole mini player on every position tick.
-    // Only _MiniProgress (the thin bar) rebuilds per position tick (1 Hz).
+    // Only _MiniProgress (the thin bar) rebuilds at 5Hz during playback.
     final hasEpisode = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
 
     return AnimatedSize(
@@ -246,7 +246,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 }
 
-// Isolated progress bar — only this widget rebuilds on position ticks (1 Hz).
+// Isolated progress bar — only this widget rebuilds on position ticks (~5Hz).
 // The rest of MiniPlayer stays still until episode/isPlaying changes.
 class _MiniProgress extends StatelessWidget {
   const _MiniProgress();
