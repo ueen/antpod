@@ -752,12 +752,28 @@ class _ProgressBar extends StatelessWidget {
   final Color color;
   const _ProgressBar({required this.value, required this.color});
 
+  /// The play ring's and the spinner's stroke.
+  static const height = 3.0;
+  static const _round = BorderRadius.all(Radius.circular(height / 2));
+
+  // Rounded at both ends, the played part too.
   @override
-  Widget build(BuildContext context) => LinearProgressIndicator(
-        value: value.clamp(0.0, 1.0),
-        minHeight: 3, // the play ring's and the spinner's stroke
-        backgroundColor: color.withValues(alpha: 0.15),
-        valueColor: AlwaysStoppedAnimation(color),
+  Widget build(BuildContext context) => SizedBox(
+        height: height,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15), borderRadius: _round),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: FractionallySizedBox(
+              widthFactor: value.isFinite ? value.clamp(0.0, 1.0) : 0.0,
+              heightFactor: 1,
+              child: DecoratedBox(
+                  decoration:
+                      BoxDecoration(color: color, borderRadius: _round)),
+            ),
+          ),
+        ),
       );
 }
 
@@ -1057,10 +1073,11 @@ class _ActionAreaState extends State<_ActionArea>
                 ? Container(
                     key: const ValueKey('dl'),
                     margin: const EdgeInsets.only(top: 3),
-                    width: 20, height: 2,
+                    // The downloaded ring's stroke.
+                    width: 20, height: 3,
                     decoration: BoxDecoration(
                       color: widget.cs.primary,
-                      borderRadius: BorderRadius.circular(1),
+                      borderRadius: BorderRadius.circular(1.5),
                     ),
                   )
                 : widget.isMarked
@@ -1071,10 +1088,10 @@ class _ActionAreaState extends State<_ActionArea>
                           mainAxisSize: MainAxisSize.min,
                           children: List.generate(4, (i) => Container(
                             margin: EdgeInsets.only(left: i == 0 ? 0 : 1.5),
-                            width: 3.5, height: 2,
+                            width: 4, height: 3,
                             decoration: BoxDecoration(
                               color: widget.cs.primary,
-                              borderRadius: BorderRadius.circular(1),
+                              borderRadius: BorderRadius.circular(1.5),
                             ),
                           )),
                         ),
