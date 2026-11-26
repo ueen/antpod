@@ -79,10 +79,12 @@ class _DiscoverListState extends State<DiscoverList> {
   }
 
   void _showRssDialog(BuildContext context) {
-    final ctrl = TextEditingController();
+    // No controller: the field owns (and disposes) its own.
+    var typed = '';
     void open(BuildContext ctx, String url) {
       url = url.trim();
       if (url.isEmpty) return;
+      if (!url.contains('://')) url = 'https://$url';
       Navigator.pop(ctx);
       widget.onOpen(PodcastResult.feed(url));
     }
@@ -91,19 +93,19 @@ class _DiscoverListState extends State<DiscoverList> {
       builder: (ctx) => AlertDialog(
         title: Text(widget.l10n.addRssFeed),
         content: TextField(
-          controller: ctrl,
           autofocus: true,
           decoration: const InputDecoration(
             hintText: 'https://...',
             prefixIcon: Icon(Icons.rss_feed_rounded),
           ),
           keyboardType: TextInputType.url,
+          onChanged: (url) => typed = url,
           onSubmitted: (url) => open(ctx, url),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(widget.l10n.cancel)),
           FilledButton(
-            onPressed: () => open(ctx, ctrl.text),
+            onPressed: () => open(ctx, typed),
             child: Text(widget.l10n.openFeed),
           ),
         ],
