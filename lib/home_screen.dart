@@ -742,6 +742,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onSearchChanged(String v) {
     setState(() {
       _searchQuery = v;
+      // The spinner from the keystroke on, not from when the search starts:
+      // in between, the empty results would read "no results".
+      if (_mode == _FeedMode.discover && v.trim().length >= 2) _searchingPI = true;
       // Typing deselects the Podcasts grid — search works on episodes only
       if (v.isNotEmpty && _filter.podcasts) {
         _filter = _filter.copyWith(podcasts: false);
@@ -784,7 +787,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _debouncedPISearch(String q) async {
     final trimmed = q.trim();
     if (trimmed.length < 2) {
-      setState(() {  _unifiedSearchResults = []; });
+      setState(() {  _unifiedSearchResults = []; _searchingPI = false; });
       return;
     }
     final lower = trimmed.toLowerCase();
