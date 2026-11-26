@@ -59,6 +59,8 @@ final _compactTapTarget = IconButton.styleFrom(
 
 class _PodcastHeaderState extends State<PodcastHeader> {
   bool _expanded = false;
+  /// The show notes, built on the first expand and kept for the collapse.
+  bool _notesBuilt = false;
   bool _subscribePressed = false;
   /// The note to show: paused and finishing explain why nothing new loads,
   /// so they win over a failing feed.
@@ -92,7 +94,10 @@ class _PodcastHeaderState extends State<PodcastHeader> {
         widget.onSubscribe != null || widget.onUnsubscribe != null;
 
     return GestureDetector(
-      onTap: () => setState(() => _expanded = !_expanded),
+      onTap: () => setState(() {
+        _expanded = !_expanded;
+        _notesBuilt = _notesBuilt || _expanded;
+      }),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeInOut,
@@ -255,16 +260,32 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                 ],
               ),
             ),
-            if (_expanded)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  child: SingleChildScrollView(
-                    child: ShowNotes(description: widget.description, cs: cs),
-                  ),
+            // The show notes grow and fade in, and shrink and fade out, like
+            // the note above.
+            ClipRect(
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeInOutCubic,
+                alignment: Alignment.topCenter,
+                heightFactor: _expanded ? 1.0 : 0.0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _expanded ? 1.0 : 0.0,
+                  child: !_notesBuilt
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 220),
+                            child: SingleChildScrollView(
+                              child: ShowNotes(
+                                  description: widget.description, cs: cs),
+                            ),
+                          ),
+                        ),
                 ),
               ),
+            ),
             // Expand arrow
             Center(
               child: AnimatedRotation(
