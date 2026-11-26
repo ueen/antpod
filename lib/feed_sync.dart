@@ -3,6 +3,9 @@
 // Loading feeds into the database: refresh, subscribe and preview. Data work
 // only — the home screen calls these and does the navigation around them.
 
+import 'dart:async';
+import 'dart:math' show min;
+
 import 'package:drift/drift.dart' show Value;
 
 import 'app_database.dart';
@@ -19,22 +22,50 @@ extension FeedDataX on FeedData {
 class FeedSync {
   FeedSync._();
 
+  /// Feeds loading at once: enough to hide slow servers, few enough not to
+  /// flood the connection (and memory) with a hundred subscriptions.
+  static const _parallel = 6;
+
+  /// How long finished feeds wait to be written together: the lists update
+  /// as the refresh goes, but not once per feed.
+  static const _writeEvery = Duration(seconds: 2);
+
   /// Refreshes every subscribed podcast except paused ones (their page's
-  /// pull-to-refresh still works). Feeds load in parallel, then one write, so
-  /// the episode stream emits once.
+  /// pull-to-refresh still works), [_parallel] at a time. A feed that failed
+  /// while others loaded counts towards its "feed not loading" note; when
+  /// none loaded the device is likely offline, which isn't the feed's fault.
   static Future<void> refreshAll(AppDatabase db) async {
-    final pods = (await db.getAllPodcasts()).where((p) => !p.syncPaused);
-    final results = await Future.wait(pods.map((p) => _fetch(db, p)));
-    final all = results.expand((e) => e).toList();
-    if (all.isNotEmpty) await db.insertEpisodes(all);
+    final pods = (await db.getAllPodcasts()).where((p) => !p.syncPaused).toList();
+    final writer = _RefreshWriter(db);
+    final failed = <String>[];
+    var anyLoaded = false;
+    final queue = pods.iterator;
+    Future<void> worker() async {
+      while (queue.moveNext()) {
+        final pod = queue.current;
+        final update = await _fetch(pod);
+        if (update == null) {
+          failed.add(pod.id);
+        } else {
+          anyLoaded = true;
+          writer.add(pod.id, update);
+        }
+      }
+    }
+
+    await Future.wait([for (var i = 0; i < min(_parallel, pods.length); i++) worker()]);
+    await writer.close();
+    if (anyLoaded && failed.isNotEmpty) await db.countFeedFailures(failed);
   }
 
-  /// Refreshes one subscribed podcast (by id).
+  /// Refreshes one subscribed podcast (by id). A failure here isn't counted:
+  /// with nothing else loading there's no telling the device is online.
   static Future<void> refreshPodcast(AppDatabase db, String podcastId) async {
     final pod = await db.getPodcast(podcastId);
     if (pod == null) return;
-    final episodes = await _fetch(db, pod);
-    if (episodes.isNotEmpty) await db.insertEpisodes(episodes);
+    final update = await _fetch(pod);
+    if (update == null) return;
+    await db.saveFeedRefresh(update.episodes, {pod.id: update.podcast});
   }
 
   /// Subscribes to [result]. Fetches first, then writes everything in one
@@ -86,17 +117,36 @@ class FeedSync {
     return retry != null ? (withWww, retry) : (feed, null);
   }
 
-  /// Loads [pod]'s feed, keeps its stored cover in sync and returns its
-  /// episodes tagged as subscribed (none when the feed doesn't load).
-  static Future<List<EpisodesCompanion>> _fetch(AppDatabase db, Podcast pod) async {
-    final data = await PodcastService.loadFeed(pod.feedUrl);
-    if (data == null) return const [];
-    final image = data.image;
-    if (image.isNotEmpty && image != pod.imageUrl) {
-      await db.updatePodcastImageUrl(pod.id, image);
-    }
-    // Fall back to the stored cover so a working URL never turns into ''.
-    return _asSubscribed(data.episodes, pod.id, image.isNotEmpty ? image : pod.imageUrl);
+  /// Loads [pod]'s feed if it changed since its last refresh. Returns its
+  /// episodes tagged as subscribed (none when unchanged) and the podcast's
+  /// columns to write: the cover kept in sync, the new validators and a
+  /// cleared failure count. Null when the feed doesn't load.
+  static Future<_FeedUpdate?> _fetch(Podcast pod) async {
+    final fetch = await PodcastService.fetchFeed(pod.feedUrl, known: (
+      etag: pod.feedEtag,
+      lastModified: pod.feedLastModified,
+      hash: pod.feedHash,
+    ));
+    if (fetch == null) return null;
+    final (:data, validators: v) = fetch;
+    final image = data?.image ?? '';
+    // Only what changed, so an unchanged feed usually writes nothing.
+    Value<T> changed<T>(T now, T before) =>
+        now != before ? Value(now) : const Value.absent();
+    final podcast = PodcastsCompanion(
+      imageUrl: image.isNotEmpty ? changed(image, pod.imageUrl) : const Value.absent(),
+      feedEtag: changed(v.etag, pod.feedEtag),
+      feedLastModified: changed(v.lastModified, pod.feedLastModified),
+      feedHash: changed(v.hash, pod.feedHash),
+      feedFailures: changed(0, pod.feedFailures),
+    );
+    return (
+      // Fall back to the stored cover so a working URL never turns into ''.
+      episodes: data == null
+          ? const <EpisodesCompanion>[]
+          : _asSubscribed(data.episodes, pod.id, image.isNotEmpty ? image : pod.imageUrl),
+      podcast: podcast,
+    );
   }
 
   /// Parsed feed episodes, re-tagged as belonging to subscribed [podcastId].
@@ -110,4 +160,53 @@ class FeedSync {
             isSubscribed: const Value(true),
           ),
       ];
+}
+
+/// What refreshing one podcast found: see [FeedSync._fetch].
+typedef _FeedUpdate = ({List<EpisodesCompanion> episodes, PodcastsCompanion podcast});
+
+/// Collects finished feeds during [FeedSync.refreshAll] and writes them in
+/// one transaction every [FeedSync._writeEvery], one write after another.
+class _RefreshWriter {
+  final AppDatabase db;
+  _RefreshWriter(this.db);
+
+  final _episodes = <EpisodesCompanion>[];
+  final _podcasts = <String, PodcastsCompanion>{};
+  Timer? _timer;
+  Future<void> _writes = Future.value();
+  (Object, StackTrace)? _error;
+
+  void add(String podcastId, _FeedUpdate update) {
+    _episodes.addAll(update.episodes);
+    // An all-absent companion is nothing to write.
+    if (update.podcast.toColumns(false).isNotEmpty) {
+      _podcasts[podcastId] = update.podcast;
+    }
+    // Only a change starts the timer: an unchanged feed writes nothing.
+    if (_episodes.isNotEmpty || _podcasts.isNotEmpty) {
+      _timer ??= Timer(FeedSync._writeEvery, _write);
+    }
+  }
+
+  void _write() {
+    _timer = null;
+    if (_episodes.isEmpty && _podcasts.isEmpty) return;
+    final episodes = List.of(_episodes);
+    final podcasts = Map.of(_podcasts);
+    _episodes.clear();
+    _podcasts.clear();
+    // A failed write doesn't stop the next one; close() reports the first.
+    _writes = _writes
+        .then((_) => db.saveFeedRefresh(episodes, podcasts))
+        .catchError((Object e, StackTrace s) { _error ??= (e, s); });
+  }
+
+  /// Writes what's left and waits for all writes; rethrows the first error.
+  Future<void> close() async {
+    _timer?.cancel();
+    _write();
+    await _writes;
+    if (_error case (final e, final s)) Error.throwWithStackTrace(e, s);
+  }
 }

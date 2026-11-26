@@ -49,6 +49,7 @@
   "stopNewEpisodes": "Ne plus charger d'épisodes",
   "newEpisodesStopped": "Nouveaux épisodes non chargés",
   "finishingEpisodes": "Finir d'écouter",
+  "feedNotLoading": "Le flux ne se charge plus",
   "downloadingEpisodes": "{count, plural, =1{Téléchargement d'1 épisode} other{Téléchargement de {count} épisodes}}",
   "downloadNotificationChannel": "Téléchargements",
   "aboutText": "La fourmilière de vos podcasts — chaque épisode y est porté sans relâche. Une éclaireuse agile, éclose de l'esprit du vénérable AntennaPod.",

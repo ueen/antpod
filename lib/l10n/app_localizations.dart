@@ -393,6 +393,12 @@ abstract class AppLocalizations {
   /// **'Finishing episodes'**
   String get finishingEpisodes;
 
+  /// No description provided for @feedNotLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Feed hasn\'t loaded lately'**
+  String get feedNotLoading;
+
   /// No description provided for @downloadingEpisodes.
   ///
   /// In en, this message translates to:

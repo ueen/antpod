@@ -25,6 +25,9 @@ class PodcastHeader extends StatefulWidget {
   /// it tidies itself up once they're played.
   final bool finishing;
 
+  /// Subscribed feed that failed its last refreshes while others loaded.
+  final bool failing;
+
   /// Icons for the two states; the unsubscribe sheet uses them too.
   static const stopNewEpisodesIcon = Icons.update_disabled_rounded;
   static const finishEpisodesIcon = Icons.sports_score_rounded;
@@ -40,19 +43,32 @@ class PodcastHeader extends StatefulWidget {
     this.onUnsubscribe,
     this.syncPaused = false,
     this.finishing = false,
+    this.failing = false,
   });
 
   @override
   State<PodcastHeader> createState() => _PodcastHeaderState();
 }
 
+enum _Note { paused, finishing, failing }
+
 class _PodcastHeaderState extends State<PodcastHeader> {
   bool _expanded = false;
   bool _subscribePressed = false;
-  /// Which note was shown last, kept so it can collapse with its text intact.
-  late bool _notePaused = widget.syncPaused;
+  /// The note to show: paused and finishing explain why nothing new loads,
+  /// so they win over a failing feed.
+  _Note? get _currentNote => widget.syncPaused
+      ? _Note.paused
+      : widget.finishing
+          ? _Note.finishing
+          : widget.failing
+              ? _Note.failing
+              : null;
 
-  bool get _showNote => widget.syncPaused || widget.finishing;
+  /// Which note was shown last, kept so it can collapse with its text intact.
+  late _Note _note = _currentNote ?? _Note.paused;
+
+  bool get _showNote => _currentNote != null;
 
   @override
   void didUpdateWidget(PodcastHeader old) {
@@ -60,7 +76,7 @@ class _PodcastHeaderState extends State<PodcastHeader> {
     // The header outlives subscription changes (the list below updates in
     // place), so re-arm + once it's gone, ready for the next time it shows.
     if (widget.onSubscribe == null) _subscribePressed = false;
-    if (_showNote) _notePaused = widget.syncPaused;
+    if (_currentNote case final note?) _note = note;
   }
 
   @override
@@ -123,7 +139,8 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                                   fontSize: 12,
                                   color: cs.onSurfaceVariant)),
                         ],
-                        // State note ("new episodes stopped" / "finishing"):
+                        // State note ("new episodes stopped", "finishing",
+                        // "feed not loading"):
                         // grows and fades in, and on resubscribe shrinks and
                         // fades out at the same time, like the filter bar.
                         ClipRect(
@@ -141,16 +158,23 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                        _notePaused
-                                            ? PodcastHeader.stopNewEpisodesIcon
-                                            : PodcastHeader.finishEpisodesIcon,
+                                        switch (_note) {
+                                          _Note.paused =>
+                                            PodcastHeader.stopNewEpisodesIcon,
+                                          _Note.finishing =>
+                                            PodcastHeader.finishEpisodesIcon,
+                                          _Note.failing =>
+                                            Icons.sync_problem_rounded,
+                                        },
                                         size: 14, color: cs.onSurfaceVariant),
                                     const SizedBox(width: 4),
                                     Flexible(
                                       child: Text(
-                                          _notePaused
-                                              ? l10n.newEpisodesStopped
-                                              : l10n.finishingEpisodes,
+                                          switch (_note) {
+                                            _Note.paused => l10n.newEpisodesStopped,
+                                            _Note.finishing => l10n.finishingEpisodes,
+                                            _Note.failing => l10n.feedNotLoading,
+                                          },
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                               fontSize: 12,

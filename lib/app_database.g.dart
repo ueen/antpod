@@ -75,6 +75,32 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("sync_paused" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _feedEtagMeta =
+      const VerificationMeta('feedEtag');
+  @override
+  late final GeneratedColumn<String> feedEtag = GeneratedColumn<String>(
+      'feed_etag', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _feedLastModifiedMeta =
+      const VerificationMeta('feedLastModified');
+  @override
+  late final GeneratedColumn<String> feedLastModified = GeneratedColumn<String>(
+      'feed_last_modified', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _feedHashMeta =
+      const VerificationMeta('feedHash');
+  @override
+  late final GeneratedColumn<String> feedHash = GeneratedColumn<String>(
+      'feed_hash', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _feedFailuresMeta =
+      const VerificationMeta('feedFailures');
+  @override
+  late final GeneratedColumn<int> feedFailures = GeneratedColumn<int>(
+      'feed_failures', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -86,7 +112,11 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
         website,
         subscribedAt,
         isSubscribed,
-        syncPaused
+        syncPaused,
+        feedEtag,
+        feedLastModified,
+        feedHash,
+        feedFailures
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -157,6 +187,26 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
           syncPaused.isAcceptableOrUnknown(
               data['sync_paused']!, _syncPausedMeta));
     }
+    if (data.containsKey('feed_etag')) {
+      context.handle(_feedEtagMeta,
+          feedEtag.isAcceptableOrUnknown(data['feed_etag']!, _feedEtagMeta));
+    }
+    if (data.containsKey('feed_last_modified')) {
+      context.handle(
+          _feedLastModifiedMeta,
+          feedLastModified.isAcceptableOrUnknown(
+              data['feed_last_modified']!, _feedLastModifiedMeta));
+    }
+    if (data.containsKey('feed_hash')) {
+      context.handle(_feedHashMeta,
+          feedHash.isAcceptableOrUnknown(data['feed_hash']!, _feedHashMeta));
+    }
+    if (data.containsKey('feed_failures')) {
+      context.handle(
+          _feedFailuresMeta,
+          feedFailures.isAcceptableOrUnknown(
+              data['feed_failures']!, _feedFailuresMeta));
+    }
     return context;
   }
 
@@ -186,6 +236,14 @@ class $PodcastsTable extends Podcasts with TableInfo<$PodcastsTable, Podcast> {
           .read(DriftSqlType.bool, data['${effectivePrefix}is_subscribed'])!,
       syncPaused: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}sync_paused'])!,
+      feedEtag: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}feed_etag']),
+      feedLastModified: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}feed_last_modified']),
+      feedHash: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}feed_hash']),
+      feedFailures: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}feed_failures'])!,
     );
   }
 
@@ -210,6 +268,19 @@ class Podcast extends DataClass implements Insertable<Podcast> {
 
   /// true = skip this feed during background auto-refresh (user manually paused sync)
   final bool syncPaused;
+
+  /// The feed's ETag and Last-Modified from the refresh that last parsed it,
+  /// sent back so an unchanged feed answers 304 Not Modified.
+  final String? feedEtag;
+  final String? feedLastModified;
+
+  /// Hash of the feed body last parsed (PodcastService.fetchFeed): a server
+  /// that ignores the headers above but sends the same feed isn't parsed again.
+  final String? feedHash;
+
+  /// Refreshes in a row where this feed failed while others loaded, so the
+  /// device was online: the podcast's page says the feed isn't loading.
+  final int feedFailures;
   const Podcast(
       {required this.id,
       required this.title,
@@ -220,7 +291,11 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       this.website,
       required this.subscribedAt,
       required this.isSubscribed,
-      required this.syncPaused});
+      required this.syncPaused,
+      this.feedEtag,
+      this.feedLastModified,
+      this.feedHash,
+      required this.feedFailures});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -236,6 +311,16 @@ class Podcast extends DataClass implements Insertable<Podcast> {
     map['subscribed_at'] = Variable<DateTime>(subscribedAt);
     map['is_subscribed'] = Variable<bool>(isSubscribed);
     map['sync_paused'] = Variable<bool>(syncPaused);
+    if (!nullToAbsent || feedEtag != null) {
+      map['feed_etag'] = Variable<String>(feedEtag);
+    }
+    if (!nullToAbsent || feedLastModified != null) {
+      map['feed_last_modified'] = Variable<String>(feedLastModified);
+    }
+    if (!nullToAbsent || feedHash != null) {
+      map['feed_hash'] = Variable<String>(feedHash);
+    }
+    map['feed_failures'] = Variable<int>(feedFailures);
     return map;
   }
 
@@ -253,6 +338,16 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       subscribedAt: Value(subscribedAt),
       isSubscribed: Value(isSubscribed),
       syncPaused: Value(syncPaused),
+      feedEtag: feedEtag == null && nullToAbsent
+          ? const Value.absent()
+          : Value(feedEtag),
+      feedLastModified: feedLastModified == null && nullToAbsent
+          ? const Value.absent()
+          : Value(feedLastModified),
+      feedHash: feedHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(feedHash),
+      feedFailures: Value(feedFailures),
     );
   }
 
@@ -270,6 +365,10 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       subscribedAt: serializer.fromJson<DateTime>(json['subscribedAt']),
       isSubscribed: serializer.fromJson<bool>(json['isSubscribed']),
       syncPaused: serializer.fromJson<bool>(json['syncPaused']),
+      feedEtag: serializer.fromJson<String?>(json['feedEtag']),
+      feedLastModified: serializer.fromJson<String?>(json['feedLastModified']),
+      feedHash: serializer.fromJson<String?>(json['feedHash']),
+      feedFailures: serializer.fromJson<int>(json['feedFailures']),
     );
   }
   @override
@@ -286,6 +385,10 @@ class Podcast extends DataClass implements Insertable<Podcast> {
       'subscribedAt': serializer.toJson<DateTime>(subscribedAt),
       'isSubscribed': serializer.toJson<bool>(isSubscribed),
       'syncPaused': serializer.toJson<bool>(syncPaused),
+      'feedEtag': serializer.toJson<String?>(feedEtag),
+      'feedLastModified': serializer.toJson<String?>(feedLastModified),
+      'feedHash': serializer.toJson<String?>(feedHash),
+      'feedFailures': serializer.toJson<int>(feedFailures),
     };
   }
 
@@ -299,7 +402,11 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           Value<String?> website = const Value.absent(),
           DateTime? subscribedAt,
           bool? isSubscribed,
-          bool? syncPaused}) =>
+          bool? syncPaused,
+          Value<String?> feedEtag = const Value.absent(),
+          Value<String?> feedLastModified = const Value.absent(),
+          Value<String?> feedHash = const Value.absent(),
+          int? feedFailures}) =>
       Podcast(
         id: id ?? this.id,
         title: title ?? this.title,
@@ -311,6 +418,12 @@ class Podcast extends DataClass implements Insertable<Podcast> {
         subscribedAt: subscribedAt ?? this.subscribedAt,
         isSubscribed: isSubscribed ?? this.isSubscribed,
         syncPaused: syncPaused ?? this.syncPaused,
+        feedEtag: feedEtag.present ? feedEtag.value : this.feedEtag,
+        feedLastModified: feedLastModified.present
+            ? feedLastModified.value
+            : this.feedLastModified,
+        feedHash: feedHash.present ? feedHash.value : this.feedHash,
+        feedFailures: feedFailures ?? this.feedFailures,
       );
   Podcast copyWithCompanion(PodcastsCompanion data) {
     return Podcast(
@@ -330,6 +443,14 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           : this.isSubscribed,
       syncPaused:
           data.syncPaused.present ? data.syncPaused.value : this.syncPaused,
+      feedEtag: data.feedEtag.present ? data.feedEtag.value : this.feedEtag,
+      feedLastModified: data.feedLastModified.present
+          ? data.feedLastModified.value
+          : this.feedLastModified,
+      feedHash: data.feedHash.present ? data.feedHash.value : this.feedHash,
+      feedFailures: data.feedFailures.present
+          ? data.feedFailures.value
+          : this.feedFailures,
     );
   }
 
@@ -345,14 +466,31 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           ..write('website: $website, ')
           ..write('subscribedAt: $subscribedAt, ')
           ..write('isSubscribed: $isSubscribed, ')
-          ..write('syncPaused: $syncPaused')
+          ..write('syncPaused: $syncPaused, ')
+          ..write('feedEtag: $feedEtag, ')
+          ..write('feedLastModified: $feedLastModified, ')
+          ..write('feedHash: $feedHash, ')
+          ..write('feedFailures: $feedFailures')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, title, description, imageUrl, feedUrl,
-      author, website, subscribedAt, isSubscribed, syncPaused);
+  int get hashCode => Object.hash(
+      id,
+      title,
+      description,
+      imageUrl,
+      feedUrl,
+      author,
+      website,
+      subscribedAt,
+      isSubscribed,
+      syncPaused,
+      feedEtag,
+      feedLastModified,
+      feedHash,
+      feedFailures);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -366,7 +504,11 @@ class Podcast extends DataClass implements Insertable<Podcast> {
           other.website == this.website &&
           other.subscribedAt == this.subscribedAt &&
           other.isSubscribed == this.isSubscribed &&
-          other.syncPaused == this.syncPaused);
+          other.syncPaused == this.syncPaused &&
+          other.feedEtag == this.feedEtag &&
+          other.feedLastModified == this.feedLastModified &&
+          other.feedHash == this.feedHash &&
+          other.feedFailures == this.feedFailures);
 }
 
 class PodcastsCompanion extends UpdateCompanion<Podcast> {
@@ -380,6 +522,10 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
   final Value<DateTime> subscribedAt;
   final Value<bool> isSubscribed;
   final Value<bool> syncPaused;
+  final Value<String?> feedEtag;
+  final Value<String?> feedLastModified;
+  final Value<String?> feedHash;
+  final Value<int> feedFailures;
   final Value<int> rowid;
   const PodcastsCompanion({
     this.id = const Value.absent(),
@@ -392,6 +538,10 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     this.subscribedAt = const Value.absent(),
     this.isSubscribed = const Value.absent(),
     this.syncPaused = const Value.absent(),
+    this.feedEtag = const Value.absent(),
+    this.feedLastModified = const Value.absent(),
+    this.feedHash = const Value.absent(),
+    this.feedFailures = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PodcastsCompanion.insert({
@@ -405,6 +555,10 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     this.subscribedAt = const Value.absent(),
     this.isSubscribed = const Value.absent(),
     this.syncPaused = const Value.absent(),
+    this.feedEtag = const Value.absent(),
+    this.feedLastModified = const Value.absent(),
+    this.feedHash = const Value.absent(),
+    this.feedFailures = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         title = Value(title),
@@ -423,6 +577,10 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     Expression<DateTime>? subscribedAt,
     Expression<bool>? isSubscribed,
     Expression<bool>? syncPaused,
+    Expression<String>? feedEtag,
+    Expression<String>? feedLastModified,
+    Expression<String>? feedHash,
+    Expression<int>? feedFailures,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -436,6 +594,10 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       if (subscribedAt != null) 'subscribed_at': subscribedAt,
       if (isSubscribed != null) 'is_subscribed': isSubscribed,
       if (syncPaused != null) 'sync_paused': syncPaused,
+      if (feedEtag != null) 'feed_etag': feedEtag,
+      if (feedLastModified != null) 'feed_last_modified': feedLastModified,
+      if (feedHash != null) 'feed_hash': feedHash,
+      if (feedFailures != null) 'feed_failures': feedFailures,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -451,6 +613,10 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       Value<DateTime>? subscribedAt,
       Value<bool>? isSubscribed,
       Value<bool>? syncPaused,
+      Value<String?>? feedEtag,
+      Value<String?>? feedLastModified,
+      Value<String?>? feedHash,
+      Value<int>? feedFailures,
       Value<int>? rowid}) {
     return PodcastsCompanion(
       id: id ?? this.id,
@@ -463,6 +629,10 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
       subscribedAt: subscribedAt ?? this.subscribedAt,
       isSubscribed: isSubscribed ?? this.isSubscribed,
       syncPaused: syncPaused ?? this.syncPaused,
+      feedEtag: feedEtag ?? this.feedEtag,
+      feedLastModified: feedLastModified ?? this.feedLastModified,
+      feedHash: feedHash ?? this.feedHash,
+      feedFailures: feedFailures ?? this.feedFailures,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -500,6 +670,18 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
     if (syncPaused.present) {
       map['sync_paused'] = Variable<bool>(syncPaused.value);
     }
+    if (feedEtag.present) {
+      map['feed_etag'] = Variable<String>(feedEtag.value);
+    }
+    if (feedLastModified.present) {
+      map['feed_last_modified'] = Variable<String>(feedLastModified.value);
+    }
+    if (feedHash.present) {
+      map['feed_hash'] = Variable<String>(feedHash.value);
+    }
+    if (feedFailures.present) {
+      map['feed_failures'] = Variable<int>(feedFailures.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -519,6 +701,10 @@ class PodcastsCompanion extends UpdateCompanion<Podcast> {
           ..write('subscribedAt: $subscribedAt, ')
           ..write('isSubscribed: $isSubscribed, ')
           ..write('syncPaused: $syncPaused, ')
+          ..write('feedEtag: $feedEtag, ')
+          ..write('feedLastModified: $feedLastModified, ')
+          ..write('feedHash: $feedHash, ')
+          ..write('feedFailures: $feedFailures, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1478,11 +1664,16 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $PodcastsTable podcasts = $PodcastsTable(this);
   late final $EpisodesTable episodes = $EpisodesTable(this);
+  late final Index episodesPodcastDate = Index('episodes_podcast_date',
+      'CREATE INDEX episodes_podcast_date ON episodes (podcast_id, publish_date)');
+  late final Index episodesPublishDate = Index('episodes_publish_date',
+      'CREATE INDEX episodes_publish_date ON episodes (publish_date)');
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [podcasts, episodes];
+  List<DatabaseSchemaEntity> get allSchemaEntities =>
+      [podcasts, episodes, episodesPodcastDate, episodesPublishDate];
 }
 
 typedef $$PodcastsTableCreateCompanionBuilder = PodcastsCompanion Function({
@@ -1496,6 +1687,10 @@ typedef $$PodcastsTableCreateCompanionBuilder = PodcastsCompanion Function({
   Value<DateTime> subscribedAt,
   Value<bool> isSubscribed,
   Value<bool> syncPaused,
+  Value<String?> feedEtag,
+  Value<String?> feedLastModified,
+  Value<String?> feedHash,
+  Value<int> feedFailures,
   Value<int> rowid,
 });
 typedef $$PodcastsTableUpdateCompanionBuilder = PodcastsCompanion Function({
@@ -1509,6 +1704,10 @@ typedef $$PodcastsTableUpdateCompanionBuilder = PodcastsCompanion Function({
   Value<DateTime> subscribedAt,
   Value<bool> isSubscribed,
   Value<bool> syncPaused,
+  Value<String?> feedEtag,
+  Value<String?> feedLastModified,
+  Value<String?> feedHash,
+  Value<int> feedFailures,
   Value<int> rowid,
 });
 
@@ -1550,6 +1749,19 @@ class $$PodcastsTableFilterComposer
 
   ColumnFilters<bool> get syncPaused => $composableBuilder(
       column: $table.syncPaused, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get feedEtag => $composableBuilder(
+      column: $table.feedEtag, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get feedLastModified => $composableBuilder(
+      column: $table.feedLastModified,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get feedHash => $composableBuilder(
+      column: $table.feedHash, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get feedFailures => $composableBuilder(
+      column: $table.feedFailures, builder: (column) => ColumnFilters(column));
 }
 
 class $$PodcastsTableOrderingComposer
@@ -1592,6 +1804,20 @@ class $$PodcastsTableOrderingComposer
 
   ColumnOrderings<bool> get syncPaused => $composableBuilder(
       column: $table.syncPaused, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get feedEtag => $composableBuilder(
+      column: $table.feedEtag, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get feedLastModified => $composableBuilder(
+      column: $table.feedLastModified,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get feedHash => $composableBuilder(
+      column: $table.feedHash, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get feedFailures => $composableBuilder(
+      column: $table.feedFailures,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$PodcastsTableAnnotationComposer
@@ -1632,6 +1858,18 @@ class $$PodcastsTableAnnotationComposer
 
   GeneratedColumn<bool> get syncPaused => $composableBuilder(
       column: $table.syncPaused, builder: (column) => column);
+
+  GeneratedColumn<String> get feedEtag =>
+      $composableBuilder(column: $table.feedEtag, builder: (column) => column);
+
+  GeneratedColumn<String> get feedLastModified => $composableBuilder(
+      column: $table.feedLastModified, builder: (column) => column);
+
+  GeneratedColumn<String> get feedHash =>
+      $composableBuilder(column: $table.feedHash, builder: (column) => column);
+
+  GeneratedColumn<int> get feedFailures => $composableBuilder(
+      column: $table.feedFailures, builder: (column) => column);
 }
 
 class $$PodcastsTableTableManager extends RootTableManager<
@@ -1667,6 +1905,10 @@ class $$PodcastsTableTableManager extends RootTableManager<
             Value<DateTime> subscribedAt = const Value.absent(),
             Value<bool> isSubscribed = const Value.absent(),
             Value<bool> syncPaused = const Value.absent(),
+            Value<String?> feedEtag = const Value.absent(),
+            Value<String?> feedLastModified = const Value.absent(),
+            Value<String?> feedHash = const Value.absent(),
+            Value<int> feedFailures = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PodcastsCompanion(
@@ -1680,6 +1922,10 @@ class $$PodcastsTableTableManager extends RootTableManager<
             subscribedAt: subscribedAt,
             isSubscribed: isSubscribed,
             syncPaused: syncPaused,
+            feedEtag: feedEtag,
+            feedLastModified: feedLastModified,
+            feedHash: feedHash,
+            feedFailures: feedFailures,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1693,6 +1939,10 @@ class $$PodcastsTableTableManager extends RootTableManager<
             Value<DateTime> subscribedAt = const Value.absent(),
             Value<bool> isSubscribed = const Value.absent(),
             Value<bool> syncPaused = const Value.absent(),
+            Value<String?> feedEtag = const Value.absent(),
+            Value<String?> feedLastModified = const Value.absent(),
+            Value<String?> feedHash = const Value.absent(),
+            Value<int> feedFailures = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PodcastsCompanion.insert(
@@ -1706,6 +1956,10 @@ class $$PodcastsTableTableManager extends RootTableManager<
             subscribedAt: subscribedAt,
             isSubscribed: isSubscribed,
             syncPaused: syncPaused,
+            feedEtag: feedEtag,
+            feedLastModified: feedLastModified,
+            feedHash: feedHash,
+            feedFailures: feedFailures,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

@@ -49,6 +49,7 @@
   "stopNewEpisodes": "Keine neuen Folgen laden",
   "newEpisodesStopped": "Lädt keine neuen Folgen",
   "finishingEpisodes": "Zu Ende hören",
+  "feedNotLoading": "Feed lädt derzeit nicht",
   "downloadingEpisodes": "{count, plural, =1{1 Folge wird geladen} other{{count} Folgen werden geladen}}",
   "downloadNotificationChannel": "Downloads",
   "aboutText": "Der Ameisenhaufen für deine Podcasts – jede Folge, unermüdlich heimgetragen. Eine flinke Kundschafterin, geschlüpft aus dem Geist des ehrwürdigen AntennaPod.",

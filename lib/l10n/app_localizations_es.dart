@@ -172,6 +172,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get finishingEpisodes => 'Terminar de escuchar';
 
   @override
+  String get feedNotLoading => 'El feed no se carga';
+
+  @override
   String downloadingEpisodes(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

@@ -149,6 +149,14 @@ class PodcastResult {
 /// A parsed RSS feed: podcast metadata plus its episodes as DB companions.
 typedef FeedData = ({ps.Podcast podcast, List<EpisodesCompanion> episodes});
 
+/// What tells a feed's next refresh whether it changed: the server's ETag and
+/// Last-Modified headers, and a hash of the body for servers without them.
+typedef FeedValidators = ({String? etag, String? lastModified, String? hash});
+
+/// A fetched feed: [data] is null when it hasn't changed since [validators]
+/// were stored; [validators] are the ones to store now.
+typedef FeedFetch = ({FeedData? data, FeedValidators validators});
+
 class PodcastService {
   static const _apiTimeout = Duration(seconds: 15);
 
@@ -336,20 +344,51 @@ class PodcastService {
 
   // ── RSS feeds ─────────────────────────────────────────────────────────────
 
+  /// The feed at [feedUrl], parsed; null when it doesn't load.
+  static Future<FeedData?> loadFeed(String feedUrl) async =>
+      (await fetchFeed(feedUrl))?.data;
+
+  /// Bump when parsing changes (fields read, chapters, ids): stored hashes
+  /// stop matching, so every feed is parsed again on its next refresh.
+  static const _parseVersion = 1;
+
   /// The feed at [feedUrl], parsed by podcast_search, which leaves out
   /// Podlove Simple Chapters: so the XML is fetched here and those read from
-  /// it too (chapters.dart).
-  static Future<FeedData?> loadFeed(
-    String feedUrl,
-  ) async {
+  /// it too (chapters.dart). Null when it doesn't load.
+  ///
+  /// With the [known] validators of the last parse it's a refresh: the server
+  /// is asked for the feed only if it changed, and a body that hashes the
+  /// same isn't parsed either. Both come back with null data.
+  static Future<FeedFetch?> fetchFeed(String feedUrl,
+      {FeedValidators known = (etag: null, lastModified: null, hash: null)}) async {
     try {
       final tempDir = await getTemporaryDirectory()
           .then((d) => d.path, onError: (_) => Directory.systemTemp.path);
       // Run HTTP fetch + XML parse on a background isolate so the main thread
       // is never blocked by RssFeed.parse() on large feeds.
       return await Isolate.run(() async {
-        final xml = await _fetchFeed(feedUrl);
-        if (xml == null) return null;
+        // Validators from another parse version describe a different result.
+        final current = known.hash?.startsWith('$_parseVersion:') ?? false;
+        final res = await _fetchFeed(feedUrl, current ? known : null);
+        if (res == null) return null;
+        final body = res.body;
+        if (body == null) {
+          // 304: the stored parse still holds. A server may renew its tags.
+          return (data: null, validators: (
+            etag: res.etag ?? known.etag,
+            lastModified: res.lastModified ?? known.lastModified,
+            hash: known.hash,
+          ));
+        }
+        final validators = (
+          etag: res.etag,
+          lastModified: res.lastModified,
+          hash: '$_parseVersion:${sha256.convert(body)}',
+        );
+        if (current && validators.hash == known.hash) {
+          return (data: null, validators: validators);
+        }
+        final xml = utf8.decode(body, allowMalformed: true);
         // podcast_search parses from a string only via a file.
         final file = File('$tempDir/feed-${feedUrl.hashCode}-'
             '${DateTime.now().microsecondsSinceEpoch}.xml');
@@ -387,7 +426,10 @@ class PodcastService {
             chaptersUrl: Value(chapUrl),
           );
         }).toList();
-        return (podcast: podcast, episodes: episodes);
+        return (
+          data: (podcast: podcast, episodes: episodes),
+          validators: validators,
+        );
       });
     } catch (e) {
       debugPrint('[podcast] feed load error: $e');
@@ -397,21 +439,34 @@ class PodcastService {
 
   static final _item = RegExp(r'<item[\s>][\s\S]*?</item>');
 
-  /// The feed's XML, or null if the server didn't send it.
-  static Future<String?> _fetchFeed(String url) async {
+  /// The feed's body with its validator headers, a null body when the
+  /// [conditional] request found it not modified, or null if the server
+  /// didn't send it.
+  static Future<({Uint8List? body, String? etag, String? lastModified})?>
+      _fetchFeed(String url, FeedValidators? conditional) async {
     const timeout = Duration(seconds: 20);
     final client = http.Client();
     try {
-      final res = await client
-          .send(http.Request('GET', Uri.parse(url))
-            ..headers['User-Agent'] = _userAgent)
-          .timeout(timeout);
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        res.stream.listen(null).cancel().ignore();
-        return null;
+      final req = http.Request('GET', Uri.parse(url))
+        ..headers['User-Agent'] = _userAgent;
+      if (conditional?.etag case final etag?) {
+        req.headers['If-None-Match'] = etag;
       }
-      final bytes = await http.ByteStream(res.stream.timeout(timeout)).toBytes();
-      return utf8.decode(bytes, allowMalformed: true);
+      if (conditional?.lastModified case final modified?) {
+        req.headers['If-Modified-Since'] = modified;
+      }
+      final res = await client.send(req).timeout(timeout);
+      final etag = res.headers['etag'];
+      final lastModified = res.headers['last-modified'];
+      final notModified = res.statusCode == 304 && conditional != null;
+      if (notModified || res.statusCode < 200 || res.statusCode >= 300) {
+        res.stream.listen(null).cancel().ignore();
+        return notModified
+            ? (body: null, etag: etag, lastModified: lastModified)
+            : null;
+      }
+      final body = await http.ByteStream(res.stream.timeout(timeout)).toBytes();
+      return (body: body, etag: etag, lastModified: lastModified);
     } finally {
       client.close();
     }

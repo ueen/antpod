@@ -1,0 +1,173 @@
+import 'dart:io';
+
+import 'package:antpod/app_database.dart';
+import 'package:antpod/feed_sync.dart';
+import 'package:antpod/podcast_service.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+String _rss(List<String> guids) => '''<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+<channel>
+<title>Test</title>
+<description>About</description>
+<itunes:image href="https://example.com/cover.jpg"/>
+${[for (final g in guids) '<item><title>Episode $g</title><guid>$g</guid>'
+    '<enclosure url="https://example.com/$g.mp3" type="audio/mpeg" length="1"/>'
+    '<pubDate>Mon, 05 Jan 2026 10:00:00 GMT</pubDate></item>'].join('\n')}
+</channel>
+</rss>''';
+
+/// A feed the test server serves.
+class _Feed {
+  String body;
+  int status;
+  /// Answers If-None-Match with 304, like a well-behaved server.
+  bool conditional;
+  int requests = 0;
+  int notModified = 0;
+  _Feed(this.body, {this.status = 200, this.conditional = true});
+  String get etag => '"${body.hashCode}"';
+}
+
+void main() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  late HttpServer server;
+  final feeds = <String, _Feed>{};
+  String url(String path) => 'http://127.0.0.1:${server.port}/$path';
+
+  setUpAll(() async {
+    server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((req) {
+      final feed = feeds[req.uri.path.substring(1)];
+      final res = req.response;
+      if (feed == null) {
+        res.statusCode = 404;
+      } else {
+        feed.requests++;
+        if (feed.conditional &&
+            req.headers.value('if-none-match') == feed.etag) {
+          feed.notModified++;
+          res.statusCode = 304;
+        } else {
+          res.statusCode = feed.status;
+          if (feed.conditional) res.headers.set('etag', feed.etag);
+          res.write(feed.body);
+        }
+      }
+      res.close();
+    });
+  });
+  tearDownAll(() => server.close(force: true));
+  setUp(feeds.clear);
+
+  group('fetchFeed', () {
+    test('an unchanged feed answers 304 and is not parsed', () async {
+      feeds['a'] = _Feed(_rss(['1', '2']));
+      final first = (await PodcastService.fetchFeed(url('a')))!;
+      expect(first.data!.episodes, hasLength(2));
+      expect(first.validators.etag, feeds['a']!.etag);
+
+      final again = (await PodcastService.fetchFeed(url('a'), known: first.validators))!;
+      expect(feeds['a']!.notModified, 1);
+      expect(again.data, isNull);
+      expect(again.validators, first.validators);
+    });
+
+    test('a server without validators: the same body is not parsed', () async {
+      feeds['a'] = _Feed(_rss(['1']), conditional: false);
+      final first = (await PodcastService.fetchFeed(url('a')))!;
+      expect(first.validators.etag, isNull);
+      final again = (await PodcastService.fetchFeed(url('a'), known: first.validators))!;
+      expect(again.data, isNull);
+
+      feeds['a']!.body = _rss(['1', '2']);
+      final changed = (await PodcastService.fetchFeed(url('a'), known: first.validators))!;
+      expect(changed.data!.episodes, hasLength(2));
+      expect(changed.validators.hash, isNot(first.validators.hash));
+    });
+
+    test('a hash from another parse version fetches and parses in full', () async {
+      feeds['a'] = _Feed(_rss(['1']));
+      final first = (await PodcastService.fetchFeed(url('a')))!;
+      final stale = (
+        etag: first.validators.etag,
+        lastModified: null,
+        hash: '0:${first.validators.hash!.split(':').last}',
+      );
+      final again = (await PodcastService.fetchFeed(url('a'), known: stale))!;
+      expect(feeds['a']!.notModified, 0, reason: 'no If-None-Match sent');
+      expect(again.data!.episodes, hasLength(1));
+    });
+
+    test('an error status is a failed load', () async {
+      feeds['a'] = _Feed('', status: 500);
+      expect(await PodcastService.fetchFeed(url('a')), isNull);
+    });
+  });
+
+  group('refreshAll', () {
+    late AppDatabase db;
+    setUp(() => db = AppDatabase.forTesting(NativeDatabase.memory()));
+    tearDown(() => db.close());
+
+    Future<void> subscribe(String path) => db.insertPodcast(PodcastsCompanion.insert(
+        id: url(path), title: path, description: '', imageUrl: '',
+        feedUrl: url(path), author: ''));
+    Future<Podcast> pod(String path) => db.getPodcast(url(path)).then((p) => p!);
+    Future<int> episodeCount() =>
+        db.select(db.episodes).get().then((e) => e.length);
+
+    test('loads every feed, then skips the unchanged ones', () async {
+      for (var i = 0; i < 15; i++) {
+        feeds['f$i'] = _Feed(_rss(['$i-a', '$i-b']));
+        await subscribe('f$i');
+      }
+      await FeedSync.refreshAll(db);
+      expect(await episodeCount(), 30);
+      final p = await pod('f3');
+      expect(p.imageUrl, 'https://example.com/cover.jpg');
+      expect(p.feedEtag, feeds['f3']!.etag);
+      expect(p.feedHash, startsWith('1:'));
+
+      await FeedSync.refreshAll(db);
+      expect(feeds.values.every((f) => f.requests == 2 && f.notModified == 1),
+          isTrue, reason: 'all feeds still refreshed, all answered 304');
+
+      feeds['f3']!.body = _rss(['3-a', '3-b', '3-c']);
+      await FeedSync.refreshAll(db);
+      expect(await episodeCount(), 31);
+    });
+
+    test('counts failures only while other feeds load', () async {
+      feeds['ok'] = _Feed(_rss(['1']));
+      feeds['bad'] = _Feed('', status: 500);
+      await subscribe('ok');
+      await subscribe('bad');
+
+      await FeedSync.refreshAll(db);
+      expect((await pod('bad')).feedFailures, 1);
+      expect((await pod('ok')).feedFailures, 0);
+
+      // Nothing loads: offline, not the feed's fault.
+      feeds['ok']!.status = 500;
+      feeds['ok']!.body = '';
+      await FeedSync.refreshAll(db);
+      expect((await pod('bad')).feedFailures, 1);
+
+      // Back: a load clears the count.
+      feeds['bad'] = _Feed(_rss(['2']));
+      await FeedSync.refreshAll(db);
+      expect((await pod('bad')).feedFailures, 0);
+    });
+
+    test('a paused feed is not refreshed', () async {
+      feeds['a'] = _Feed(_rss(['1']));
+      await subscribe('a');
+      await db.setPodcastSyncPaused(url('a'), true);
+      await FeedSync.refreshAll(db);
+      expect(feeds['a']!.requests, 0);
+    });
+  });
+}

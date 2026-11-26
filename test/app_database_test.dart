@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:antpod/app_database.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
@@ -19,6 +21,9 @@ EpisodesCompanion _rss(String id, {int durationSeconds = 1800, String? title}) =
     );
 
 void main() {
+  // Each test opens its own in-memory database (and the migration test two
+  // on one file, one after the other).
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   late AppDatabase db;
 
   setUp(() async {
@@ -127,5 +132,101 @@ void main() {
     expect(e.playbackPositionSeconds, 0);
     expect(e.lastPlayed, isNull);
     expect(e.isFinished, isFalse);
+  });
+
+  Future<Podcast> pod() => db.getPodcast(_feed).then((p) => p!);
+
+  group('saveFeedRefresh', () {
+    test('writes episodes and podcast columns together', () async {
+      await db.saveFeedRefresh([_rss('a')], {
+        _feed: const PodcastsCompanion(
+            imageUrl: Value('https://example.com/new.jpg'),
+            feedEtag: Value('"v1"'),
+            feedHash: Value('1:abc')),
+      });
+      expect((await ep('a')).title, 'Episode a');
+      final p = await pod();
+      expect(p.imageUrl, 'https://example.com/new.jpg');
+      expect(p.feedEtag, '"v1"');
+      expect(p.feedHash, '1:abc');
+      expect(p.title, 'Podcast', reason: 'absent columns stay');
+    });
+
+    test('skips a podcast unsubscribed while its feed loaded', () async {
+      await db.deletePodcast(_feed);
+      await db.saveFeedRefresh([_rss('a')],
+          {_feed: const PodcastsCompanion(feedEtag: Value('"v1"'))});
+      expect(await db.getEpisode('a'), isNull);
+      expect(await db.getPodcast(_feed), isNull);
+    });
+
+    test('nothing to write is fine', () async {
+      await db.saveFeedRefresh(const [], {_feed: const PodcastsCompanion()});
+      expect((await pod()).feedEtag, isNull);
+    });
+  });
+
+  test('the failing note shows after three failed refreshes', () async {
+    final failing = <bool>[];
+    final sub = db.watchFeedFailing(_feed).listen(failing.add);
+    for (var i = 0; i < AppDatabase.feedFailingAfter; i++) {
+      await db.countFeedFailures([_feed]);
+    }
+    await pumpEventQueue();
+    expect((await pod()).feedFailures, AppDatabase.feedFailingAfter);
+    expect(failing.last, isTrue);
+
+    await db.saveFeedRefresh(
+        const [], {_feed: const PodcastsCompanion(feedFailures: Value(0))});
+    await pumpEventQueue();
+    expect(failing, [false, true, false]);
+    await sub.cancel();
+  });
+
+  test('subscribing starts the feed over: no validators, no failures', () async {
+    await db.saveFeedRefresh(const [], {
+      _feed: const PodcastsCompanion(
+          feedEtag: Value('"v1"'), feedLastModified: Value('Mon'),
+          feedHash: Value('1:abc'), feedFailures: Value(5)),
+    });
+    await db.subscribePodcast(
+        PodcastsCompanion.insert(
+            id: _feed, title: 'Podcast', description: '', imageUrl: '',
+            feedUrl: _feed, author: ''),
+        [_rss('a')]);
+    final p = await pod();
+    expect([p.feedEtag, p.feedLastModified, p.feedHash], [null, null, null]);
+    expect(p.feedFailures, 0);
+  });
+
+  test('a v8 database gets the feed columns and episode indexes', () async {
+    final dir = Directory.systemTemp.createTempSync('antpod-migration');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}/v8.db');
+
+    // Today's schema taken back to v8.
+    final old = AppDatabase.forTesting(NativeDatabase(file));
+    await old.customStatement('DROP INDEX episodes_podcast_date');
+    await old.customStatement('DROP INDEX episodes_publish_date');
+    for (final col in ['feed_etag', 'feed_last_modified', 'feed_hash', 'feed_failures']) {
+      await old.customStatement('ALTER TABLE podcasts DROP COLUMN $col');
+    }
+    await old.customStatement(
+        "INSERT INTO podcasts (id, title, description, image_url, feed_url, author) "
+        "VALUES ('$_feed', 'Podcast', '', '', '$_feed', '')");
+    await old.customStatement('PRAGMA user_version = 8');
+    await old.close();
+
+    final migrated = AppDatabase.forTesting(NativeDatabase(file));
+    addTearDown(migrated.close);
+    final p = (await migrated.getPodcast(_feed))!;
+    expect(p.feedFailures, 0);
+    expect(p.feedEtag, isNull);
+    final indexes = await migrated
+        .customSelect("SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND name LIKE 'episodes_%'")
+        .map((r) => r.read<String>('name'))
+        .get();
+    expect(indexes.toSet(), {'episodes_podcast_date', 'episodes_publish_date'});
   });
 }

@@ -53,20 +53,27 @@ class PodcastFeed extends StatelessWidget {
       onRefresh: onRefresh ?? () async {},
       isLoading: isLoading,
       headerSlivers: [
-        _FinishingWatcher(
-          db: db,
+        _FlagWatcher(
           podcastId: feedId,
+          watch: db.watchHasEpisodesToFinish,
           enabled: !isSubscribed,
-          builder: (finishing) => PodcastHeader(
-            imageUrl: imageUrl,
-            title: title,
-            author: author,
-            description: description,
-            feedUrl: feedId,
-            onSubscribe: onSubscribe,
-            onUnsubscribe: onUnsubscribe,
-            syncPaused: syncPaused,
-            finishing: finishing,
+          builder: (finishing) => _FlagWatcher(
+            podcastId: feedId,
+            watch: db.watchFeedFailing,
+            // A paused feed isn't refreshed, so its count stands still.
+            enabled: isSubscribed && !syncPaused,
+            builder: (failing) => PodcastHeader(
+              imageUrl: imageUrl,
+              title: title,
+              author: author,
+              description: description,
+              feedUrl: feedId,
+              onSubscribe: onSubscribe,
+              onUnsubscribe: onUnsubscribe,
+              syncPaused: syncPaused,
+              finishing: finishing,
+              failing: failing,
+            ),
           ),
         ),
         ClipRect(
@@ -91,24 +98,26 @@ class PodcastFeed extends StatelessWidget {
   }
 }
 
-/// Rebuilds [builder] with whether an unsubscribed feed still has episodes
-/// left to finish (started or downloaded). Keeps one stream per podcast.
-class _FinishingWatcher extends StatefulWidget {
-  final AppDatabase db;
+/// Rebuilds [builder] with a podcast's flag from [watch], e.g. whether an
+/// unsubscribed feed still has episodes left to finish (started or
+/// downloaded). Keeps one stream per podcast.
+class _FlagWatcher extends StatefulWidget {
   final String podcastId;
+  /// A database method (tear-offs of the same one compare equal).
+  final Stream<bool> Function(String podcastId) watch;
   final bool enabled;
-  final Widget Function(bool finishing) builder;
+  final Widget Function(bool flag) builder;
 
-  const _FinishingWatcher({
-    required this.db, required this.podcastId,
+  const _FlagWatcher({
+    required this.podcastId, required this.watch,
     required this.enabled, required this.builder,
   });
 
   @override
-  State<_FinishingWatcher> createState() => _FinishingWatcherState();
+  State<_FlagWatcher> createState() => _FlagWatcherState();
 }
 
-class _FinishingWatcherState extends State<_FinishingWatcher> {
+class _FlagWatcherState extends State<_FlagWatcher> {
   Stream<bool>? _stream;
 
   @override
@@ -118,17 +127,16 @@ class _FinishingWatcherState extends State<_FinishingWatcher> {
   }
 
   @override
-  void didUpdateWidget(_FinishingWatcher old) {
+  void didUpdateWidget(_FlagWatcher old) {
     super.didUpdateWidget(old);
     if (old.podcastId != widget.podcastId || old.enabled != widget.enabled ||
-        old.db != widget.db) {
+        old.watch != widget.watch) {
       _subscribe();
     }
   }
 
-  void _subscribe() => _stream = widget.enabled
-      ? widget.db.watchHasEpisodesToFinish(widget.podcastId)
-      : null;
+  void _subscribe() =>
+      _stream = widget.enabled ? widget.watch(widget.podcastId) : null;
 
   // Always a StreamBuilder (null stream when disabled): switching widget type
   // here would rebuild the header from scratch on (re)subscribe and cut its

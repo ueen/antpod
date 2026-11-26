@@ -1,6 +1,6 @@
 // lib/app_database.dart
 //
-// Schema version: 8
+// Schema version: 9
 //   v1 → v2: Episodes.isSubscribed added
 //   v2 → v3: Episodes.isFinished added (true = fully listened)
 //            Episodes.lastPositionMs added (millisecond precision resume point)
@@ -9,6 +9,9 @@
 //   v5 → v6: Episodes.markedForDownload added (queued for WiFi download)
 //   v6 → v7: Podcasts.isSubscribed added (false = temporary preview feed)
 //   v7 → v8: Podcasts.syncPaused added (true = skip background refresh)
+//   v8 → v9: Podcasts.feedEtag, feedLastModified, feedHash, feedFailures
+//            added (conditional refresh, "feed not loading" note);
+//            episode indexes on (podcast_id, publish_date) and publish_date
 //
 // Regenerate after schema changes:
 //   dart run build_runner build --delete-conflicting-outputs
@@ -36,10 +39,25 @@ class Podcasts extends Table {
   /// true = skip this feed during background auto-refresh (user manually paused sync)
   BoolColumn get syncPaused => boolean().withDefault(const Constant(false))();
 
+  /// The feed's ETag and Last-Modified from the refresh that last parsed it,
+  /// sent back so an unchanged feed answers 304 Not Modified.
+  TextColumn get feedEtag => text().nullable()();
+  TextColumn get feedLastModified => text().nullable()();
+  /// Hash of the feed body last parsed (PodcastService.fetchFeed): a server
+  /// that ignores the headers above but sends the same feed isn't parsed again.
+  TextColumn get feedHash => text().nullable()();
+  /// Refreshes in a row where this feed failed while others loaded, so the
+  /// device was online: the podcast's page says the feed isn't loading.
+  IntColumn get feedFailures => integer().withDefault(const Constant(0))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
 
+// A podcast's page and most per-feed queries filter by podcast_id; the lists
+// sort by publish_date.
+@TableIndex(name: 'episodes_podcast_date', columns: {#podcastId, #publishDate})
+@TableIndex(name: 'episodes_publish_date', columns: {#publishDate})
 class Episodes extends Table {
   TextColumn get id => text()();
   TextColumn get podcastId => text()();
@@ -110,6 +128,19 @@ bool _episodeListEqual(List<Episode> a, List<Episode> b, String? liveId) {
   return true;
 }
 
+// Podcast lists compare equal unless something on screen changed: a refresh
+// that only stores a feed's validators doesn't rebuild the grid.
+bool _samePodcastList(List<Podcast> a, List<Podcast> b) {
+  if (a.length != b.length) return false;
+  Podcast shown(Podcast p) => p.copyWith(
+      feedEtag: const Value(null), feedLastModified: const Value(null),
+      feedHash: const Value(null), feedFailures: 0);
+  for (int i = 0; i < a.length; i++) {
+    if (shown(a[i]) != shown(b[i])) return false;
+  }
+  return true;
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
 @DriftDatabase(tables: [Podcasts, Episodes])
@@ -129,7 +160,7 @@ class AppDatabase extends _$AppDatabase {
       _episodeListEqual(a, b, livePositionEpisodeId);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -161,6 +192,16 @@ class AppDatabase extends _$AppDatabase {
         await m.database.customStatement(
             'ALTER TABLE podcasts ADD COLUMN sync_paused INTEGER NOT NULL DEFAULT 0');
       }
+      if (from < 9) {
+        for (final col in ['feed_etag', 'feed_last_modified', 'feed_hash']) {
+          await m.database.customStatement(
+              'ALTER TABLE podcasts ADD COLUMN $col TEXT');
+        }
+        await m.database.customStatement(
+            'ALTER TABLE podcasts ADD COLUMN feed_failures INTEGER NOT NULL DEFAULT 0');
+        await m.createIndex(episodesPodcastDate);
+        await m.createIndex(episodesPublishDate);
+      }
     },
   );
 
@@ -170,7 +211,8 @@ class AppDatabase extends _$AppDatabase {
       (select(podcasts)
             ..where((p) => p.isSubscribed.equals(true))
             ..orderBy([(p) => OrderingTerm.asc(p.title)]))
-          .watch();
+          .watch()
+          .distinct(_samePodcastList);
 
   Future<List<Podcast>> getAllPodcasts() =>
       (select(podcasts)..where((p) => p.isSubscribed.equals(true))).get();
@@ -280,31 +322,77 @@ class AppDatabase extends _$AppDatabase {
   /// columns, except its duration once it was played. updatePlaybackPosition
   /// wrote the audio's own duration then, and RSS durations are often
   /// rounded, wrong or 0.
-  Future<void> insertEpisodes(List<EpisodesCompanion> eps) => batch((b) {
-        for (final e in eps) {
-          b.insert(
-            episodes,
-            e,
-            onConflict:
-                DoUpdate<$EpisodesTable, Episode>.withExcluded((old, excluded) {
-              final cols = e.toColumns(true)..remove('id');
-              if (cols.containsKey('duration_seconds')) {
-                cols['duration_seconds'] = CaseWhenExpression<int>(
-                  cases: [
-                    CaseWhen(
-                      old.lastPlayed.isNotNull() &
-                          old.durationSeconds.isBiggerThanValue(0),
-                      then: old.durationSeconds,
-                    ),
-                  ],
-                  orElse: excluded.durationSeconds,
-                );
-              }
-              return RawValuesInsertable<Episode>(cols);
-            }),
-          );
+  Future<void> insertEpisodes(List<EpisodesCompanion> eps) =>
+      batch((b) => _upsertEpisodes(b, eps));
+
+  void _upsertEpisodes(Batch b, Iterable<EpisodesCompanion> eps) {
+    for (final e in eps) {
+      b.insert(
+        episodes,
+        e,
+        onConflict:
+            DoUpdate<$EpisodesTable, Episode>.withExcluded((old, excluded) {
+          final cols = e.toColumns(true)..remove('id');
+          if (cols.containsKey('duration_seconds')) {
+            cols['duration_seconds'] = CaseWhenExpression<int>(
+              cases: [
+                CaseWhen(
+                  old.lastPlayed.isNotNull() &
+                      old.durationSeconds.isBiggerThanValue(0),
+                  then: old.durationSeconds,
+                ),
+              ],
+              orElse: excluded.durationSeconds,
+            );
+          }
+          return RawValuesInsertable<Episode>(cols);
+        }),
+      );
+    }
+  }
+
+  /// Saves what refreshing some subscribed feeds found, in one transaction so
+  /// the lists update once: their [episodes] (upserted like [insertEpisodes])
+  /// and each podcast's new columns in [podcastUpdates] (cover, validators,
+  /// failure count), by podcast id. A podcast unsubscribed while its feed
+  /// loaded is skipped, so its episodes don't come back as subscribed.
+  Future<void> saveFeedRefresh(List<EpisodesCompanion> episodes,
+      Map<String, PodcastsCompanion> podcastUpdates) async {
+    final updates = {
+      for (final MapEntry(key: id, value: update) in podcastUpdates.entries)
+        if (update.toColumns(false).isNotEmpty) id: update,
+    };
+    if (episodes.isEmpty && updates.isEmpty) return;
+    await transaction(() async {
+      final live = {for (final p in await getAllPodcasts()) p.id};
+      await batch((b) {
+        _upsertEpisodes(
+            b, episodes.where((e) => live.contains(e.podcastId.value)));
+        for (final MapEntry(key: id, value: update) in updates.entries) {
+          if (live.contains(id)) {
+            b.update(podcasts, update, where: (p) => p.id.equals(id));
+          }
         }
       });
+    });
+  }
+
+  /// Counts one more failed refresh for each podcast in [ids].
+  Future<void> countFeedFailures(List<String> ids) =>
+      (update(podcasts)..where((p) => p.id.isIn(ids))).write(
+          PodcastsCompanion.custom(
+              feedFailures: podcasts.feedFailures + const Constant(1)));
+
+  /// Failed refreshes in a row (while others loaded) before a podcast's page
+  /// says its feed isn't loading: one bad refresh is just a server hiccup.
+  static const feedFailingAfter = 3;
+
+  /// Whether [podcastId]'s feed has failed [feedFailingAfter] refreshes in a row.
+  Stream<bool> watchFeedFailing(String podcastId) =>
+      (select(podcasts)..where((p) => p.id.equals(podcastId)))
+          .watchSingleOrNull()
+          .map((p) => (p?.feedFailures ?? 0) >= feedFailingAfter)
+          .distinct();
 
   /// A row that's already there (subscribed, played, downloaded) is kept,
   /// except for its chapters link: a fresh one from the feed wins, and none
@@ -379,7 +467,14 @@ class AppDatabase extends _$AppDatabase {
       PodcastsCompanion podcast, List<EpisodesCompanion> rssEpisodes) {
     final id = podcast.id.value;
     return transaction(() async {
-      await insertPodcast(podcast);
+      // A fresh start for the refresh: a preview or a previously finished
+      // feed's validators may not match the episodes kept.
+      await insertPodcast(podcast.copyWith(
+        feedEtag: const Value(null),
+        feedLastModified: const Value(null),
+        feedHash: const Value(null),
+        feedFailures: const Value(0),
+      ));
       await markEpisodesSubscribed(id);
       if (rssEpisodes.isEmpty) {
         await (update(episodes)
@@ -798,12 +893,6 @@ class AppDatabase extends _$AppDatabase {
   Future<void> setPodcastSyncPaused(String id, bool paused) =>
       (update(podcasts)..where((p) => p.id.equals(id)))
           .write(PodcastsCompanion(syncPaused: Value(paused)));
-
-  /// Update the podcast cover URL. Called during refresh when RSS provides a
-  /// non-empty image so the grid/header stays in sync with the feed.
-  Future<void> updatePodcastImageUrl(String podcastId, String newUrl) =>
-      (update(podcasts)..where((p) => p.id.equals(podcastId)))
-          .write(PodcastsCompanion(imageUrl: Value(newUrl)));
 
   Future<Episode?> getEpisode(String id) =>
       (select(episodes)..where((e) => e.id.equals(id))).getSingleOrNull();

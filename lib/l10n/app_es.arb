@@ -49,6 +49,7 @@
   "stopNewEpisodes": "No cargar episodios nuevos",
   "newEpisodesStopped": "No se cargan episodios nuevos",
   "finishingEpisodes": "Terminar de escuchar",
+  "feedNotLoading": "El feed no se carga",
   "downloadingEpisodes": "{count, plural, =1{Descargando 1 episodio} other{Descargando {count} episodios}}",
   "downloadNotificationChannel": "Descargas",
   "aboutText": "El hormiguero de tus podcasts: cada episodio, acarreado sin descanso hasta casa. Una exploradora ágil, nacida del espíritu del venerable AntennaPod.",
