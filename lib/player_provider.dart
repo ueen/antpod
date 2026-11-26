@@ -506,6 +506,24 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// The player's episode [from] went into [to] (see _onEpisodeUpdated):
+  /// the audio plays on (the old URL still serves, or the file moved over),
+  /// position saves and the restore on the next launch go to the new row.
+  Future<void> _adoptMerged(String from, String to) async {
+    final ep = await _db.getEpisode(to);
+    if (_currentEpisode?.id != from) return;
+    if (ep == null) {
+      unawaited(_closePlayer());
+      return;
+    }
+    _currentEpisode = ep;
+    _db.livePositionEpisodeId = ep.id;
+    _persistLastEpisode(ep.id);
+    _episodeWatchSub?.cancel();
+    _episodeWatchSub = _db.watchEpisode(ep.id).listen(_onEpisodeUpdated);
+    notifyListeners();
+  }
+
   /// Where a load picks an episode up that stopped at [ms]: a little earlier
   /// when it was last played long ago (the settings' rewind on resume).
   int _resumeAt(int ms, DateTime? lastPlayed) {
@@ -516,6 +534,14 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void _onEpisodeUpdated(Episode? updated) {
     if (_currentEpisode == null) return;
+    // Merged into the feed's row by a refresh (republished under a new
+    // guid): the same episode, the player carries on with that row.
+    final mergedInto =
+        updated == null ? _db.mergedInto(_currentEpisode!.id) : null;
+    if (mergedInto != null) {
+      _adoptMerged(_currentEpisode!.id, mergedInto);
+      return;
+    }
     // Episode deleted from the DB (temp episode removed, unsubscribe) or
     // marked as played elsewhere (natural end, feed sync) — close the
     // player. Swipe and menu go through setPlayed(), which closes first.

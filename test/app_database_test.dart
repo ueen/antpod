@@ -294,6 +294,46 @@ void main() {
       await db.saveFeedRefresh(const [], {_feed: const PodcastsCompanion()});
       expect((await pod()).feedEtag, isNull);
     });
+
+    test('a republished episode (new guid) takes over the old one', () async {
+      final older = _rss('z').copyWith(publishDate: Value(DateTime(2025, 12)));
+      await db.saveFeedRefresh(
+          [older, _rss('a', title: 'Kingdom Come 1')], const {});
+      await (db.update(db.episodes)..where((e) => e.id.equals('a'))).write(
+          EpisodesCompanion(
+              lastPositionMs: const Value(600000),
+              lastPlayed: Value(DateTime(2026, 1, 2)),
+              isFavorite: const Value(true),
+              isDownloaded: const Value(true),
+              localPath: const Value('/files/a.mp3')));
+      await db.saveFeedRefresh([
+        older,
+        _rss('b', title: ' kingdom  come 1').copyWith(
+            publishDate: Value(DateTime(2026, 1, 1, 12))),
+      ], const {});
+      expect(await db.getEpisode('a'), isNull);
+      final b = await ep('b');
+      expect(b.lastPositionMs, 600000);
+      expect(b.isFavorite, isTrue);
+      expect(b.isDownloaded, isTrue);
+      expect(b.localPath, '/files/a.mp3');
+      expect(db.mergedInto('a'), 'b', reason: 'the player follows');
+    });
+
+    test('same title, but older than the feed or another day: stays', () async {
+      await db.saveFeedRefresh([
+        _rss('old', title: 'News').copyWith(
+            publishDate: Value(DateTime(2025, 12, 31, 18))),
+        _rss('other', title: 'News').copyWith(
+            publishDate: Value(DateTime(2026, 1, 5))),
+      ], const {});
+      await db.saveFeedRefresh([
+        _rss('b', title: 'News'),
+        _rss('c').copyWith(publishDate: Value(DateTime(2026, 1, 10))),
+      ], const {});
+      expect(await db.getEpisode('old'), isNotNull);
+      expect(await db.getEpisode('other'), isNotNull);
+    });
   });
 
   test('the failing note shows after three failed refreshes', () async {
@@ -362,5 +402,23 @@ void main() {
     await migrated.insertEpisodes([_rss('a')]);
     expect((await migrated.getEpisode('a'))!.isFavorite, isFalse,
         reason: 'v10 added is_favorite');
+  });
+
+  test('a v10 database loads every feed in full once', () async {
+    final dir = Directory.systemTemp.createTempSync('antpod-migration');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}/v10.db');
+    final old = AppDatabase.forTesting(NativeDatabase(file));
+    await old.customStatement(
+        "INSERT INTO podcasts (id, title, description, image_url, feed_url, "
+        "author, feed_etag, feed_last_modified, feed_hash) VALUES ('$_feed', "
+        "'Podcast', '', '', '$_feed', '', '\"v1\"', 'Mon', '1:abc')");
+    await old.customStatement('PRAGMA user_version = 10');
+    await old.close();
+
+    final migrated = AppDatabase.forTesting(NativeDatabase(file));
+    addTearDown(migrated.close);
+    final p = (await migrated.getPodcast(_feed))!;
+    expect([p.feedEtag, p.feedLastModified, p.feedHash], [null, null, null]);
   });
 }

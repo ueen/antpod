@@ -1,6 +1,6 @@
 // lib/app_database.dart
 //
-// Schema version: 9
+// Schema version: 11
 //   v1 → v2: Episodes.isSubscribed added
 //   v2 → v3: Episodes.isFinished added (true = fully listened)
 //            Episodes.lastPositionMs added (millisecond precision resume point)
@@ -12,6 +12,8 @@
 //   v8 → v9: Podcasts.feedEtag, feedLastModified, feedHash, feedFailures
 //            added (conditional refresh, "feed not loading" note);
 //            episode indexes on (podcast_id, publish_date) and publish_date
+//   v9 → v10: Episodes.isFavorite added
+//   v10 → v11: feed validators cleared once (republished episodes merge)
 //
 // Regenerate after schema changes:
 //   dart run build_runner build --delete-conflicting-outputs
@@ -167,7 +169,7 @@ class AppDatabase extends _$AppDatabase {
       _episodeListEqual(a, b, livePositionEpisodeId);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -212,6 +214,12 @@ class AppDatabase extends _$AppDatabase {
       if (from < 10) {
         await m.database.customStatement(
             'ALTER TABLE episodes ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0');
+      }
+      if (from < 11) {
+        // Every feed loads in full once, so republished episodes already
+        // listed twice merge (saveFeedRefresh).
+        await m.database.customStatement('UPDATE podcasts SET feed_etag = NULL, '
+            'feed_last_modified = NULL, feed_hash = NULL');
       }
     },
   );
@@ -403,17 +411,89 @@ class AppDatabase extends _$AppDatabase {
     if (episodes.isEmpty && updates.isEmpty) return;
     await transaction(() async {
       final live = {for (final p in await getAllPodcasts()) p.id};
+      final feeds = <String, List<EpisodesCompanion>>{};
+      for (final e in episodes) {
+        if (live.contains(e.podcastId.value)) {
+          feeds.putIfAbsent(e.podcastId.value, () => []).add(e);
+        }
+      }
       await batch((b) {
-        _upsertEpisodes(
-            b, episodes.where((e) => live.contains(e.podcastId.value)));
+        _upsertEpisodes(b, feeds.values.expand((f) => f));
         for (final MapEntry(key: id, value: update) in updates.entries) {
           if (live.contains(id)) {
             b.update(podcasts, update, where: (p) => p.id.equals(id));
           }
         }
       });
+      for (final MapEntry(key: id, value: feed) in feeds.entries) {
+        await _mergeRepublished(id, feed);
+      }
     });
   }
+
+  /// Episodes a feed republished under a new guid (Legion's guid is the
+  /// mp3's URL, and a re-upload got a new one): a row the feed no longer
+  /// has, with the title of one it has, from the same day. It hands its
+  /// progress, played state, favourite and download to the feed's row and
+  /// goes, so the episode isn't listed twice; an Apple search stub likewise.
+  /// Only rows within the feed's span: one that aged out of a feed keeping
+  /// just its latest isn't republished, even under the same title (news).
+  Future<void> _mergeRepublished(
+      String podcastId, List<EpisodesCompanion> feed) async {
+    final inFeed = {for (final e in feed) e.id.value};
+    final oldest = feed
+        .map((e) => e.publishDate.value)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    final gone = await (select(episodes)
+          ..where((e) =>
+              e.podcastId.equals(podcastId) &
+              e.publishDate.isBiggerOrEqualValue(oldest) &
+              e.id.isNotIn(inFeed)))
+        .get();
+    if (gone.isEmpty) return;
+    final byTitle = <String, List<EpisodesCompanion>>{};
+    for (final e in feed) {
+      byTitle.putIfAbsent(_titleKey(e.title.value), () => []).add(e);
+    }
+    for (final old in gone) {
+      final twin = byTitle[_titleKey(old.title)]
+          ?.where((e) =>
+              e.publishDate.value.difference(old.publishDate).abs() <
+              const Duration(days: 1))
+          .firstOrNull;
+      final now = twin == null ? null : await getEpisode(twin.id.value);
+      // Both downloaded: two files, left as they are.
+      if (now == null || (now.isDownloaded && old.isDownloaded)) continue;
+      final played =
+          now.lastPlayed != null || now.isFinished || now.lastPositionMs > 0;
+      final p = played ? now : old;
+      final hasFile = now.isDownloaded || now.downloadTaskId != null;
+      final d = hasFile ? now : old;
+      await (update(episodes)..where((e) => e.id.equals(now.id)))
+          .write(EpisodesCompanion(
+        lastPositionMs: Value(p.lastPositionMs),
+        playbackPositionSeconds: Value(p.playbackPositionSeconds),
+        isFinished: Value(p.isFinished),
+        lastPlayed: Value(p.lastPlayed),
+        isFavorite: Value(now.isFavorite || old.isFavorite),
+        isDownloaded: Value(d.isDownloaded),
+        localPath: Value(d.localPath),
+        downloadTaskId: Value(d.downloadTaskId),
+        markedForDownload: Value(!d.isDownloaded &&
+            (now.markedForDownload || old.markedForDownload)),
+      ));
+      await (delete(episodes)..where((e) => e.id.equals(old.id))).go();
+      _merged[old.id] = now.id;
+    }
+  }
+
+  static String _titleKey(String title) =>
+      title.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  /// Rows [_mergeRepublished] merged away, old id → the feed's: the player
+  /// carries on with the new one instead of closing.
+  final _merged = <String, String>{};
+  String? mergedInto(String id) => _merged[id];
 
   /// Counts one more failed refresh for each podcast in [ids].
   Future<void> countFeedFailures(List<String> ids) =>
