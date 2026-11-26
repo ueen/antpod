@@ -517,10 +517,18 @@ class PlayerSheetRoute extends PopupRoute<void> {
   /// Slower than this, in pixels per second, a release is still.
   static const _still = 20.0;
 
+  /// A release this slow against the finger's way is it lifting, not
+  /// sending the sheet back.
+  static const _wobble = 150.0;
+
   /// The finger opens it: no motion of its own on push.
   final bool _tracking;
 
   Rect? _from;
+
+  /// The finger's way since it last turned: where it set out and the
+  /// furthest it went, as [controller] values. Null with no finger on it.
+  double? _origin, _peak;
 
   /// Pixels the open sheet is dragged up beyond [openSize].
   final _expand = ValueNotifier<double>(0);
@@ -544,6 +552,13 @@ class PlayerSheetRoute extends PopupRoute<void> {
     final f = _from;
     final start = f == null ? h : f.top + fromInsets.top;
     return math.max(1.0, start - h * (1 - openSize));
+  }
+
+  /// How far up a release that isn't sent back opens: twice the mini
+  /// player's height, at most half the way.
+  double get _reach {
+    final f = _from;
+    return f == null ? _travel / 4 : math.min(_travel / 2, 2 * f.height);
   }
 
   double get _maxExpand => math.max(0.0, _size.height * (maxSize - openSize));
@@ -612,6 +627,25 @@ class PlayerSheetRoute extends PopupRoute<void> {
     _onTop = null;
   }
 
+  /// A finger takes it, the way it goes yet to be seen.
+  void _setOut() {
+    _grab();
+    _origin = _peak = null;
+  }
+
+  /// The finger moved it from [from] to [to]: on its way, or turned back
+  /// by more than a touch slop.
+  void _track(double from, double to) {
+    final o = _origin ??= from;
+    final p = _peak ??= from;
+    if (p == o || (p > o ? to >= p : to <= p)) {
+      _peak = to;
+    } else if ((to - p).abs() * _travel > kTouchSlop) {
+      _origin = p;
+      _peak = to;
+    }
+  }
+
   void _onDrift() {
     final d = _drift!;
     final max = _maxExpand;
@@ -638,6 +672,7 @@ class PlayerSheetRoute extends PopupRoute<void> {
     if (!isCurrent) return dy;
     _grab();
     final c = controller!;
+    final t0 = c.value;
     var rest = dy;
     if (rest > 0) {
       final t = c.value;
@@ -666,6 +701,7 @@ class PlayerSheetRoute extends PopupRoute<void> {
         rest = _snap(rest + (t - to) * _travel);
       }
     }
+    _track(t0, c.value);
     return rest;
   }
 
@@ -678,9 +714,21 @@ class PlayerSheetRoute extends PopupRoute<void> {
     final c = controller!;
     final t = c.value;
     final still = vy.abs() < _still;
+    final o = _origin ?? t, p = _peak ?? t;
+    _origin = _peak = null;
     // Either way the same glide, at the finger's speed or the slowest.
     if (t < 1) {
-      final open = still ? t >= 0.5 : vy > 0;
+      final bool open;
+      if (p > o) {
+        // On its way up: let go anywhere moving up, or still (or lifting)
+        // past [_reach], it opens.
+        open = vy > _still || (t * _travel >= _reach && vy > -_wobble);
+      } else if (p < o) {
+        // On its way down: moving down, or still below half way, it closes.
+        open = !(vy < -_still || (t < 0.5 && vy < _wobble));
+      } else {
+        open = still ? t >= 0.5 : vy > 0;
+      }
       if (open) {
         c.animateWith(_Glide(t, 1, vy / _travel));
       } else {
@@ -926,14 +974,14 @@ class _SheetScrollPosition extends ScrollPositionWithSingleContext {
   @override
   ScrollHoldController hold(VoidCallback holdCancelCallback) {
     _held = true;
-    route._grab();
+    route._setOut();
     return super.hold(holdCancelCallback);
   }
 
   @override
   Drag drag(DragStartDetails details, VoidCallback dragCancelCallback) {
     _held = true;
-    route._grab();
+    route._setOut();
     return super.drag(details, dragCancelCallback);
   }
 

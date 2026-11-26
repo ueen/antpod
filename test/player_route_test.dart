@@ -71,9 +71,10 @@ void main() {
     expect(route.animation!.value, closeTo(0.2, 1e-9));
   });
 
-  testWidgets('a still release past half way opens, before closes', (tester) async {
+  testWidgets('let go still a quarter of the way up, it opens; before, it closes',
+      (tester) async {
     var route = await push(tester, tracking: true);
-    route.drag(216);
+    route.drag(100);
     route.release(0);
     await tester.pumpAndSettle();
     expect(route.animation!.value, 1);
@@ -82,10 +83,35 @@ void main() {
     nav.pop();
     await tester.pumpAndSettle();
     route = await push(tester, tracking: true);
-    route.drag(144);
+    route.drag(80);
     route.release(0);
     await tester.pumpAndSettle();
     expect(route.isActive, isFalse);
+  });
+
+  testWidgets('from the mini player, twice its height up opens it', (tester) async {
+    // The card's top at 543: 303 px to open, 128 (twice 64) far enough.
+    const mini = Rect.fromLTWH(0, 536, 800, 64);
+    Future<PlayerSheetRoute> letGo(double up, double vy) async {
+      final route = await push(tester, tracking: true, from: mini);
+      route.drag(up);
+      route.release(vy);
+      await tester.pumpAndSettle();
+      return route;
+    }
+
+    var route = await letGo(130, 0);
+    expect(route.isCurrent, isTrue, reason: 'let go still');
+    nav.pop();
+    await tester.pumpAndSettle();
+    route = await letGo(130, -100);
+    expect(route.isCurrent, isTrue, reason: 'the finger lifting is no way back');
+    nav.pop();
+    await tester.pumpAndSettle();
+    route = await letGo(130, -300);
+    expect(route.isActive, isFalse, reason: 'sent back');
+    route = await letGo(120, 0);
+    expect(route.isActive, isFalse, reason: 'not far enough');
   });
 
   testWidgets('a slow release goes its way, wherever it lets go', (tester) async {
@@ -99,7 +125,8 @@ void main() {
     nav.pop();
     await tester.pumpAndSettle();
     route = await push(tester, tracking: true);
-    route.drag(306);
+    route.drag(330);
+    route.drag(-24); // turned back
     route.release(-60);
     await tester.pumpAndSettle();
     expect(route.isActive, isFalse);
@@ -145,8 +172,9 @@ void main() {
 
   testWidgets('let go slowly on the way down, it closes as slowly as it opens',
       (tester) async {
-    final route = await push(tester, tracking: true);
-    route.drag(324); // nine tenths of the way
+    final route = await push(tester, tracking: false);
+    await tester.pumpAndSettle();
+    route.drag(-36); // a tenth of the way down
     await tester.pump();
     route.release(-30);
     await tester.pump();
