@@ -86,7 +86,7 @@
   "settingsThemeDark": "Oscuro",
   "settingsPlayback": "Reproducción",
   "settingsRewindOnResume": "Retroceder al reanudar",
-  "settingsRewindOnResumeSub": "Retrocede 10 segundos tras una pausa de 5 minutos o más",
+  "settingsRewindOnResumeSub": "Retrocede 3 segundos tras una pausa de 5 minutos o más",
   "settingsMarkPlayedNearEnd": "Escuchado en el último minuto",
   "settingsMarkPlayedNearEndSub": "Pausar en los últimos 60 segundos marca el episodio como escuchado",
   "settingsDownloads": "Descargas",

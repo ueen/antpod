@@ -50,7 +50,7 @@ class AppSettings extends ChangeNotifier {
   set rewindOnResume(bool v) => _set(keyRewindOnResume, v);
 
   static const resumeRewindAfter = Duration(minutes: 5);
-  static const resumeRewindBy = Duration(seconds: 10);
+  static const resumeRewindBy = Duration(seconds: 3);
 
   /// How far back playback resumes after a pause of [pausedFor].
   Duration resumeRewind(Duration pausedFor) =>

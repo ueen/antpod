@@ -299,7 +299,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsRewindOnResume => 'Reculer à la reprise';
 
   @override
-  String get settingsRewindOnResumeSub => 'Recule de 10 secondes après une pause de 5 minutes ou plus';
+  String get settingsRewindOnResumeSub => 'Recule de 3 secondes après une pause de 5 minutes ou plus';
 
   @override
   String get settingsMarkPlayedNearEnd => 'Écouté dans la dernière minute';

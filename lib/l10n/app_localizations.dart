@@ -618,7 +618,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsRewindOnResumeSub.
   ///
   /// In en, this message translates to:
-  /// **'Back 10 seconds after a pause of 5 minutes or more'**
+  /// **'Back 3 seconds after a pause of 5 minutes or more'**
   String get settingsRewindOnResumeSub;
 
   /// No description provided for @settingsMarkPlayedNearEnd.

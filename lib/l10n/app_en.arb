@@ -114,7 +114,7 @@
   "settingsThemeDark": "Dark",
   "settingsPlayback": "Playback",
   "settingsRewindOnResume": "Rewind on resume",
-  "settingsRewindOnResumeSub": "Back 10 seconds after a pause of 5 minutes or more",
+  "settingsRewindOnResumeSub": "Back 3 seconds after a pause of 5 minutes or more",
   "settingsMarkPlayedNearEnd": "Played in the last minute",
   "settingsMarkPlayedNearEndSub": "Pausing in the last 60 seconds marks the episode as played",
   "settingsDownloads": "Downloads",

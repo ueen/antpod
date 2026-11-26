@@ -299,7 +299,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsRewindOnResume => 'Rewind on resume';
 
   @override
-  String get settingsRewindOnResumeSub => 'Back 10 seconds after a pause of 5 minutes or more';
+  String get settingsRewindOnResumeSub => 'Back 3 seconds after a pause of 5 minutes or more';
 
   @override
   String get settingsMarkPlayedNearEnd => 'Played in the last minute';

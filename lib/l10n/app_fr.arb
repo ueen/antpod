@@ -86,7 +86,7 @@
   "settingsThemeDark": "Sombre",
   "settingsPlayback": "Lecture",
   "settingsRewindOnResume": "Reculer à la reprise",
-  "settingsRewindOnResumeSub": "Recule de 10 secondes après une pause de 5 minutes ou plus",
+  "settingsRewindOnResumeSub": "Recule de 3 secondes après une pause de 5 minutes ou plus",
   "settingsMarkPlayedNearEnd": "Écouté dans la dernière minute",
   "settingsMarkPlayedNearEndSub": "Une pause dans les 60 dernières secondes marque l'épisode comme écouté",
   "settingsDownloads": "Téléchargements",

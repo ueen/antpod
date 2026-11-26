@@ -299,7 +299,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get settingsRewindOnResume => 'Retroceder al reanudar';
 
   @override
-  String get settingsRewindOnResumeSub => 'Retrocede 10 segundos tras una pausa de 5 minutos o más';
+  String get settingsRewindOnResumeSub => 'Retrocede 3 segundos tras una pausa de 5 minutos o más';
 
   @override
   String get settingsMarkPlayedNearEnd => 'Escuchado en el último minuto';

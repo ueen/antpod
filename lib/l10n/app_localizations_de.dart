@@ -299,7 +299,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get settingsRewindOnResume => 'Beim Fortsetzen zurückspulen';
 
   @override
-  String get settingsRewindOnResumeSub => 'Geht nach einer Pause ab 5 Minuten 10 Sekunden zurück';
+  String get settingsRewindOnResumeSub => 'Geht nach einer Pause ab 5 Minuten 3 Sekunden zurück';
 
   @override
   String get settingsMarkPlayedNearEnd => 'In der letzten Minute gehört';

@@ -86,7 +86,7 @@
   "settingsThemeDark": "Dunkel",
   "settingsPlayback": "Wiedergabe",
   "settingsRewindOnResume": "Beim Fortsetzen zurückspulen",
-  "settingsRewindOnResumeSub": "Geht nach einer Pause ab 5 Minuten 10 Sekunden zurück",
+  "settingsRewindOnResumeSub": "Geht nach einer Pause ab 5 Minuten 3 Sekunden zurück",
   "settingsMarkPlayedNearEnd": "In der letzten Minute gehört",
   "settingsMarkPlayedNearEndSub": "Pausieren in den letzten 60 Sekunden markiert die Folge als gehört",
   "settingsDownloads": "Downloads",
