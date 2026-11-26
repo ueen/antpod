@@ -607,7 +607,44 @@ class PlayerSheetRoute extends PopupRoute<void> {
     _from = locate?.call() ?? _from;
     _drift?.stop();
     _onTop = null;
+    _closing = controller!.value.clamp(0.0, 1.0);
     return super.didPop(result);
+  }
+
+  /// Where it was when it set off closed, once it's on its way.
+  double? _closing;
+
+  static double _smooth(double x) {
+    final s = x.clamp(0.0, 1.0);
+    return s * s * (3 - 2 * s);
+  }
+
+  /// How much of the sheet's colour, of its content and of the mini
+  /// player's look-alike shows at [t]. On the way, by the finger or not:
+  /// the card's colour holds most of the way, the content shows only near
+  /// the top, the look-alike only near the bottom. Closing, from wherever
+  /// it set off, one gives way to the other over the whole way down: a
+  /// quick release takes the look along evenly, not all in its first
+  /// frames, and the frame is never empty.
+  ({double colour, double content, double mini}) _look(double t) {
+    ({double colour, double content, double mini}) at(double t) {
+      final q = ((t - 0.5) / 0.5).clamp(0.0, 1.0);
+      return (
+        colour: t * t * t,
+        content: q * q,
+        mini: t < 0.4 ? 1 - t / 0.4 : 0.0,
+      );
+    }
+
+    final t0 = _closing;
+    if (t0 == null) return at(t);
+    final from = at(t0);
+    final w = t0 > 0 ? _smooth(t / t0) : 0.0;
+    return (
+      colour: from.colour * w,
+      content: from.content * w,
+      mini: 1 - (1 - from.mini) * w,
+    );
   }
 
   @override
@@ -793,12 +830,11 @@ class PlayerSheetRoute extends PopupRoute<void> {
               : BorderRadius.vertical(
                   top: Radius.circular(fromRadius + (20 - fromRadius) * t),
                   bottom: Radius.circular(fromRadius * (1 - t)));
-          // The card's colour holds most of the way, the content shows
-          // only near the top: the sheet is all there once it's open.
-          final bg = f == null
-              ? sheetColor
-              : Color.lerp(cardColor, sheetColor, t * t * t)!;
-          final q = f == null ? 1.0 : ((t - 0.5) / 0.5).clamp(0.0, 1.0);
+          // From the bottom edge it's the sheet all the way.
+          final look = f == null
+              ? (colour: 1.0, content: 1.0, mini: 0.0)
+              : _look(t);
+          final bg = Color.lerp(cardColor, sheetColor, look.colour)!;
           final shadow = f == null ? 0.0 : 0.25 * (1 - t);
           final clip = corners.toRRect(Rect.fromLTRB(
               frame.left - left, 0, frame.right - left, frame.bottom - frame.top));
@@ -829,16 +865,16 @@ class PlayerSheetRoute extends PopupRoute<void> {
               height: h * maxSize,
               child: ClipRRect(
                 clipper: _FrameClip(clip),
-                child: Opacity(opacity: q * q, child: child),
+                child: Opacity(opacity: look.content, child: child),
               ),
             ),
-            if (card != null && f != null && t < 0.4)
+            if (card != null && f != null && look.mini > 0)
               Positioned(
                 left: f.left,
                 top: frame.top - fromInsets.top,
                 width: f.width,
                 height: f.height,
-                child: Opacity(opacity: 1 - t / 0.4, child: card),
+                child: Opacity(opacity: look.mini, child: card),
               ),
           ]);
         },
