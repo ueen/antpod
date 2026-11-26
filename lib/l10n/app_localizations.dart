@@ -624,13 +624,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMarkPlayedNearEnd.
   ///
   /// In en, this message translates to:
-  /// **'Played in the last minute'**
+  /// **'Played near the end'**
   String get settingsMarkPlayedNearEnd;
 
   /// No description provided for @settingsMarkPlayedNearEndSub.
   ///
   /// In en, this message translates to:
-  /// **'Pausing in the last 60 seconds marks the episode as played'**
+  /// **'Pausing in the last 100 seconds marks the episode as played'**
   String get settingsMarkPlayedNearEndSub;
 
   /// No description provided for @settingsDownloads.

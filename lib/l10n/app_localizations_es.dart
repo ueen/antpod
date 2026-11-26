@@ -302,10 +302,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get settingsRewindOnResumeSub => 'Retrocede 3 segundos tras una pausa de 5 minutos o más';
 
   @override
-  String get settingsMarkPlayedNearEnd => 'Escuchado en el último minuto';
+  String get settingsMarkPlayedNearEnd => 'Escuchado al final';
 
   @override
-  String get settingsMarkPlayedNearEndSub => 'Pausar en los últimos 60 segundos marca el episodio como escuchado';
+  String get settingsMarkPlayedNearEndSub => 'Pausar en los últimos 100 segundos marca el episodio como escuchado';
 
   @override
   String get settingsDownloads => 'Descargas';

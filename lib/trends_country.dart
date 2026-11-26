@@ -145,6 +145,8 @@ Future<String?> showTrendsCountrySheet(BuildContext context, String current) =>
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+      // The pinned header would paint over the sheet's rounded top corners.
+      clipBehavior: Clip.antiAlias,
       builder: (_) => _CountrySheet(current: current),
     );
 

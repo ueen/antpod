@@ -35,7 +35,8 @@ class AppSettings extends ChangeNotifier {
   bool get materialYou => _prefs.getBool(keyMaterialYou) ?? false;
   set materialYou(bool v) => _set(keyMaterialYou, v);
 
-  /// A pause in an episode's last minute marks it as played (outros, trailers).
+  /// A pause in an episode's last [nearEnd] marks it as played (outros,
+  /// trailers).
   bool get markPlayedNearEnd => _prefs.getBool(keyMarkPlayedNearEnd) ?? true;
   set markPlayedNearEnd(bool v) => _set(keyMarkPlayedNearEnd, v);
 
@@ -51,6 +52,10 @@ class AppSettings extends ChangeNotifier {
 
   static const resumeRewindAfter = Duration(minutes: 5);
   static const resumeRewindBy = Duration(seconds: 3);
+
+  /// An episode's last stretch: a pause in it can mark the episode played,
+  /// and a save in it leaves a played episode played.
+  static const nearEnd = Duration(seconds: 100);
 
   /// How far back playback resumes after a pause of [pausedFor].
   Duration resumeRewind(Duration pausedFor) =>

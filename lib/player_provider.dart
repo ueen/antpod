@@ -582,13 +582,13 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// A pause in the last minute counts as played (outros, trailers), unless
+  /// A pause in the last 100 s counts as played (outros, trailers), unless
   /// it's switched off in the settings.
   void _maybeComplete() {
     if (!_settings.markPlayedNearEnd) return;
     if (_currentEpisode == null) return;
     if (_duration.inSeconds <= 0) return;
-    if (_exactPosition.inSeconds < _duration.inSeconds - 60) return;
+    if (_exactPosition < _duration - AppSettings.nearEnd) return;
     _finishCurrent();
   }
 

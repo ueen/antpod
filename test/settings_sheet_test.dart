@@ -110,7 +110,7 @@ void main() {
     expect(settings.rewindOnResume, isFalse);
     expect(prefs.getBool(AppSettings.keyRewindOnResume), isFalse);
 
-    await tester.tap(find.text('Played in the last minute'));
+    await tester.tap(find.text('Played near the end'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete played downloads'));
     await tester.pumpAndSettle();
@@ -132,7 +132,7 @@ void main() {
     await openSheet(tester);
 
     final order = [
-      'Appearance', 'Theme', 'Playback', 'Rewind on resume', 'Played in the last minute',
+      'Appearance', 'Theme', 'Playback', 'Rewind on resume', 'Played near the end',
       'Downloads', 'Delete played downloads', 'Privacy', 'Apple Podcasts',
       'Import & export', 'Export backup',
       'Import backup', 'Export subscriptions (OPML)', 'Import subscriptions (OPML)',

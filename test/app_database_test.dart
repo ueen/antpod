@@ -98,7 +98,7 @@ void main() {
       expect((await ep('a')).durationSeconds, 1800);
     });
 
-    test('a save in the last minute never marks it played', () async {
+    test('a save in the last 100 s never marks it played', () async {
       await db.insertEpisodes([_rss('a')]);
       await db.updatePlaybackPosition('a',
           positionMs: 1790000, durationMs: 1800000);
@@ -109,11 +109,11 @@ void main() {
       await db.insertEpisodes([_rss('a')]);
       await db.markFinished('a');
       await db.updatePlaybackPosition('a',
-          positionMs: 1790000, durationMs: 1800000);
+          positionMs: 1710000, durationMs: 1800000); // 90 s before the end
       expect((await ep('a')).isFinished, isTrue);
     });
 
-    test('a save before the last minute un-marks it', () async {
+    test('a save before the last 100 s un-marks it', () async {
       await db.insertEpisodes([_rss('a')]);
       await db.markFinished('a');
       await db.updatePlaybackPosition('a',

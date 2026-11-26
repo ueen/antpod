@@ -20,6 +20,8 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
+import 'app_settings.dart';
+
 part 'app_database.g.dart';
 
 // ─── Tables ───────────────────────────────────────────────────────────────────
@@ -539,16 +541,16 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Save the resume position (ms + seconds). It never marks the episode as
-  /// played: only a pause in the last minute or the natural end does that
+  /// played: only a pause in the last 100 s or the natural end does that
   /// (PlayerProvider), so the periodic saves can't close the player early.
-  /// A save before the last minute un-marks it: it's being listened again.
+  /// A save before the last 100 s un-marks it: it's being listened again.
   Future<void> updatePlaybackPosition(
     String id, {
     required int positionMs,
     required int durationMs,
   }) async {
     final posSeconds = positionMs ~/ 1000;
-    final nearEnd = durationMs > 0 && positionMs >= durationMs - 60000;
+    final nearEnd = durationMs > 0 && positionMs >= durationMs - AppSettings.nearEnd.inMilliseconds;
 
     await (update(episodes)..where((e) => e.id.equals(id))).write(
       EpisodesCompanion(
