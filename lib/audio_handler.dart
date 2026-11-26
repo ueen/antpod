@@ -34,6 +34,10 @@ class AntPodAudioHandler extends BaseAudioHandler
       },
     );
 
+    // When playback stopped, for [resumeRewind]: a pause, a call, unplugged
+    // headphones, a load that mustn't play.
+    _player.playingStream.listen((p) => _pausedAt = p ? null : DateTime.now());
+
     // The duration into the MediaItem once known (notification seek bar).
     _player.durationStream.listen((d) {
       if (d != null && !_warm && mediaItem.value != null) {
@@ -157,11 +161,24 @@ class AntPodAudioHandler extends BaseAudioHandler
 
   // ── BaseAudioHandler ──────────────────────────────────────────────────────
 
+  /// How far back to start when playback resumes after a pause of the given
+  /// length (the settings' rewind on resume). Set by PlayerProvider.
+  Duration Function(Duration pausedFor)? resumeRewind;
+
+  /// Since when the player hasn't been playing; null while it plays. A seek
+  /// while paused restarts it: the user picked that spot.
+  DateTime? _pausedAt;
+
   /// Nothing to play while only the warm-up clip is loaded (a headset button
-  /// right after launch or after closing the player).
+  /// right after launch or after closing the player). App, notification and
+  /// headset all resume through here, so they all get [resumeRewind].
   @override
   Future<void> play() async {
     if (_warm) return;
+    if (_pausedAt case final since?) {
+      final back = resumeRewind?.call(DateTime.now().difference(since)) ?? Duration.zero;
+      if (back > Duration.zero) await _player.seek(_clamped(_player.position - back));
+    }
     await _player.play();
   }
 
@@ -185,15 +202,21 @@ class AntPodAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) => _seek(position);
 
   @override
   Future<void> fastForward() =>
-      _player.seek(_clamped(_player.position + Duration(seconds: _forwardSeconds)));
+      _seek(_clamped(_player.position + Duration(seconds: _forwardSeconds)));
 
   @override
   Future<void> rewind() =>
-      _player.seek(_clamped(_player.position - Duration(seconds: _rewindSeconds)));
+      _seek(_clamped(_player.position - Duration(seconds: _rewindSeconds)));
+
+  /// The user's seeks: one while paused restarts the pause (see [_pausedAt]).
+  Future<void> _seek(Duration position) {
+    if (!_player.playing) _pausedAt = DateTime.now();
+    return _player.seek(position);
+  }
 
   /// [t] within the episode: not before 0, not past the end once it's known
   /// (a stream may not report its duration yet; seek then goes as asked).

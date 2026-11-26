@@ -257,10 +257,28 @@ class AppLocalizationsDe extends AppLocalizations {
   String get settingsMaterialYou => 'Material You';
 
   @override
-  String get settingsMaterialYouSub => 'Farben vom Hintergrundbild statt AntPods Braun (ab Android 12)';
+  String get settingsMaterialYouSub => 'Farben vom Hintergrundbild; sonst bleibt AntPod ameisenfarben';
+
+  @override
+  String get settingsTheme => 'Design';
+
+  @override
+  String get settingsThemeSystem => 'System';
+
+  @override
+  String get settingsThemeLight => 'Hell';
+
+  @override
+  String get settingsThemeDark => 'Dunkel';
 
   @override
   String get settingsPlayback => 'Wiedergabe';
+
+  @override
+  String get settingsRewindOnResume => 'Beim Fortsetzen zurückspulen';
+
+  @override
+  String get settingsRewindOnResumeSub => 'Nach einer Pause ab 5 Minuten geht es 10 Sekunden zurück, damit du wieder reinkommst';
 
   @override
   String get settingsMarkPlayedNearEnd => 'In der letzten Minute gehört';

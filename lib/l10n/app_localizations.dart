@@ -534,14 +534,50 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMaterialYouSub.
   ///
   /// In en, this message translates to:
-  /// **'Colours from your wallpaper instead of AntPod\'s brown (Android 12 and later)'**
+  /// **'Colours from your wallpaper; otherwise AntPod stays ant coloured'**
   String get settingsMaterialYouSub;
+
+  /// No description provided for @settingsTheme.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get settingsTheme;
+
+  /// No description provided for @settingsThemeSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get settingsThemeSystem;
+
+  /// No description provided for @settingsThemeLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get settingsThemeLight;
+
+  /// No description provided for @settingsThemeDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get settingsThemeDark;
 
   /// No description provided for @settingsPlayback.
   ///
   /// In en, this message translates to:
   /// **'Playback'**
   String get settingsPlayback;
+
+  /// No description provided for @settingsRewindOnResume.
+  ///
+  /// In en, this message translates to:
+  /// **'Rewind on resume'**
+  String get settingsRewindOnResume;
+
+  /// No description provided for @settingsRewindOnResumeSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Back 10 seconds after a pause of 5 minutes or more, to pick up the thread'**
+  String get settingsRewindOnResumeSub;
 
   /// No description provided for @settingsMarkPlayedNearEnd.
   ///

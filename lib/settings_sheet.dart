@@ -271,16 +271,22 @@ class _SettingsSheetState extends State<_SettingsSheet> {
               style: Theme.of(context).textTheme.titleLarge
                   ?.copyWith(fontWeight: FontWeight.w700)),
         ),
-        if (widget.dynamicColors) ...[
-          _header(l10n.settingsAppearance, cs),
+        _header(l10n.settingsAppearance, cs),
+        _theme(l10n, cs, settings),
+        if (widget.dynamicColors)
           _switch(cs,
               icon: Icons.palette_rounded,
               title: l10n.settingsMaterialYou,
               subtitle: l10n.settingsMaterialYouSub,
               value: settings.materialYou,
               onChanged: (v) => settings.materialYou = v),
-        ],
         _header(l10n.settingsPlayback, cs),
+        _switch(cs,
+            icon: Icons.replay_10_rounded,
+            title: l10n.settingsRewindOnResume,
+            subtitle: l10n.settingsRewindOnResumeSub,
+            value: settings.rewindOnResume,
+            onChanged: (v) => settings.rewindOnResume = v),
         _switch(cs,
             icon: Icons.done_all_rounded,
             title: l10n.settingsMarkPlayedNearEnd,
@@ -340,6 +346,30 @@ class _SettingsSheetState extends State<_SettingsSheet> {
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
         child: Text(text, style: TextStyle(
             color: cs.primary, fontSize: 14, fontWeight: FontWeight.w600)),
+      );
+
+  /// System, light or dark: three segments under the title.
+  Widget _theme(AppLocalizations l10n, ColorScheme cs, AppSettings settings) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+        leading: Icon(Icons.contrast_rounded, color: cs.primary),
+        title: Text(l10n.settingsTheme),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<ThemeMode>(
+              showSelectedIcon: false,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              segments: [
+                ButtonSegment(value: ThemeMode.system, label: Text(l10n.settingsThemeSystem)),
+                ButtonSegment(value: ThemeMode.light, label: Text(l10n.settingsThemeLight)),
+                ButtonSegment(value: ThemeMode.dark, label: Text(l10n.settingsThemeDark)),
+              ],
+              selected: {settings.themeMode},
+              onSelectionChanged: (s) => settings.themeMode = s.single,
+            ),
+          ),
+        ),
       );
 
   Widget _switch(ColorScheme cs, {

@@ -66,6 +66,7 @@ class AntPodApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final materialYou = context.select<AppSettings, bool>((s) => s.materialYou);
+    final themeMode = context.select<AppSettings, ThemeMode>((s) => s.themeMode);
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
         // Material You: the wallpaper's colors where the system has them
@@ -81,7 +82,7 @@ class AntPodApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: ThemeData(colorScheme: lightScheme, useMaterial3: true),
           darkTheme: ThemeData(colorScheme: darkScheme, useMaterial3: true),
-          themeMode: ThemeMode.system,
+          themeMode: themeMode,
           localizationsDelegates: const [
             AppLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,

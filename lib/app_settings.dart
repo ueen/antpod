@@ -1,4 +1,5 @@
 // lib/app_settings.dart
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,11 +12,22 @@ class AppSettings extends ChangeNotifier {
   static const keyMaterialYou = 'settings_material_you';
   static const keyMarkPlayedNearEnd = 'settings_mark_played_near_end';
   static const keyDeletePlayedDownloads = 'settings_delete_played_downloads';
+  static const keyTheme = 'settings_theme';
+  static const keyRewindOnResume = 'settings_rewind_on_resume';
 
   /// Every key, for the backup.
   static const keys = [
     keyMaterialYou, keyMarkPlayedNearEnd, keyDeletePlayedDownloads,
+    keyTheme, keyRewindOnResume,
   ];
+
+  /// System, light or dark; stored by name ('system', 'light', 'dark').
+  ThemeMode get themeMode => ThemeMode.values.asNameMap()[_prefs.getString(keyTheme)] ??
+      ThemeMode.system;
+  set themeMode(ThemeMode v) {
+    _prefs.setString(keyTheme, v.name);
+    notifyListeners();
+  }
 
   /// Colors from the wallpaper (Android 12+) instead of AntPod's brown.
   bool get materialYou => _prefs.getBool(keyMaterialYou) ?? false;
@@ -29,6 +41,20 @@ class AppSettings extends ChangeNotifier {
   bool get deletePlayedDownloads =>
       _prefs.getBool(keyDeletePlayedDownloads) ?? true;
   set deletePlayedDownloads(bool v) => _set(keyDeletePlayedDownloads, v);
+
+  /// Resuming after a long pause starts a little earlier, to pick the
+  /// thread up again. The settings sheet's text names these two numbers.
+  bool get rewindOnResume => _prefs.getBool(keyRewindOnResume) ?? true;
+  set rewindOnResume(bool v) => _set(keyRewindOnResume, v);
+
+  static const resumeRewindAfter = Duration(minutes: 5);
+  static const resumeRewindBy = Duration(seconds: 10);
+
+  /// How far back playback resumes after a pause of [pausedFor].
+  Duration resumeRewind(Duration pausedFor) =>
+      rewindOnResume && pausedFor >= resumeRewindAfter
+          ? resumeRewindBy
+          : Duration.zero;
 
   void _set(String key, bool v) {
     // The in-memory value changes at once; the write to disk follows.

@@ -83,6 +83,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     });
 
     audioHandler.onUserPause = _maybeComplete;
+    audioHandler.resumeRewind = _settings.resumeRewind;
     audioHandler.onPlayerError = _onPlayerError;
     _restoreSettings();
 
@@ -462,6 +463,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Again after a failed load (or a restore): from where it was, which the
     // episode row may not have caught up with.
     final again = _currentEpisode?.id == episode.id;
+    // When it was last played, for the rewind on resume: the row the player
+    // watches is newer than one from a list.
+    final lastPlayed = (again ? _currentEpisode! : episode).lastPlayed;
     _switchTo(episode);
     _currentEpisode = episode;
     _persistLastEpisode(episode.id);
@@ -469,7 +473,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     final startMs = episode.isFinished
         ? 0
-        : again ? _position.inMilliseconds : episode.lastPositionMs;
+        : _resumeAt(again ? _position.inMilliseconds : episode.lastPositionMs, lastPlayed);
     final gen = _beginSettle(startMs, episode.durationSeconds);
     final localPath = _resolveLocalPath(episode.localPath);
     _isLoading = localPath == null && episode.audioUrl.isNotEmpty;
@@ -500,6 +504,14 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     } finally {
       _endSettle(gen);
     }
+  }
+
+  /// Where a load picks an episode up that stopped at [ms]: a little earlier
+  /// when it was last played long ago (the settings' rewind on resume).
+  int _resumeAt(int ms, DateTime? lastPlayed) {
+    if (ms <= 0 || lastPlayed == null) return ms;
+    final back = _settings.resumeRewind(DateTime.now().difference(lastPlayed));
+    return (ms - back.inMilliseconds).clamp(0, ms);
   }
 
   void _onEpisodeUpdated(Episode? updated) {

@@ -257,10 +257,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsMaterialYou => 'Material You';
 
   @override
-  String get settingsMaterialYouSub => 'Colours from your wallpaper instead of AntPod\'s brown (Android 12 and later)';
+  String get settingsMaterialYouSub => 'Colours from your wallpaper; otherwise AntPod stays ant coloured';
+
+  @override
+  String get settingsTheme => 'Theme';
+
+  @override
+  String get settingsThemeSystem => 'System';
+
+  @override
+  String get settingsThemeLight => 'Light';
+
+  @override
+  String get settingsThemeDark => 'Dark';
 
   @override
   String get settingsPlayback => 'Playback';
+
+  @override
+  String get settingsRewindOnResume => 'Rewind on resume';
+
+  @override
+  String get settingsRewindOnResumeSub => 'Back 10 seconds after a pause of 5 minutes or more, to pick up the thread';
 
   @override
   String get settingsMarkPlayedNearEnd => 'Played in the last minute';
