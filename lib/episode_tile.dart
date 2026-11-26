@@ -755,7 +755,7 @@ class _ProgressBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LinearProgressIndicator(
         value: value.clamp(0.0, 1.0),
-        minHeight: 2,
+        minHeight: 3, // the play ring's and the spinner's stroke
         backgroundColor: color.withValues(alpha: 0.15),
         valueColor: AlwaysStoppedAnimation(color),
       );

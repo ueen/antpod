@@ -185,8 +185,10 @@ class _MiniCard extends StatelessWidget {
               ),
 
               Padding(
-                // More room below the cover than above: the progress bar.
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                // The cover centered above the progress bar: as far from
+                // it as from the card's top.
+                padding:
+                    const EdgeInsets.fromLTRB(12, 0, 12, _MiniProgress.height),
                 child: Row(
                   children: [
                     ClipRRect(
@@ -284,6 +286,9 @@ class _MiniCard extends StatelessWidget {
 class _MiniProgress extends StatelessWidget {
   const _MiniProgress();
 
+  /// The spinner's and the episode tiles' progress stroke.
+  static const height = 3.0;
+
   @override
   Widget build(BuildContext context) {
     final player = context.read<PlayerProvider>();
@@ -296,7 +301,7 @@ class _MiniProgress extends StatelessWidget {
         valueListenable: player.positionListenable,
         builder: (_, pos, __) => LinearProgressIndicator(
           value: player.progressAt(pos),
-          minHeight: 3, // the episode tiles' progress ring
+          minHeight: height,
           backgroundColor: Colors.transparent,
           color: cs.inversePrimary,
         ),
