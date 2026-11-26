@@ -199,23 +199,26 @@ class _MiniPlayerState extends State<MiniPlayer> {
                         () => context.read<PlayerProvider>().skipBackward()),
                     SizedBox(
                       width: 36, height: 36,
-                      child: isLoading
+                      child: _playSwitch(isLoading
                           ? Padding(
+                              key: const ValueKey('loading'),
                               padding: const EdgeInsets.all(8),
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: cs.inversePrimary),
                             )
                           : !canPlay
                               ? Icon(Icons.wifi_off_rounded,
+                                  key: const ValueKey('offline'),
                                   color: cs.inversePrimary.withValues(alpha: 0.5), size: 22)
                               : IconButton(
+                                  key: ValueKey(isPlaying),
                                   onPressed: () => context.read<PlayerProvider>().togglePlayPause(),
                                   icon: Icon(
                                     isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                     color: cs.inversePrimary, size: 28),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
-                                ),
+                                )),
                     ),
                     _iconBtn(cs,
                         _skipForwardIconDirect(forwardSec) ?? _skipRewindIcon(forwardSec),
@@ -336,6 +339,24 @@ class _SeekBarState extends State<_SeekBar> {
     );
   }
 }
+
+/// Play, pause, loading and offline cross-fade with a slight zoom; each
+/// state's child carries its own key. Passthrough keeps the button's tight
+/// size, so its tap area stays as it was.
+Widget _playSwitch(Widget child) => AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      layoutBuilder: (current, previous) => Stack(
+        fit: StackFit.passthrough,
+        alignment: Alignment.center,
+        children: [...previous, if (current != null) current],
+      ),
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(
+            scale: Tween(begin: 0.7, end: 1.0).animate(anim), child: child),
+      ),
+      child: child,
+    );
 
 // Shared skip-icon helpers (used by mini player and bottom sheet)
 
@@ -643,22 +664,25 @@ class _PlayerSheet extends StatelessWidget {
                   width: 64, height: 64,
                   decoration: BoxDecoration(
                       shape: BoxShape.circle, color: cs.primary),
-                  child: player.isLoading
+                  child: _playSwitch(player.isLoading
                       ? Padding(
+                          key: const ValueKey('loading'),
                           padding: const EdgeInsets.all(16),
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: cs.onPrimary),
                         )
                       : (player.isOffline && ep.localPath == null)
                           ? Icon(Icons.wifi_off_rounded,
+                              key: const ValueKey('offline'),
                               color: cs.onPrimary.withValues(alpha: 0.6), size: 30)
                           : IconButton(
+                              key: ValueKey(player.isPlaying),
                               onPressed: player.togglePlayPause,
                               icon: Icon(
                                 player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                 color: cs.onPrimary, size: 34,
                               ),
-                            ),
+                            )),
                 ),
 
                 // Skip forward (long press to choose seconds)
