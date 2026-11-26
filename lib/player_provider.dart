@@ -35,6 +35,13 @@ class PlayerProvider extends ChangeNotifier {
   static const _prefLastEpisodeId = 'player_last_episode_id';
   int _lastSavedMs = 0;
 
+  /// True while a new source loads (episode switch, source pivot): the
+  /// player's position/duration events then still belong to the old source
+  /// (or are the 0 from stop()), so they're neither shown nor saved.
+  bool _settling = false;
+  /// Bumped per source load, so only the latest one ends [_settling].
+  int _sourceGen = 0;
+
   bool get isOffline => _isOffline;
 
   PlayerProvider(this._db) {
@@ -56,7 +63,7 @@ class PlayerProvider extends ChangeNotifier {
 
     handler.playbackState.listen((state) {
       _isPlaying = state.playing;
-      _position = state.updatePosition;
+      if (!_settling) _position = state.updatePosition;
       // Skip idle — fired transiently by _player.stop() before setUrl(), which
       // would clear _isLoading and cause the spinner to flash off and back on.
       if (state.processingState != AudioProcessingState.idle) {
@@ -66,7 +73,8 @@ class PlayerProvider extends ChangeNotifier {
              state.processingState == AudioProcessingState.buffering);
       }
 
-      if (state.processingState == AudioProcessingState.completed) {
+      if (state.processingState == AudioProcessingState.completed &&
+          !_settling) {
         _isPlaying = false;
         _finishCurrent();
       }
@@ -74,10 +82,11 @@ class PlayerProvider extends ChangeNotifier {
     });
 
     handler.player.durationStream.listen((d) {
-      if (d != null) { _duration = d; notifyListeners(); }
+      if (d != null && !_settling) { _duration = d; notifyListeners(); }
     });
 
     handler.player.positionStream.listen((p) {
+      if (_settling) return;
       _position = p;
       final ms = p.inMilliseconds;
       // abs(): a rewind or skip back must be saved too, not only once
@@ -223,12 +232,38 @@ class PlayerProvider extends ChangeNotifier {
       _position = Duration(milliseconds: ep.lastPositionMs);
       _duration = Duration(seconds: ep.durationSeconds);
       _audioReady = false;
+      _settling = false;
+      _sourceGen++;
       _loadChapters(ep);
       _db.livePositionEpisodeId = ep.id;
       _episodeWatchSub?.cancel();
       _episodeWatchSub = _db.watchEpisode(ep.id).listen(_onEpisodeUpdated);
       notifyListeners();
     } catch (_) {}
+  }
+
+  /// Start loading a new source: from now until [_endSettle] the shown
+  /// position stays at [startMs] and the duration at [durationSeconds] (the
+  /// feed's, until the audio reports its own). Returns the load's token.
+  int _beginSettle(int startMs, int durationSeconds) {
+    _settling = true;
+    _position = Duration(milliseconds: startMs);
+    if (durationSeconds > 0) _duration = Duration(seconds: durationSeconds);
+    _lastSavedMs = startMs;
+    return ++_sourceGen;
+  }
+
+  /// The source of load [gen] is in: take the player's position and
+  /// duration again. A newer load (or closing the player) has its own say.
+  void _endSettle(int gen) {
+    if (gen != _sourceGen || !_settling) return;
+    _settling = false;
+    final player = (audioHandler as AntPodAudioHandler).player;
+    _position = player.position;
+    final d = player.duration;
+    if (d != null && d > Duration.zero) _duration = d;
+    _lastSavedMs = _position.inMilliseconds;
+    notifyListeners();
   }
 
   /// Switching episodes: save exactly where the outgoing one stopped (the
@@ -292,6 +327,8 @@ class PlayerProvider extends ChangeNotifier {
     _episodeWatchSub = null;
     _currentEpisode = null;
     _audioReady = false;
+    _settling = false;
+    _sourceGen++;
     _chapters = [];
     _chaptersKey = null;
     // Before the save below, so the lists pick up the final position.
@@ -322,12 +359,11 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> load(Episode episode) async {
     if (_currentEpisode?.id == episode.id) return;
     _switchTo(episode);
-    _lastSavedMs = 0;
     _currentEpisode = episode;
     _persistLastEpisode(episode.id);
     _loadChapters(episode);
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
-    _position = Duration(milliseconds: startMs);
+    final gen = _beginSettle(startMs, episode.durationSeconds);
     final localPath = _resolveLocalPath(episode.localPath);
     _isLoading = localPath == null;
     _audioReady = true;
@@ -347,6 +383,7 @@ class PlayerProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('[player] load error: $e');
     } finally {
+      _endSettle(gen);
       _isLoading = false;
       notifyListeners();
     }
@@ -371,13 +408,12 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
     _switchTo(episode);
-    _lastSavedMs = 0;
     _currentEpisode = episode;
     _persistLastEpisode(episode.id);
     _loadChapters(episode);
 
     final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
-    _position = Duration(milliseconds: startMs);
+    final gen = _beginSettle(startMs, episode.durationSeconds);
     final localPath = _resolveLocalPath(episode.localPath);
     _isLoading = localPath == null && episode.audioUrl.isNotEmpty;
     _audioReady = true;
@@ -389,6 +425,7 @@ class PlayerProvider extends ChangeNotifier {
 
     if (episode.audioUrl.isEmpty && localPath == null) {
       debugPrint('[player] no audio source for episode ${episode.id}');
+      _settling = false;
       _isLoading = false;
       notifyListeners();
       return;
@@ -408,6 +445,8 @@ class PlayerProvider extends ChangeNotifier {
       debugPrint('[player] play error: $e');
       _isLoading = false;
       notifyListeners();
+    } finally {
+      _endSettle(gen);
     }
   }
 
@@ -446,16 +485,19 @@ class PlayerProvider extends ChangeNotifier {
     final handler = audioHandler as AntPodAudioHandler;
     final wasPlaying = _isPlaying;
     final savedPos = _position;
+    final gen = _beginSettle(
+        savedPos.inMilliseconds, _duration.inSeconds);
     try {
       await handler.player.stop();
       if (localPath != null) {
-        await handler.player.setFilePath(localPath);
+        await handler.player.setFilePath(localPath, initialPosition: savedPos);
       } else {
-        await handler.player.setUrl(audioUrl!);
+        await handler.player.setUrl(audioUrl!, initialPosition: savedPos);
       }
-      await handler.player.seek(savedPos);
-      if (wasPlaying) await handler.player.play();
+      // Not awaited: play()'s future only completes once playback pauses.
+      if (wasPlaying) unawaited(handler.player.play().catchError((_) {}));
     } catch (_) {}
+    _endSettle(gen);
     _isLoading = localPath == null;
     notifyListeners();
   }

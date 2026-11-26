@@ -1,4 +1,5 @@
 // lib/audio_handler.dart
+import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
@@ -63,7 +64,13 @@ class AntPodAudioHandler extends BaseAudioHandler
       } else {
         await _player.setUrl(audioUrl, initialPosition: startPosition);
       }
-      if (andPlay) await _player.play();
+      // Not awaited: just_audio's play() future only completes once playback
+      // pauses or stops, and callers wait for the source to be loaded.
+      if (andPlay) {
+        unawaited(_player.play().catchError((Object e) {
+          debugPrint('[audio] play error: $e');
+        }));
+      }
     } on PlayerInterruptedException {
       // A newer _setup() call interrupted this one — expected, ignore.
     } catch (e) {
