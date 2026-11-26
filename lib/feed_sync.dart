@@ -56,6 +56,7 @@ class FeedSync {
     await Future.wait([for (var i = 0; i < min(_parallel, pods.length); i++) worker()]);
     await writer.close();
     if (anyLoaded && failed.isNotEmpty) await db.countFeedFailures(failed);
+    await db.foldOffFeedTwins();
   }
 
   /// Refreshes one subscribed podcast (by id). A failure here isn't counted:
@@ -66,6 +67,7 @@ class FeedSync {
     final update = await _fetch(pod);
     if (update == null) return;
     await db.saveFeedRefresh(update.episodes, {pod.id: update.podcast});
+    await db.foldOffFeedTwins(pod.id);
   }
 
   /// Subscribes to [result]. Fetches first, then writes everything in one

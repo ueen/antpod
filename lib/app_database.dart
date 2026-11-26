@@ -464,21 +464,24 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// [old], the same episode as the feed's [now] under another guid:
-  /// - In use (in the player, started, downloaded or downloading): kept as
-  ///   a temp episode, off the feed, to be finished on its own audio; then
-  ///   it folds in (markFinished), or the temp rules take it.
-  /// - Finished: [now] takes the played state, unless played on its own,
-  ///   and the file, so the episode isn't new again; [old] goes.
-  /// - Untouched: it goes.
+  /// - Busy (in the player, downloading), or started on audio that isn't
+  ///   [sameAudio] (an edit): kept as a temp episode, off the feed, to be
+  ///   finished on its own audio; then it folds in (markFinished), or a
+  ///   later refresh folds it ([foldOffFeedTwins]), or the temp rules take it.
+  /// - Else [now] takes its played state (position, finished), unless [now]
+  ///   was played since on its own, and its file; [old] goes.
   /// A favourite or WiFi mark moves to [now] either way. [done]: [old] was
   /// just finished in the player, which closes.
   Future<void> _foldInto(Episode old, Episode now, {bool done = false}) async {
     if (old.isFavorite && !now.isFavorite) await setFavorite(now.id, true);
-    final inUse = !done &&
-        (old.id == livePositionEpisodeId ||
-            old.downloadTaskId != null ||
-            (!old.isFinished && (old.isDownloaded || old.lastPositionMs > 0)));
-    if (inUse) {
+    // A finished download keeps its task id.
+    bool downloading(Episode e) => e.downloadTaskId != null && !e.isDownloaded;
+    final busy = old.id == livePositionEpisodeId || downloading(old);
+    final started =
+        !old.isFinished && (old.isDownloaded || old.lastPositionMs > 0);
+    if (!done &&
+        (busy ||
+            (started && !sameAudio(old.durationSeconds, now.durationSeconds)))) {
       if (old.isSubscribed || old.isFavorite) {
         await (update(episodes)..where((e) => e.id.equals(old.id))).write(
             const EpisodesCompanion(
@@ -486,9 +489,14 @@ class AppDatabase extends _$AppDatabase {
       }
       return;
     }
-    final takePlayed =
-        old.isFinished && now.lastPlayed == null && now.lastPositionMs == 0;
-    final free = !now.isDownloaded && now.downloadTaskId == null;
+    final played = old.isFinished || old.lastPositionMs > 0;
+    final nowPlayed = now.lastPlayed != null || now.lastPositionMs > 0;
+    final takePlayed = played &&
+        (!nowPlayed ||
+            (old.lastPlayed != null &&
+                now.lastPlayed != null &&
+                old.lastPlayed!.isAfter(now.lastPlayed!)));
+    final free = !now.isDownloaded && !downloading(now);
     final takeFile = old.isDownloaded && free;
     if (old.isDownloaded && !takeFile && old.localPath != null) {
       final f = File(old.localPath!);
@@ -496,7 +504,7 @@ class AppDatabase extends _$AppDatabase {
     }
     await (update(episodes)..where((e) => e.id.equals(now.id)))
         .write(EpisodesCompanion(
-      isFinished: takePlayed ? const Value(true) : const Value.absent(),
+      isFinished: takePlayed ? Value(old.isFinished) : const Value.absent(),
       lastPositionMs:
           takePlayed ? Value(old.lastPositionMs) : const Value.absent(),
       playbackPositionSeconds: takePlayed
@@ -505,12 +513,45 @@ class AppDatabase extends _$AppDatabase {
       lastPlayed: takePlayed ? Value(old.lastPlayed) : const Value.absent(),
       isDownloaded: takeFile ? const Value(true) : const Value.absent(),
       localPath: takeFile ? Value(old.localPath) : const Value.absent(),
-      markedForDownload: old.markedForDownload && free && !takePlayed
+      markedForDownload: old.markedForDownload && free && !old.isFinished
           ? const Value(true)
           : const Value.absent(),
     ));
     await (delete(episodes)..where((e) => e.id.equals(old.id))).go();
   }
+
+  /// The off-feed copies subscribed podcasts keep of episodes their feeds
+  /// have under another guid ([_foldInto] left them in use) fold in once
+  /// they're free. A refresh runs this even when no feed changed: an
+  /// unchanged feed isn't parsed, so nothing else would look again.
+  Future<void> foldOffFeedTwins([String? podcastId]) => transaction(() async {
+        final subscribed = [
+          for (final p in await getAllPodcasts())
+            if (podcastId == null || p.id == podcastId) p.id,
+        ];
+        if (subscribed.isEmpty) return;
+        final off = await (select(episodes)
+              ..where((e) =>
+                  e.isSubscribed.equals(false) &
+                  e.podcastId.isIn(subscribed)))
+            .get();
+        final byPodcast = <String, List<Episode>>{};
+        for (final e in off) {
+          byPodcast.putIfAbsent(e.podcastId, () => []).add(e);
+        }
+        for (final MapEntry(key: id, value: olds) in byPodcast.entries) {
+          final rows = await (select(episodes)
+                ..where((e) =>
+                    e.podcastId.equals(id) & e.isSubscribed.equals(true)))
+              .get();
+          final facts = rows.map(rowFacts).toList();
+          for (final old in olds) {
+            final twin = twinOf(rowFacts(old), facts);
+            final now = twin == null ? null : await getEpisode(twin);
+            if (now != null) await _foldInto(old, now);
+          }
+        }
+      });
 
   /// A temp episode just finished, the off-feed copy of one its subscribed
   /// feed has under another guid (or a search stub): it folds into that

@@ -305,16 +305,39 @@ void main() {
     final republished =
         _rss('b', title: ' kingdom  come 1', date: DateTime(2026, 1, 1, 12));
 
-    test('a republished episode in use stays off the feed until finished',
-        () async {
+    Future<void> startA() async {
       await refresh([older, _rss('a', title: 'Kingdom Come 1')]);
       await set('a', EpisodesCompanion(
           lastPositionMs: const Value(600000),
           lastPlayed: Value(DateTime(2026, 1, 2)),
           isFavorite: const Value(true),
           isDownloaded: const Value(true),
-          localPath: const Value('/files/a.mp3')));
-      await refresh([older, republished]);
+          localPath: const Value('/files/a.mp3'),
+          downloadTaskId: const Value('task-a'))); // a done download keeps it
+    }
+
+    test('a started re-upload of the same audio folds in at once', () async {
+      await startA();
+      await refresh([
+        older,
+        _rss('b', title: 'Kingdom Come 1', durationSeconds: 1801,
+            date: DateTime(2026, 1, 1, 12)),
+      ]);
+      expect(await db.getEpisode('a'), isNull);
+      final b = await ep('b');
+      expect(b.lastPositionMs, 600000);
+      expect(b.isFinished, isFalse);
+      expect(b.isFavorite, isTrue);
+      expect(b.isDownloaded, isTrue);
+      expect(b.localPath, '/files/a.mp3');
+    });
+
+    test('one started on an edit stays off the feed until finished',
+        () async {
+      await startA();
+      final edit = _rss('b', title: ' kingdom  come 1', durationSeconds: 1700,
+          date: DateTime(2026, 1, 1, 12));
+      await refresh([older, edit]);
 
       var a = await ep('a');
       expect(a.isSubscribed, isFalse, reason: 'a temp episode now');
@@ -323,9 +346,9 @@ void main() {
       var b = await ep('b');
       expect(b.isFavorite, isTrue);
       expect(b.lastPositionMs, 0);
-      expect(b.isFinished, isFalse);
 
-      await refresh([older, republished]);
+      await refresh([older, edit]);
+      await db.foldOffFeedTwins();
       a = await ep('a');
       expect(a.lastPositionMs, 600000, reason: 'a refresh leaves it be');
 
@@ -336,6 +359,22 @@ void main() {
       expect(b.lastPositionMs, 600000);
       expect(b.isDownloaded, isTrue);
       expect(b.localPath, '/files/a.mp3');
+    });
+
+    test('one in the player folds in on a refresh once it left', () async {
+      await startA();
+      db.livePositionEpisodeId = 'a';
+      await refresh([older, republished]);
+      expect((await ep('a')).isSubscribed, isFalse);
+
+      await db.foldOffFeedTwins();
+      expect((await ep('a')).isSubscribed, isFalse, reason: 'still playing');
+
+      db.livePositionEpisodeId = null;
+      await db.saveFeedRefresh(const [], const {}); // the feed didn't change
+      await db.foldOffFeedTwins();
+      expect(await db.getEpisode('a'), isNull);
+      expect((await ep('b')).lastPositionMs, 600000);
     });
 
     test('a finished one folds in at once', () async {

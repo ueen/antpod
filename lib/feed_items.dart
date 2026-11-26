@@ -55,6 +55,12 @@ bool sameEpisode(ItemFacts a, ItemFacts b, {bool strict = false}) {
   return diff <= (strict ? 2 : max(60, max(a.seconds, b.seconds) ~/ 10));
 }
 
+/// Whether two copies of one episode, [a] and [b] seconds long, carry the
+/// same audio, so a position in one is the same moment in the other: a
+/// re-upload, re-encoded, is a second or two off. An unknown length counts.
+bool sameAudio(int a, int b) =>
+    a <= 0 || b <= 0 || (a - b).abs() <= max(5, max(a, b) ~/ 100);
+
 bool _sameDay(DateTime a, DateTime b) {
   final la = a.toLocal(), lb = b.toLocal();
   return (la.year == lb.year && la.month == lb.month && la.day == lb.day) ||
