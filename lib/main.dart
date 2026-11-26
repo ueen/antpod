@@ -96,6 +96,7 @@ class AntPodApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final materialYou = context.select<AppSettings, bool>((s) => s.materialYou);
     final themeMode = context.select<AppSettings, ThemeMode>((s) => s.themeMode);
+    final language = context.select<AppSettings, String?>((s) => s.language);
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
         // Material You: the wallpaper's colors where the system has them
@@ -118,6 +119,10 @@ class AntPodApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           supportedLocales: AppLocalizations.supportedLocales,
+          // The language picked in the settings; null (or one this version
+          // doesn't have, from a newer backup) follows the phone.
+          locale: AppLocalizations.supportedLocales
+              .where((l) => l.languageCode == language).firstOrNull,
           home: HomeScreen(initialLink: initialLink),
         );
       },

@@ -293,6 +293,12 @@ class AppLocalizationsDe extends AppLocalizations {
   String get settingsThemeDark => 'Dunkel';
 
   @override
+  String get settingsLanguage => 'Sprache';
+
+  @override
+  String get settingsLanguageSystem => 'System';
+
+  @override
   String get settingsPlayback => 'Wiedergabe';
 
   @override

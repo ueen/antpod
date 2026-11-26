@@ -293,6 +293,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get settingsThemeDark => 'Oscuro';
 
   @override
+  String get settingsLanguage => 'Idioma';
+
+  @override
+  String get settingsLanguageSystem => 'Sistema';
+
+  @override
   String get settingsPlayback => 'Reproducción';
 
   @override

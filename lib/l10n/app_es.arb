@@ -84,6 +84,8 @@
   "settingsThemeSystem": "Sistema",
   "settingsThemeLight": "Claro",
   "settingsThemeDark": "Oscuro",
+  "settingsLanguage": "Idioma",
+  "settingsLanguageSystem": "Sistema",
   "settingsPlayback": "Reproducción",
   "settingsRewindOnResume": "Retroceder al reanudar",
   "settingsRewindOnResumeSub": "Retrocede 3 segundos tras una pausa de 5 minutos o más",

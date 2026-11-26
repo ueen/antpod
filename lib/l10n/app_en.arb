@@ -112,6 +112,8 @@
   "settingsThemeSystem": "System",
   "settingsThemeLight": "Light",
   "settingsThemeDark": "Dark",
+  "settingsLanguage": "Language",
+  "settingsLanguageSystem": "System",
   "settingsPlayback": "Playback",
   "settingsRewindOnResume": "Rewind on resume",
   "settingsRewindOnResumeSub": "Back 3 seconds after a pause of 5 minutes or more",

@@ -280,6 +280,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
               subtitle: l10n.settingsMaterialYouSub,
               value: settings.materialYou,
               onChanged: (v) => settings.materialYou = v),
+        _language(l10n, cs, settings),
         _header(l10n.settingsPlayback, cs),
         _switch(cs,
             icon: Icons.replay_10_rounded,
@@ -378,6 +379,40 @@ class _SettingsSheetState extends State<_SettingsSheet> {
           ),
         ),
       );
+
+  /// Languages in their own names, so each can be found from any other.
+  static const _languages = {
+    'en': 'English', 'de': 'Deutsch', 'fr': 'Français', 'es': 'Español',
+  };
+
+  /// The phone's language or one of the app's: a menu from the tile.
+  Widget _language(AppLocalizations l10n, ColorScheme cs, AppSettings settings) {
+    String name(String? code) =>
+        _languages[code] ?? l10n.settingsLanguageSystem;
+    final current = _languages.containsKey(settings.language) ? settings.language : null;
+    return MenuAnchor(
+      // Under the tile's title (24 padding + 24 icon + 16 gap, less the
+      // item's own 12).
+      alignmentOffset: const Offset(52, 0),
+      menuChildren: [
+        for (final code in [null, ..._languages.keys])
+          MenuItemButton(
+            trailingIcon: code == current
+                ? Icon(Icons.check_rounded, color: cs.primary)
+                : null,
+            onPressed: () => settings.language = code,
+            child: Text(name(code)),
+          ),
+      ],
+      builder: (_, menu, __) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+        leading: Icon(Icons.translate_rounded, color: cs.primary),
+        title: Text(l10n.settingsLanguage),
+        subtitle: Text(name(current)),
+        onTap: () => menu.isOpen ? menu.close() : menu.open(),
+      ),
+    );
+  }
 
   Widget _switch(ColorScheme cs, {
     required IconData icon,

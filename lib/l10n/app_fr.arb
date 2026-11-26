@@ -84,6 +84,8 @@
   "settingsThemeSystem": "Système",
   "settingsThemeLight": "Clair",
   "settingsThemeDark": "Sombre",
+  "settingsLanguage": "Langue",
+  "settingsLanguageSystem": "Système",
   "settingsPlayback": "Lecture",
   "settingsRewindOnResume": "Reculer à la reprise",
   "settingsRewindOnResumeSub": "Recule de 3 secondes après une pause de 5 minutes ou plus",

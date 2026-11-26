@@ -17,7 +17,9 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_settings.dart';
 import 'l10n/app_localizations.dart';
 
 class DownloadNotificationItem {
@@ -63,7 +65,7 @@ class DownloadNotification {
     if (items.isEmpty) return clear();
     return _enqueue(() async {
       await _ensureInitialized();
-      final l10n = _l10n();
+      final l10n = await _l10n();
       final pct = NumberFormat.percentPattern(l10n.localeName);
       String fmt(double p) => pct.format(p.clamp(0.0, 1.0));
 
@@ -159,11 +161,14 @@ class DownloadNotification {
     });
   }
 
-  static AppLocalizations _l10n() {
-    final locale = PlatformDispatcher.instance.locale;
+  /// The language picked in the settings, else the phone's, else English.
+  static Future<AppLocalizations> _l10n() async {
+    final prefs = await SharedPreferences.getInstance();
+    final language = prefs.getString(AppSettings.keyLanguage) ??
+        PlatformDispatcher.instance.locale.languageCode;
     final supported = AppLocalizations.supportedLocales
-        .any((l) => l.languageCode == locale.languageCode);
+        .any((l) => l.languageCode == language);
     return lookupAppLocalizations(
-        supported ? Locale(locale.languageCode) : const Locale('en'));
+        supported ? Locale(language) : const Locale('en'));
   }
 }

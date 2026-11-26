@@ -293,6 +293,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsThemeDark => 'Sombre';
 
   @override
+  String get settingsLanguage => 'Langue';
+
+  @override
+  String get settingsLanguageSystem => 'Système';
+
+  @override
   String get settingsPlayback => 'Lecture';
 
   @override

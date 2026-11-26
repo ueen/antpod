@@ -16,11 +16,12 @@ class AppSettings extends ChangeNotifier {
   static const keyRewindOnResume = 'settings_rewind_on_resume';
   static const keyTrendsCountry = 'settings_trends_country';
   static const keyAppleApi = 'settings_apple_api';
+  static const keyLanguage = 'settings_language';
 
   /// Every key, for the backup.
   static const keys = [
     keyMaterialYou, keyMarkPlayedNearEnd, keyDeletePlayedDownloads,
-    keyTheme, keyRewindOnResume, keyTrendsCountry, keyAppleApi,
+    keyTheme, keyRewindOnResume, keyTrendsCountry, keyAppleApi, keyLanguage,
   ];
 
   /// System, light or dark; stored by name ('system', 'light', 'dark').
@@ -28,6 +29,13 @@ class AppSettings extends ChangeNotifier {
       ThemeMode.system;
   set themeMode(ThemeMode v) {
     _prefs.setString(keyTheme, v.name);
+    notifyListeners();
+  }
+
+  /// The app's language code (en, de, fr, es); null follows the phone.
+  String? get language => _prefs.getString(keyLanguage);
+  set language(String? v) {
+    v == null ? _prefs.remove(keyLanguage) : _prefs.setString(keyLanguage, v);
     notifyListeners();
   }
 
