@@ -123,9 +123,12 @@ class HomeToolbar extends StatelessWidget {
                       message: l10n.tooltipGuide,
                       child: GestureDetector(
                         onTap: onInfoPressed,
+                        // The glyph's circle fills 20/24 of the icon: size 22
+                        // draws it ~18 px, 2/3 of the 28 px logo. The padding
+                        // keeps the tap area at 56×50.
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 16, 28, 16),
-                          child: Icon(Icons.info_rounded, size: 18, color: cs.onSurfaceVariant),
+                          padding: const EdgeInsets.fromLTRB(10, 14, 24, 14),
+                          child: Icon(Icons.info_rounded, size: 22, color: cs.onSurfaceVariant),
                         ),
                       ),
                     ),
