@@ -528,7 +528,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsAppleApiSub.
   ///
   /// In en, this message translates to:
-  /// **'Trends and episode search come from Apple. Off, search finds podcasts through PodcastIndex only'**
+  /// **'Trends and episode search use Apple. When off, search finds podcasts through PodcastIndex only'**
   String get settingsAppleApiSub;
 
   /// No description provided for @trendsAppleOff.
@@ -576,7 +576,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMaterialYouSub.
   ///
   /// In en, this message translates to:
-  /// **'Colours from your wallpaper; otherwise AntPod stays ant coloured'**
+  /// **'Colours from your wallpaper'**
   String get settingsMaterialYouSub;
 
   /// No description provided for @settingsTheme.
@@ -618,7 +618,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsRewindOnResumeSub.
   ///
   /// In en, this message translates to:
-  /// **'Back 10 seconds after a pause of 5 minutes or more, to pick up the thread'**
+  /// **'Back 10 seconds after a pause of 5 minutes or more'**
   String get settingsRewindOnResumeSub;
 
   /// No description provided for @settingsMarkPlayedNearEnd.
@@ -630,7 +630,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMarkPlayedNearEndSub.
   ///
   /// In en, this message translates to:
-  /// **'Pausing in an episode\'s last 60 seconds marks it as played, so outros don\'t leave it half done'**
+  /// **'Pausing in the last 60 seconds marks the episode as played'**
   String get settingsMarkPlayedNearEndSub;
 
   /// No description provided for @settingsDownloads.
@@ -684,7 +684,7 @@ abstract class AppLocalizations {
   /// No description provided for @exportBackupSub.
   ///
   /// In en, this message translates to:
-  /// **'Subscriptions, play state, favourites and settings, for a new phone'**
+  /// **'Subscriptions, play state, favourites and settings'**
   String get exportBackupSub;
 
   /// No description provided for @importBackup.
@@ -696,7 +696,7 @@ abstract class AppLocalizations {
   /// No description provided for @importBackupSub.
   ///
   /// In en, this message translates to:
-  /// **'Adds to what\'s here; the newer play state wins'**
+  /// **'Adds to what\'s here; the newer play state is kept'**
   String get importBackupSub;
 
   /// No description provided for @exportOpml.

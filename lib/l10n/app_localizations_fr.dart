@@ -254,7 +254,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsPrivacy => 'Confidentialité';
 
   @override
-  String get settingsAppleApiSub => 'Les tendances et la recherche d\'épisodes viennent d\'Apple. Désactivé, la recherche trouve les podcasts via PodcastIndex seulement';
+  String get settingsAppleApiSub => 'Les tendances et la recherche d\'épisodes viennent d\'Apple. Si désactivé, la recherche trouve les podcasts via PodcastIndex seulement';
 
   @override
   String get trendsAppleOff => 'Apple Podcasts est désactivé';
@@ -278,7 +278,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsMaterialYou => 'Material You';
 
   @override
-  String get settingsMaterialYouSub => 'Les couleurs de votre fond d\'écran ; sinon AntPod reste couleur fourmi';
+  String get settingsMaterialYouSub => 'Les couleurs de votre fond d\'écran';
 
   @override
   String get settingsTheme => 'Thème';
@@ -299,13 +299,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsRewindOnResume => 'Reculer à la reprise';
 
   @override
-  String get settingsRewindOnResumeSub => 'Recule de 10 secondes après une pause de 5 minutes ou plus, pour reprendre le fil';
+  String get settingsRewindOnResumeSub => 'Recule de 10 secondes après une pause de 5 minutes ou plus';
 
   @override
   String get settingsMarkPlayedNearEnd => 'Écouté dans la dernière minute';
 
   @override
-  String get settingsMarkPlayedNearEndSub => 'Une pause dans les 60 dernières secondes marque l\'épisode comme écouté, pour que le générique ne le laisse pas à moitié fini';
+  String get settingsMarkPlayedNearEndSub => 'Une pause dans les 60 dernières secondes marque l\'épisode comme écouté';
 
   @override
   String get settingsDownloads => 'Téléchargements';
@@ -332,13 +332,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get exportBackup => 'Exporter une sauvegarde';
 
   @override
-  String get exportBackupSub => 'Abonnements, progression, favoris et paramètres, pour un nouveau téléphone';
+  String get exportBackupSub => 'Abonnements, progression, favoris et paramètres';
 
   @override
   String get importBackup => 'Importer une sauvegarde';
 
   @override
-  String get importBackupSub => 'S\'ajoute à l\'existant ; la progression la plus récente l\'emporte';
+  String get importBackupSub => 'S\'ajoute à l\'existant ; la progression la plus récente est gardée';
 
   @override
   String get exportOpml => 'Exporter les abonnements (OPML)';

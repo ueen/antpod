@@ -254,7 +254,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get settingsPrivacy => 'Datenschutz';
 
   @override
-  String get settingsAppleApiSub => 'Trends und die Suche nach Folgen kommen von Apple. Aus, findet die Suche Podcasts nur über PodcastIndex';
+  String get settingsAppleApiSub => 'Trends und Folgensuche kommen von Apple. Ausgeschaltet findet die Suche Podcasts nur über PodcastIndex';
 
   @override
   String get trendsAppleOff => 'Apple Podcasts ist aus';
@@ -278,7 +278,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get settingsMaterialYou => 'Material You';
 
   @override
-  String get settingsMaterialYouSub => 'Farben vom Hintergrundbild; sonst bleibt AntPod ameisenfarben';
+  String get settingsMaterialYouSub => 'Farben vom Hintergrundbild';
 
   @override
   String get settingsTheme => 'Design';
@@ -299,13 +299,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get settingsRewindOnResume => 'Beim Fortsetzen zurückspulen';
 
   @override
-  String get settingsRewindOnResumeSub => 'Nach einer Pause ab 5 Minuten geht es 10 Sekunden zurück, damit du wieder reinkommst';
+  String get settingsRewindOnResumeSub => 'Geht nach einer Pause ab 5 Minuten 10 Sekunden zurück';
 
   @override
   String get settingsMarkPlayedNearEnd => 'In der letzten Minute gehört';
 
   @override
-  String get settingsMarkPlayedNearEndSub => 'Pausieren in den letzten 60 Sekunden markiert eine Folge als gehört, damit Abspänne sie nicht halb offen lassen';
+  String get settingsMarkPlayedNearEndSub => 'Pausieren in den letzten 60 Sekunden markiert die Folge als gehört';
 
   @override
   String get settingsDownloads => 'Downloads';
@@ -332,13 +332,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get exportBackup => 'Backup exportieren';
 
   @override
-  String get exportBackupSub => 'Abos, Wiedergabestand, Favoriten und Einstellungen, für ein neues Handy';
+  String get exportBackupSub => 'Abos, Wiedergabestand, Favoriten und Einstellungen';
 
   @override
   String get importBackup => 'Backup importieren';
 
   @override
-  String get importBackupSub => 'Ergänzt, was da ist; der neuere Wiedergabestand gewinnt';
+  String get importBackupSub => 'Ergänzt, was da ist; der neuere Wiedergabestand bleibt';
 
   @override
   String get exportOpml => 'Abos exportieren (OPML)';

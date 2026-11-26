@@ -254,7 +254,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsPrivacy => 'Privacy';
 
   @override
-  String get settingsAppleApiSub => 'Trends and episode search come from Apple. Off, search finds podcasts through PodcastIndex only';
+  String get settingsAppleApiSub => 'Trends and episode search use Apple. When off, search finds podcasts through PodcastIndex only';
 
   @override
   String get trendsAppleOff => 'Apple Podcasts is off';
@@ -278,7 +278,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsMaterialYou => 'Material You';
 
   @override
-  String get settingsMaterialYouSub => 'Colours from your wallpaper; otherwise AntPod stays ant coloured';
+  String get settingsMaterialYouSub => 'Colours from your wallpaper';
 
   @override
   String get settingsTheme => 'Theme';
@@ -299,13 +299,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsRewindOnResume => 'Rewind on resume';
 
   @override
-  String get settingsRewindOnResumeSub => 'Back 10 seconds after a pause of 5 minutes or more, to pick up the thread';
+  String get settingsRewindOnResumeSub => 'Back 10 seconds after a pause of 5 minutes or more';
 
   @override
   String get settingsMarkPlayedNearEnd => 'Played in the last minute';
 
   @override
-  String get settingsMarkPlayedNearEndSub => 'Pausing in an episode\'s last 60 seconds marks it as played, so outros don\'t leave it half done';
+  String get settingsMarkPlayedNearEndSub => 'Pausing in the last 60 seconds marks the episode as played';
 
   @override
   String get settingsDownloads => 'Downloads';
@@ -332,13 +332,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportBackup => 'Export backup';
 
   @override
-  String get exportBackupSub => 'Subscriptions, play state, favourites and settings, for a new phone';
+  String get exportBackupSub => 'Subscriptions, play state, favourites and settings';
 
   @override
   String get importBackup => 'Import backup';
 
   @override
-  String get importBackupSub => 'Adds to what\'s here; the newer play state wins';
+  String get importBackupSub => 'Adds to what\'s here; the newer play state is kept';
 
   @override
   String get exportOpml => 'Export subscriptions (OPML)';
