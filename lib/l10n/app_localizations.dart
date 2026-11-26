@@ -339,6 +339,12 @@ abstract class AppLocalizations {
   /// **'Show all downloads'**
   String get showAllDownloads;
 
+  /// No description provided for @showAllEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all episodes'**
+  String get showAllEpisodes;
+
   /// No description provided for @downloadNow.
   ///
   /// In en, this message translates to:

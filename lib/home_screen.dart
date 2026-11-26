@@ -1204,6 +1204,7 @@ class _HomeScreenState extends State<HomeScreen> {
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
           onFilterToggle: _onFilterToggle,
+          onShowAll: _showAllEpisodes,
           onRefresh: () => _loadPreview(_previewResult!),
           onSubscribe: () async {
             final db = context.read<AppDatabase>();
@@ -1234,6 +1235,7 @@ class _HomeScreenState extends State<HomeScreen> {
           filter: _filter,
           filterChipsVisible: _filterChipsVisible,
           onFilterToggle: _onFilterToggle,
+          onShowAll: _showAllEpisodes,
           onRefresh: () => FeedSync.refreshPodcast(db, _filterPodcastId!),
           onCoverTap: _onCoverTap,
           // Paused counts as not subscribed: + resumes new episodes.
@@ -1295,7 +1297,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     _saveFilterPrefs();
                   })
               : null,
+          onShowAll: _isSearchMode ? null : _showAllEpisodes,
         );
     }
+  }
+
+  /// "Show all episodes" under a filtered list: the chips that hide
+  /// episodes off, the order kept.
+  void _showAllEpisodes() {
+    setState(() => _filter = _filter.unnarrowed);
+    _saveFilterPrefs();
   }
 }

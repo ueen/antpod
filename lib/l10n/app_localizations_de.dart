@@ -129,6 +129,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get showAllDownloads => 'Alle Downloads anzeigen';
 
   @override
+  String get showAllEpisodes => 'Alle Folgen anzeigen';
+
+  @override
   String get downloadNow => 'Jetzt herunterladen';
 
   @override

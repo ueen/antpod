@@ -40,6 +40,7 @@
   "removeEpisode": "Supprimer l'épisode",
   "exportFile": "Exporter le fichier",
   "showAllDownloads": "Afficher tous les téléchargements",
+  "showAllEpisodes": "Afficher tous les épisodes",
   "downloadNow": "Télécharger maintenant",
   "saveForWifi": "Enregistrer pour le WiFi",
   "cancelWifiQueue": "Annuler la file WiFi",

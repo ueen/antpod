@@ -24,6 +24,7 @@ class PodcastFeed extends StatelessWidget {
   final FilterState filter;
   final bool filterChipsVisible;
   final ValueChanged<String> onFilterToggle;
+  final VoidCallback? onShowAll;
   final Future<void> Function(Episode, AppDatabase)? onCoverTap;
   final VoidCallback? onSubscribe;
   final VoidCallback? onUnsubscribe;
@@ -38,7 +39,7 @@ class PodcastFeed extends StatelessWidget {
     required this.author, required this.description,
     required this.isSubscribed,
     required this.filter, required this.filterChipsVisible,
-    required this.onFilterToggle,
+    required this.onFilterToggle, this.onShowAll,
     this.onCoverTap, this.onSubscribe, this.onUnsubscribe,
     this.onRefresh, this.isLoading = false, this.syncPaused = false,
   });
@@ -49,6 +50,7 @@ class PodcastFeed extends StatelessWidget {
       db: db, cs: cs, l10n: l10n,
       filter: filter,
       podcastIdFilter: feedId,
+      onShowAll: onShowAll,
       onCoverTap: onCoverTap ?? (_, __) async {},
       onRefresh: onRefresh ?? () async {},
       isLoading: isLoading,

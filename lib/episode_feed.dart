@@ -27,6 +27,8 @@ class EpisodeFeed extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback? onSearchOnline;
   final VoidCallback? onShowAllDownloads;
+  /// Clears the chips that hide episodes; offered when they hide some.
+  final VoidCallback? onShowAll;
   final String? podcastIdFilter;
   final List<Widget>? headerSlivers;
   final bool refreshing;
@@ -40,6 +42,7 @@ class EpisodeFeed extends StatefulWidget {
     this.searchQuery = '',
     this.onSearchOnline,
     this.onShowAllDownloads,
+    this.onShowAll,
     this.podcastIdFilter,
     this.headerSlivers,
     this.refreshing = false,
@@ -379,6 +382,16 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
         widget.filter.downloaded &&
         !_showMarked &&
         _markedCount > 0;
+    // The downloads list has its own way back (above); elsewhere, offered
+    // only when the chips hide episodes there are.
+    final hasShowAllFooter = !isSearching &&
+        !widget.filter.downloaded &&
+        widget.filter.narrows &&
+        widget.onShowAll != null &&
+        (widget.podcastIdFilter == null
+                ? _raw.length
+                : _raw.where((e) => e.podcastId == widget.podcastIdFilter).length) >
+            _displayed.length;
 
     final child = PullToRefresh(
       controller: _scrollCtrl,
@@ -453,6 +466,14 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
                           label: Text(widget.l10n.showAllDownloads),
                         ),
                       ],
+                      if (hasShowAllFooter) ...[
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          onPressed: widget.onShowAll,
+                          icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                          label: Text(widget.l10n.showAllEpisodes),
+                        ),
+                      ],
                       if (hasMarkedFooter) ...[
                         const SizedBox(height: 12),
                         OutlinedButton.icon(
@@ -486,6 +507,17 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
                   onPressed: widget.onShowAllDownloads,
                   icon: const Icon(Icons.download_done_rounded, size: 18),
                   label: Text(widget.l10n.showAllDownloads),
+                ),
+              ),
+            ),
+          if (hasShowAllFooter && _displayed.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: OutlinedButton.icon(
+                  onPressed: widget.onShowAll,
+                  icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                  label: Text(widget.l10n.showAllEpisodes),
                 ),
               ),
             ),

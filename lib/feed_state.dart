@@ -66,6 +66,13 @@ class FilterState {
 
   bool get isOldestFirst => sort == SortMode.oldest;
 
+  /// Whether a chip hides episodes, not just orders them.
+  bool get narrows => newOnly || history || downloaded || favorites;
+
+  /// Every episode again, in the same order.
+  FilterState get unnarrowed => copyWith(
+      newOnly: false, history: false, downloaded: false, favorites: false);
+
   FilterState copyWith({
     bool? newOnly, bool? history, bool? downloaded,
     SortMode? sort, bool? inProgress, bool? favorites, bool? podcasts,
