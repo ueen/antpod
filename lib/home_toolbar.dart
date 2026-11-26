@@ -55,7 +55,7 @@ class HomeToolbar extends StatelessWidget {
   Widget _searchRow() {
     return Row(
       children: [
-        IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: onBack),
+        IconButton(icon: Icon(Icons.arrow_back_rounded, color: cs.primary), onPressed: onBack),
         Expanded(
           child: TextField(
             controller: searchCtrl, autofocus: true,
@@ -69,7 +69,8 @@ class HomeToolbar extends StatelessWidget {
           ),
         ),
         if (searchCtrl.text.isNotEmpty)
-          IconButton(icon: const Icon(Icons.clear_rounded, size: 20), onPressed: onClearSearch),
+          IconButton(icon: Icon(Icons.clear_rounded, size: 20, color: cs.primary),
+              onPressed: onClearSearch),
         if (episodeSearch) _filterButton(),
       ],
     );
@@ -79,9 +80,13 @@ class HomeToolbar extends StatelessWidget {
   Widget _filterButton() => Stack(
         clipBehavior: Clip.none,
         children: [
+          // Open chips show as a tinted circle behind the icon.
           IconButton(
-            icon: Icon(Icons.tune_rounded,
-                color: filterChipsVisible ? cs.primary : cs.onSurface),
+            icon: Icon(Icons.tune_rounded, color: cs.primary),
+            style: IconButton.styleFrom(
+                backgroundColor: filterChipsVisible
+                    ? cs.primary.withValues(alpha: 0.12)
+                    : Colors.transparent),
             onPressed: onFilterToggle,
             tooltip: l10n.tooltipFilter,
           ),
@@ -101,7 +106,7 @@ class HomeToolbar extends StatelessWidget {
           child: inPodcast
               ? IconButton(
                   key: const ValueKey('back'),
-                  icon: const Icon(Icons.arrow_back_rounded),
+                  icon: Icon(Icons.arrow_back_rounded, color: cs.primary),
                   onPressed: onBack)
               : Row(
                   key: const ValueKey('brand'),
@@ -122,20 +127,25 @@ class HomeToolbar extends StatelessWidget {
                     // The glyph's circle fills 20/24 of the icon: size 22
                     // draws it ~18 px, 2/3 of the 28 px logo. The button's
                     // ripple circles the icon; the padding around it still
-                    // takes taps, keeping the tap area at 56×50.
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onInfoPressed,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(1, 5, 15, 5),
-                        child: IconButton(
-                          onPressed: onInfoPressed,
-                          tooltip: l10n.tooltipGuide,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-                          style: IconButton.styleFrom(
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                          icon: Icon(Icons.info_rounded, size: 22, color: cs.primary),
+                    // takes taps, for a 65×56 tap area (the bar's height).
+                    // Shifted left so the glyph sits 8 px from the wordmark,
+                    // the same gap as between logo and wordmark.
+                    Transform.translate(
+                      offset: const Offset(-4, 0),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onInfoPressed,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(1, 8, 24, 8),
+                          child: IconButton(
+                            onPressed: onInfoPressed,
+                            tooltip: l10n.tooltipGuide,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                            style: IconButton.styleFrom(
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                            icon: Icon(Icons.info_rounded, size: 22, color: cs.primary),
+                          ),
                         ),
                       ),
                     ),
@@ -145,11 +155,11 @@ class HomeToolbar extends StatelessWidget {
         const Spacer(),
         _filterButton(),
         IconButton(
-          icon: Icon(Icons.search_rounded, color: cs.onSurface),
+          icon: Icon(Icons.search_rounded, color: cs.primary),
           onPressed: onSearchOpen,
           tooltip: l10n.tooltipSearch),
         IconButton(
-          icon: Icon(Icons.add_rounded, color: cs.onSurface),
+          icon: Icon(Icons.add_rounded, color: cs.primary),
           onPressed: onPlusPressed,
           tooltip: l10n.tooltipDiscover),
       ],

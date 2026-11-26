@@ -948,6 +948,15 @@ class _ActionAreaState extends State<_ActionArea>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
+                  // The filter chips' fill, out to the ring's centre line so
+                  // the ring draws over its edge like the chips' border.
+                  Container(
+                    width: 41, height: 41,
+                    decoration: BoxDecoration(
+                      color: widget.cs.surfaceContainerHighest.withValues(alpha: 0.7),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                   ringPainter,
                   AnimatedOpacity(
                     opacity: _isPending ? 1.0 : 0.0,
@@ -979,7 +988,7 @@ class _ActionAreaState extends State<_ActionArea>
                     Icon(
                       widget.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                       size: 22,
-                      color: widget.isCurrent ? widget.cs.primary : widget.cs.onSurface,
+                      color: widget.cs.primary,
                     ),
                 ],
               ),
@@ -1124,16 +1133,19 @@ class _MenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? cs.onSurface;
+    // Icons in the primary color, labels black; a given color (red for
+    // delete) takes both.
+    final iconColor = color ?? cs.primary;
+    final labelColor = color ?? cs.onSurface;
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Row(
           children: [
-            Icon(icon, color: effectiveColor, size: 22),
+            Icon(icon, color: iconColor, size: 22),
             const SizedBox(width: 16),
-            Text(label, style: TextStyle(fontSize: 15, color: effectiveColor)),
+            Text(label, style: TextStyle(fontSize: 15, color: labelColor)),
           ],
         ),
       ),
