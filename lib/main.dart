@@ -65,8 +65,9 @@ class AntPodApp extends StatelessWidget {
 
   /// AntPod's own colors: Material's scheme from the seed, its near-blacks
   /// turned reddish brown, and one highlight, a mellow orange (HCT hue 60,
-  /// chroma 44): the mini player's elements (inversePrimary) and the
-  /// favorite heart (tertiary). With Material You the wallpaper's take over.
+  /// chroma 44): the mini player's elements (inversePrimary), and as
+  /// tertiary the favorite heart, the current episode's ring, the seek bar
+  /// and the swipe to played. With Material You the wallpaper's take over.
   static ColorScheme _antScheme(Brightness brightness) {
     final s = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness);
     if (brightness == Brightness.light) {
@@ -75,6 +76,9 @@ class AntPodApp extends StatelessWidget {
         inverseSurface: const Color(0xFF582614), // mini player
         inversePrimary: const Color(0xFFFAA65A), // tone 75 on it
         tertiary: const Color(0xFFAC661F), // tone 50, 4:1 on the sheets
+        // Tone 85: a step deeper than the peach of the swipe to unplayed.
+        tertiaryContainer: const Color(0xFFFFCA9F),
+        onTertiaryContainer: const Color(0xFF6C3A00),
       );
     }
     // The same hue at chroma 10 for the dark backgrounds.
@@ -87,8 +91,15 @@ class AntPodApp extends StatelessWidget {
       surfaceContainer: const Color(0xFF2B1C17),
       surfaceContainerHigh: const Color(0xFF362621),
       surfaceContainerHighest: const Color(0xFF42312B),
-      inversePrimary: const Color(0xFF8E4E02), // tone 40 on the light mini player
+      // The mini player as in light mode: on cream the bright orange would
+      // fade (1.5:1), on the brown it's 6.3:1, and the card still stands out
+      // from the page. Snackbars share the background, hence their text.
+      inverseSurface: const Color(0xFF582614),
+      onInverseSurface: const Color(0xFFFEEEE4),
+      inversePrimary: const Color(0xFFFAA65A),
       tertiary: const Color(0xFFFAA65A),
+      tertiaryContainer: const Color(0xFF6C3A00), // tone 30
+      onTertiaryContainer: const Color(0xFFFFDCC1),
     );
   }
 

@@ -277,9 +277,11 @@ class _SeekBarState extends State<_SeekBar> {
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
               trackHeight: 3,
-              activeTrackColor: cs.primary,
-              inactiveTrackColor: cs.primary.withValues(alpha: 0.2),
-              thumbColor: cs.primary,
+              // The accent, like the mini player's bar.
+              activeTrackColor: cs.tertiary,
+              inactiveTrackColor: cs.tertiary.withValues(alpha: 0.2),
+              thumbColor: cs.tertiary,
+              overlayColor: cs.tertiary.withValues(alpha: 0.12),
             ),
             child: Slider(
               value: _drag ?? player.progressAt(pos),

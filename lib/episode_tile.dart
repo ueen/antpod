@@ -721,7 +721,7 @@ class _EpisodeMetadata extends StatelessWidget {
                       : _ProgressBar(
                           value: episode.lastPositionMs /
                               (episode.durationSeconds * 1000),
-                          cs: cs),
+                          color: cs.primary),
                 )
               : const SizedBox.shrink(),
         ),
@@ -732,15 +732,15 @@ class _EpisodeMetadata extends StatelessWidget {
 
 class _ProgressBar extends StatelessWidget {
   final double value;
-  final ColorScheme cs;
-  const _ProgressBar({required this.value, required this.cs});
+  final Color color;
+  const _ProgressBar({required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) => LinearProgressIndicator(
         value: value.clamp(0.0, 1.0),
         minHeight: 2,
-        backgroundColor: cs.primary.withValues(alpha: 0.15),
-        valueColor: AlwaysStoppedAnimation(cs.primary),
+        backgroundColor: color.withValues(alpha: 0.15),
+        valueColor: AlwaysStoppedAnimation(color),
       );
 }
 
@@ -760,8 +760,10 @@ class _LiveProgressBar extends StatelessWidget {
     final total = durMs > 0 ? durMs : episode.durationSeconds * 1000;
     return ValueListenableBuilder<Duration>(
       valueListenable: player.positionListenable,
+      // In the accent, like the mini player's bar.
       builder: (_, pos, __) => _ProgressBar(
-          value: total > 0 ? pos.inMilliseconds / total : 0.0, cs: cs),
+          value: total > 0 ? pos.inMilliseconds / total : 0.0,
+          color: cs.tertiary),
     );
   }
 }
@@ -998,7 +1000,7 @@ class _ActionAreaState extends State<_ActionArea>
                             padding: const EdgeInsets.all(12),
                             child: CircularProgressIndicator(
                                 strokeWidth: 3, strokeCap: StrokeCap.round,
-                                color: widget.cs.primary))
+                                color: widget.cs.tertiary))
                         : widget.isOffline && !widget.episode.isDownloaded
                             ? Icon(Icons.wifi_off_rounded,
                                 key: const ValueKey('offline'),
@@ -1011,7 +1013,11 @@ class _ActionAreaState extends State<_ActionArea>
                                     : Icons.play_arrow_rounded,
                                 key: ValueKey(widget.isPlaying),
                                 size: 22,
-                                color: widget.cs.primary,
+                                // The playing episode's in the accent, as
+                                // in the mini player.
+                                color: widget.isCurrent
+                                    ? widget.cs.tertiary
+                                    : widget.cs.primary,
                               ),
                   ),
                 ],
