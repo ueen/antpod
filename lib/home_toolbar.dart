@@ -119,16 +119,23 @@ class HomeToolbar extends StatelessWidget {
                         fontWeight: FontWeight.w800, fontSize: 20,
                         color: cs.onSurface, letterSpacing: -0.5)),
                     ),
-                    Tooltip(
-                      message: l10n.tooltipGuide,
-                      child: GestureDetector(
-                        onTap: onInfoPressed,
-                        // The glyph's circle fills 20/24 of the icon: size 22
-                        // draws it ~18 px, 2/3 of the 28 px logo. The padding
-                        // keeps the tap area at 56×50.
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 14, 24, 14),
-                          child: Icon(Icons.info_rounded, size: 22, color: cs.onSurfaceVariant),
+                    // The glyph's circle fills 20/24 of the icon: size 22
+                    // draws it ~18 px, 2/3 of the 28 px logo. The button's
+                    // ripple circles the icon; the padding around it still
+                    // takes taps, keeping the tap area at 56×50.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onInfoPressed,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(1, 5, 15, 5),
+                        child: IconButton(
+                          onPressed: onInfoPressed,
+                          tooltip: l10n.tooltipGuide,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                          style: IconButton.styleFrom(
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                          icon: Icon(Icons.info_rounded, size: 22, color: cs.primary),
                         ),
                       ),
                     ),
