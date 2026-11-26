@@ -47,7 +47,12 @@ class HomeToolbar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.5))),
-      child: searchOpen ? _searchRow() : _defaultRow(),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        child: searchOpen
+            ? KeyedSubtree(key: const ValueKey('search'), child: _searchRow())
+            : KeyedSubtree(key: const ValueKey('default'), child: _defaultRow()),
+      ),
     );
   }
 
@@ -67,9 +72,17 @@ class HomeToolbar extends StatelessWidget {
             ),
           ),
         ),
-        if (searchCtrl.text.isNotEmpty)
-          IconButton(icon: Icon(Icons.clear_rounded, size: 20, color: cs.primary),
-              onPressed: onClearSearch),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          transitionBuilder: (child, anim) =>
+              ScaleTransition(scale: anim, child: child),
+          child: searchCtrl.text.isNotEmpty
+              ? IconButton(
+                  key: const ValueKey('clear'),
+                  icon: Icon(Icons.clear_rounded, size: 20, color: cs.primary),
+                  onPressed: onClearSearch)
+              : const SizedBox.shrink(),
+        ),
         if (episodeSearch) _filterButton(),
       ],
     );
@@ -84,11 +97,16 @@ class HomeToolbar extends StatelessWidget {
             onPressed: onFilterToggle,
             tooltip: l10n.tooltipFilter,
           ),
-          if (filter.hasAny)
-            Positioned(right: 8, top: 8, child: Container(
-              width: 8, height: 8,
-              decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
-            )),
+          Positioned(right: 8, top: 8, child: IgnorePointer(
+            child: AnimatedScale(
+              scale: filter.hasAny ? 1 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
+              ),
+            ),
+          )),
         ],
       );
 
