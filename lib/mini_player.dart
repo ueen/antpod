@@ -547,7 +547,7 @@ class _PlayerSheet extends StatelessWidget {
                         _fmtSpeed(player.speed),
                         style: TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 15,
-                          color: cs.secondary,
+                          color: cs.primary,
                         ),
                       ),
                     ),
@@ -561,7 +561,7 @@ class _PlayerSheet extends StatelessWidget {
                   onTap: player.skipBackward,
                   child: SizedBox(
                     width: 44, height: 44,
-                    child: Icon(_skipRewindIcon(player.rewindSeconds), size: 28, color: cs.secondary),
+                    child: Icon(_skipRewindIcon(player.rewindSeconds), size: 28, color: cs.primary),
                   ),
                 ),
 
@@ -596,10 +596,10 @@ class _PlayerSheet extends StatelessWidget {
                   child: SizedBox(
                     width: 44, height: 44,
                     child: _skipForwardIconDirect(player.forwardSeconds) != null
-                        ? Icon(_skipForwardIconDirect(player.forwardSeconds)!, size: 28, color: cs.secondary)
+                        ? Icon(_skipForwardIconDirect(player.forwardSeconds)!, size: 28, color: cs.primary)
                         : Transform.flip(
                             flipX: true,
-                            child: Icon(_skipRewindIcon(player.forwardSeconds), size: 28, color: cs.secondary),
+                            child: Icon(_skipRewindIcon(player.forwardSeconds), size: 28, color: cs.primary),
                           ),
                   ),
                 ),
@@ -608,7 +608,7 @@ class _PlayerSheet extends StatelessWidget {
                 IconButton(
                   onPressed: () => ShareUtils.shareEpisode(ep),
                   icon: Icon(Icons.share_rounded,
-                      size: 22, color: cs.secondary),
+                      size: 22, color: cs.primary),
                   tooltip: l10n.shareEpisode,
                   padding: EdgeInsets.zero,
                   constraints:
@@ -662,7 +662,7 @@ class _ChapterNavRow extends StatelessWidget {
       children: [
         IconButton(
           icon: Icon(Icons.skip_previous_rounded,
-              color: hasPrev ? cs.secondary : cs.secondary.withValues(alpha: 0.3)),
+              color: hasPrev ? cs.primary : cs.primary.withValues(alpha: 0.3)),
           onPressed: hasPrev ? player.skipToPreviousChapter : null,
         ),
         Expanded(
@@ -671,14 +671,14 @@ class _ChapterNavRow extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: cs.secondaryContainer.withValues(alpha: 0.6),
+                color: cs.primaryContainer.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.list_rounded, size: 14, color: cs.onSecondaryContainer),
+                  Icon(Icons.list_rounded, size: 14, color: cs.onPrimaryContainer),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
@@ -689,7 +689,7 @@ class _ChapterNavRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: cs.onSecondaryContainer,
+                        color: cs.onPrimaryContainer,
                       ),
                     ),
                   ),
@@ -700,7 +700,7 @@ class _ChapterNavRow extends StatelessWidget {
         ),
         IconButton(
           icon: Icon(Icons.skip_next_rounded,
-              color: hasNext ? cs.secondary : cs.secondary.withValues(alpha: 0.3)),
+              color: hasNext ? cs.primary : cs.primary.withValues(alpha: 0.3)),
           onPressed: hasNext ? player.skipToNextChapter : null,
         ),
       ],
