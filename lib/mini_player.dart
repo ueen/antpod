@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'app_binding.dart';
 import 'app_database.dart';
 import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
@@ -27,13 +28,19 @@ class _MiniPlayerState extends State<MiniPlayer> {
   /// mini player hides meanwhile, its stand-in rides the sheet's edge.
   PlayerSheetRoute? _shown;
 
-  /// Pushes the sheet; [tracking]: the finger moves it, from closed.
+  /// The finger last down on the mini player.
+  int? _pointer;
+
+  /// Pushes the sheet; [tracking]: the finger moves it, from closed, and
+  /// stays on it through the push.
   PlayerSheetRoute? _push({required bool tracking}) {
     if (_route != null) return null;
     final route = _playerRoute(context,
         onPodcastTap: widget.onPodcastTap, tracking: tracking, locate: _locate);
     _route = route;
-    Navigator.of(context).push(route).whenComplete(() {
+    final nav = Navigator.of(context);
+    AppBinding.keepPointer(tracking ? _pointer : null, () => nav.push(route))
+        .whenComplete(() {
       if (identical(_route, route)) _route = null;
     });
     setState(() => _shown = route);
@@ -88,7 +95,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
         curve: Curves.easeInOut,
         alignment: Alignment.bottomCenter,
         child: hasEpisode
-            ? RawGestureDetector(
+            ? Listener(
+                onPointerDown: (e) => _pointer = e.pointer,
+                child: RawGestureDetector(
                 gestures: {
                   TapGestureRecognizer:
                       GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
@@ -110,7 +119,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   ),
                 },
                 child: const _MiniCard(),
-              )
+              ))
             : const SizedBox.shrink(),
       ),
     );
@@ -669,12 +678,13 @@ class PlayerSheetRoute extends PopupRoute<void> {
     final c = controller!;
     final t = c.value;
     final still = vy.abs() < _still;
+    // Either way the same glide, at the finger's speed or the slowest.
     if (t < 1) {
       final open = still ? t >= 0.5 : vy > 0;
       if (open) {
         c.animateWith(_Glide(t, 1, vy / _travel));
       } else {
-        _leave = _Settle(t, 0, vy / _travel);
+        _leave = _Glide(t, 0, vy / _travel);
         navigator?.pop();
       }
       return;
@@ -686,7 +696,7 @@ class PlayerSheetRoute extends PopupRoute<void> {
     final end =
         e + ClampingScrollSimulation(position: 0, velocity: vy).x(1e9);
     if (vy < 0 && end < -_travel / 2) {
-      _leave = _Settle(1, 0, vy / (_travel + e));
+      _leave = _Glide(1, 0, vy / (_travel + e));
       navigator?.pop();
     } else if (end < 0) {
       _drift!.animateWith(_Settle(e, 0, vy, span: _travel));

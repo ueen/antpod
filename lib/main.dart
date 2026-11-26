@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_binding.dart';
 import 'app_database.dart';
 import 'app_settings.dart';
 import 'audio_handler.dart';
@@ -17,7 +18,7 @@ import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  AppBinding(); // before anything asks for a binding
 
   // Fire all slow one-time inits in parallel — AudioService.init alone can
   // take 1–2 s on first launch (spawns a background isolate).
