@@ -93,6 +93,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shareEpisode => 'Share episode';
 
   @override
+  String get sharePodcast => 'Share podcast';
+
+  @override
+  String get subscribe => 'Subscribe';
+
+  @override
+  String get unsubscribe => 'Unsubscribe';
+
+  @override
   String get filterRandom => 'Random';
 
   @override

@@ -267,6 +267,24 @@ abstract class AppLocalizations {
   /// **'Share episode'**
   String get shareEpisode;
 
+  /// No description provided for @sharePodcast.
+  ///
+  /// In en, this message translates to:
+  /// **'Share podcast'**
+  String get sharePodcast;
+
+  /// No description provided for @subscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscribe'**
+  String get subscribe;
+
+  /// No description provided for @unsubscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsubscribe'**
+  String get unsubscribe;
+
   /// No description provided for @filterRandom.
   ///
   /// In en, this message translates to:

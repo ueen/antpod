@@ -52,6 +52,11 @@ class PodcastHeader extends StatefulWidget {
 
 enum _Note { paused, finishing, failing }
 
+/// Header buttons are exactly as big as their padded icon, not padded out to
+/// 48, so they don't squeeze the title.
+final _compactTapTarget = IconButton.styleFrom(
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap);
+
 class _PodcastHeaderState extends State<PodcastHeader> {
   bool _expanded = false;
   bool _subscribePressed = false;
@@ -83,6 +88,8 @@ class _PodcastHeaderState extends State<PodcastHeader> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
+    final hasSubscribeButton =
+        widget.onSubscribe != null || widget.onUnsubscribe != null;
 
     return GestureDetector(
       onTap: () => setState(() => _expanded = !_expanded),
@@ -190,40 +197,58 @@ class _PodcastHeaderState extends State<PodcastHeader> {
                       ],
                     ),
                   ),
-                  // Share button
+                  // Share and subscribe buttons: the padding around each icon
+                  // is its tap target and shows a disc, tinted in the icon's
+                  // color, on press/focus. Spacing keeps the icons where the
+                  // bare icons used to sit.
                   Padding(
-                    padding: const EdgeInsets.only(left: 6, right: 12),
-                    child: GestureDetector(
-                      onTap: () => ShareUtils.sharePodcast(widget.title, widget.feedUrl),
-                      child: Icon(Icons.share_rounded,
-                          color: cs.onSurfaceVariant, size: 24),
+                    padding: EdgeInsets.only(right: hasSubscribeButton ? 0 : 4),
+                    child: IconButton(
+                      onPressed: () =>
+                          ShareUtils.sharePodcast(widget.title, widget.feedUrl),
+                      tooltip: l10n.sharePodcast,
+                      color: cs.onSurfaceVariant,
+                      padding: const EdgeInsets.all(8), // 40×40
+                      style: _compactTapTarget,
+                      icon: const Icon(Icons.share_rounded, size: 24),
                     ),
                   ),
                   // Subscribe (+, then ✓) / unsubscribe (−) button
-                  if (widget.onSubscribe != null || widget.onUnsubscribe != null)
+                  if (hasSubscribeButton)
                     Padding(
-                      padding: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.only(right: 2),
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 220),
                         child: widget.onSubscribe != null
-                            ? GestureDetector(
+                            ? IconButton(
                                 key: ValueKey(_subscribePressed ? 'check' : 'add'),
-                                onTap: _subscribePressed ? null : () async {
+                                onPressed: _subscribePressed ? null : () async {
                                   setState(() => _subscribePressed = true);
                                   await Future.delayed(const Duration(milliseconds: 380));
                                   widget.onSubscribe?.call();
                                 },
-                                child: _subscribePressed
+                                tooltip: l10n.subscribe,
+                                color: cs.primary,
+                                padding: const EdgeInsets.all(6), // 44×44
+                                style: _compactTapTarget,
+                                icon: _subscribePressed
+                                    // Explicit color: the button is disabled
+                                    // meanwhile and would grey it out.
                                     ? const Icon(Icons.check_circle_rounded,
                                         color: Colors.green, size: 32)
-                                    : Icon(Icons.add_circle_outline_rounded,
-                                        color: cs.primary, size: 32),
+                                    : const Icon(Icons.add_circle_outline_rounded,
+                                        size: 32),
                               )
-                            : GestureDetector(
+                            : IconButton(
                                 key: const ValueKey('remove'),
-                                onTap: widget.onUnsubscribe,
-                                child: Icon(Icons.remove_circle_outline_rounded,
-                                    color: cs.error, size: 32),
+                                onPressed: widget.onUnsubscribe,
+                                tooltip: l10n.unsubscribe,
+                                color: cs.error,
+                                padding: const EdgeInsets.all(6), // 44×44
+                                style: _compactTapTarget,
+                                icon: const Icon(
+                                    Icons.remove_circle_outline_rounded,
+                                    size: 32),
                               ),
                       ),
                     ),

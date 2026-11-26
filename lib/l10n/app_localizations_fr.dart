@@ -93,6 +93,15 @@ class AppLocalizationsFr extends AppLocalizations {
   String get shareEpisode => 'Partager l\'épisode';
 
   @override
+  String get sharePodcast => 'Partager le podcast';
+
+  @override
+  String get subscribe => 'S\'abonner';
+
+  @override
+  String get unsubscribe => 'Se désabonner';
+
+  @override
   String get filterRandom => 'Aléatoire';
 
   @override

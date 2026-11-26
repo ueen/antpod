@@ -93,6 +93,15 @@ class AppLocalizationsDe extends AppLocalizations {
   String get shareEpisode => 'Episode teilen';
 
   @override
+  String get sharePodcast => 'Podcast teilen';
+
+  @override
+  String get subscribe => 'Abonnieren';
+
+  @override
+  String get unsubscribe => 'Abo beenden';
+
+  @override
   String get filterRandom => 'Zufällig';
 
   @override
