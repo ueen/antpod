@@ -143,6 +143,22 @@ void main() {
     expect(route.isCurrent, isTrue);
   });
 
+  testWidgets('a fast fling keeps its speed, braking only over the last third',
+      (tester) async {
+    final route = await push(tester, tracking: true);
+    route.drag(36);
+    await tester.pump();
+    route.release(3600); // 10 travels per second
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+    final v1 = route.animation!.value;
+    await tester.pump(const Duration(milliseconds: 16));
+    expect((route.animation!.value - v1) / 0.016, closeTo(10, 0.2),
+        reason: 'still at full speed past half way');
+    await tester.pumpAndSettle();
+    expect(route.animation!.value, 1);
+  });
+
   testWidgets('open, a drag up grows the sheet before its content scrolls',
       (tester) async {
     await push(tester, tracking: false);

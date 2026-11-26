@@ -829,14 +829,15 @@ class _Settle extends Simulation {
 }
 
 /// From [from] to [to] as in a vacuum: on at [velocity] (but never slower
-/// than [minSpeed], the full way in 2 s), then coming to rest over the last
-/// stretch on an ease-out cubic of [_brake] seconds (or over all of it, if
-/// that's shorter). However slowly the finger let go, it goes on as slowly.
+/// than [minSpeed], the full way in 2 s), then coming to rest on an
+/// ease-out cubic of [_brake] seconds, but over the last third of the way
+/// at most. However slowly the finger let go, it goes on as slowly; however
+/// fast, it keeps that speed most of the way.
 class _Glide extends Simulation {
   _Glide(this.from, this.to, double velocity)
       : _d = (to - from).abs(),
         _v = math.max(velocity * (to - from).sign, minSpeed) {
-    _b = math.min(_d, _v * _brake / 3);
+    _b = math.min(_d / 3, _v * _brake / 3);
     _cruise = (_d - _b) / _v;
     _end = _cruise + 3 * _b / _v;
   }
