@@ -87,6 +87,19 @@
                 android:resource="@xml/provider_paths"/>
         </provider>
 
+        <!-- The downloaded episodes as a read-only place in the Files app;
+             only the system's documents UI may bind to it. -->
+        <provider
+            android:name=".EpisodesProvider"
+            android:authorities="${applicationId}.episodes"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER"/>
+            </intent-filter>
+        </provider>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

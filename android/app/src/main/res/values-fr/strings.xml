@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Under "AntPod" in the Files app's list of places. -->
+    <string name="episodes_root_summary">Épisodes téléchargés</string>
+</resources>
