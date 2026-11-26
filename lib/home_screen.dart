@@ -69,6 +69,27 @@ class _HomeScreenState extends State<HomeScreen> {
   FilterState get _effectiveFilter => _isSearchMode ? _searchFilter : _filter;
   bool get _effectiveChipsVisible =>
       _isSearchMode ? _searchFilterChipsVisible : _filterChipsVisible;
+  /// The filter chips row is on screen (feed and episode search).
+  bool get _chipsShown =>
+      _effectiveChipsVisible && !_linkOpening &&
+      (_mode == _FeedMode.feed || _mode == _FeedMode.searchEpisodes);
+
+  /// The body whose list is scrolled off its top, if any: the chips row's
+  /// bottom edge then fades over it.
+  final _scrolledBody = ValueNotifier<Key?>(null);
+
+  bool _onBodyScroll(Notification n) {
+    final metrics = switch (n) {
+      ScrollNotification(:final metrics) => metrics,
+      ScrollMetricsNotification(:final metrics) => metrics,
+      _ => null,
+    };
+    if (metrics != null && metrics.axis == Axis.vertical &&
+        (n as ViewportNotificationMixin).depth == 0) {
+      _scrolledBody.value = metrics.pixels > 0.5 ? _bodyKey : null;
+    }
+    return false;
+  }
 
   final _antWalkerKey = GlobalKey<AntWalkerState>();
 
@@ -321,6 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _connectivitySub?.cancel();
     _playerErrorSub?.cancel();
     _settings.removeListener(_onSettingsChanged);
+    _scrolledBody.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -1093,18 +1115,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeOut,
                   alignment: Alignment.topCenter,
-                  heightFactor: (_effectiveChipsVisible && !_linkOpening &&
-                          (_mode == _FeedMode.feed ||
-                           _mode == _FeedMode.searchEpisodes))
-                      ? 1.0
-                      : 0.0,
+                  heightFactor: _chipsShown ? 1.0 : 0.0,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
-                    opacity: (_effectiveChipsVisible && !_linkOpening &&
-                            (_mode == _FeedMode.feed ||
-                             _mode == _FeedMode.searchEpisodes))
-                        ? 1.0
-                        : 0.0,
+                    opacity: _chipsShown ? 1.0 : 0.0,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1123,13 +1137,39 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: Stack(
                   children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      transitionBuilder: (child, anim) =>
-                          FadeTransition(opacity: anim, child: child),
-                      child: KeyedSubtree(
-                        key: _bodyKey,
-                        child: _buildBody(db, cs, l10n),
+                    NotificationListener<Notification>(
+                      onNotification: _onBodyScroll,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        transitionBuilder: (child, anim) =>
+                            FadeTransition(opacity: anim, child: child),
+                        child: KeyedSubtree(
+                          key: _bodyKey,
+                          child: _buildBody(db, cs, l10n),
+                        ),
+                      ),
+                    ),
+                    // The chips row's bottom padding fades over the list
+                    // scrolled under it, instead of a hard cut.
+                    Positioned(
+                      left: 0, right: 0, top: 0, height: 12,
+                      child: IgnorePointer(
+                        child: ValueListenableBuilder<Key?>(
+                          valueListenable: _scrolledBody,
+                          builder: (context, scrolled, _) => AnimatedOpacity(
+                            duration: const Duration(milliseconds: 150),
+                            opacity: _chipsShown && scrolled == _bodyKey ? 1 : 0,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [cs.surface, cs.surface.withValues(alpha: 0)],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     Positioned(
