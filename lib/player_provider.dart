@@ -112,8 +112,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
     });
 
+    // Not while nothing's loaded: the duration is then the warm-up clip's.
     _player.durationStream.listen((d) {
-      if (d == null || _settling || d == _duration) return;
+      if (d == null || _settling || !_audioReady || d == _duration) return;
       _duration = d;
       notifyListeners();
     });
@@ -263,6 +264,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // ── Playback ──────────────────────────────────────────────────────────────
 
+  /// Builds the native player ahead of the first play, so that only loads
+  /// the episode (see AntPodAudioHandler.warmUp).
+  Future<void> warmUp() => audioHandler.warmUp();
+
   /// Restore the last-played episode on startup (silent load, no playback).
   /// Skips if the episode is finished or no longer in the DB.
   Future<void> restoreLastEpisode() async {
@@ -391,6 +396,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) { debugPrint('[player] prefs error: $e'); }
     try {
       await audioHandler.stop();
+      // stop() released the native player; have it ready for the next play.
+      unawaited(audioHandler.warmUp());
     } catch (e) {
       debugPrint('[player] stop error: $e');
     }

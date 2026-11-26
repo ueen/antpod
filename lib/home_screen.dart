@@ -154,6 +154,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (pods.isNotEmpty) await player.restoreLastEpisode();
       if (!mounted) return;
       _appReady = true;
+      // At idle, once launch has painted: the first play then starts at once.
+      SchedulerBinding.instance.scheduleTask(player.warmUp, Priority.idle);
       final link = _pendingDeepLink ?? widget.initialLink;
       _pendingDeepLink = null;
       if (link != null) {
