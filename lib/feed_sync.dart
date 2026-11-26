@@ -82,6 +82,56 @@ class FeedSync {
     );
   }
 
+  /// Subscribes to [fallback]'s feed by its URL alone (an OPML file, a
+  /// backup): title, cover and description come from the feed, else from
+  /// [fallback]. A feed that doesn't load is subscribed all the same with
+  /// what [fallback] knows; its next refresh fills it in. Returns whether it
+  /// loaded.
+  static Future<bool> subscribeUrl(AppDatabase db, PodcastResult fallback) async {
+    final (feedUrl, data) = await loadFeedWithWww(fallback.feedUrl);
+    if (data == null) {
+      await db.subscribePodcast(fallback.toCompanion(), const []);
+      return false;
+    }
+    final result = fallback.copyWith(
+      id: feedUrl,
+      feedUrl: feedUrl,
+      title: data.titleOr(fallback.title),
+      description: data.podcast.description ?? fallback.description,
+      imageUrl: data.image.isNotEmpty ? data.image : fallback.imageUrl,
+    );
+    await db.subscribePodcast(result.toCompanion(),
+        _asSubscribed(data.episodes, feedUrl, result.imageUrl));
+    return true;
+  }
+
+  /// Subscribes to every one of [feeds], [_parallel] at a time, with
+  /// [subscribeUrl] (or [subscribe], in tests). Returns how many didn't load.
+  static Future<int> subscribeAll(
+    AppDatabase db,
+    List<PodcastResult> feeds, {
+    Future<bool> Function(PodcastResult feed)? subscribe,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final queue = feeds.iterator;
+    var done = 0, failed = 0;
+    Future<void> worker() async {
+      while (queue.moveNext()) {
+        final feed = queue.current;
+        try {
+          final loaded = await (subscribe ?? (f) => subscribeUrl(db, f))(feed);
+          if (!loaded) failed++;
+        } catch (e) {
+          failed++;
+        }
+        onProgress?.call(++done, feeds.length);
+      }
+    }
+
+    await Future.wait([for (var i = 0; i < min(_parallel, feeds.length); i++) worker()]);
+    return failed;
+  }
+
   /// Loads [result]'s feed as a temp podcast for its preview, and resolves
   /// Apple stubs against it (their progress moves to the RSS episode). Returns
   /// [result] filled in from the feed, the feed itself and the resolved stubs,

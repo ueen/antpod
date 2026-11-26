@@ -591,6 +591,42 @@ class AppDatabase extends _$AppDatabase {
       (update(episodes)..where((e) => e.id.equals(id)))
           .write(EpisodesCompanion(isFavorite: Value(favorite)));
 
+  /// Episodes with something worth keeping: a position, played, a favourite.
+  Future<List<Episode>> getEpisodesWithState() => (select(episodes)
+        ..where((e) =>
+            e.lastPositionMs.isBiggerThanValue(0) |
+            e.isFinished.equals(true) |
+            e.isFavorite.equals(true)))
+      .get();
+
+  /// [podcastId]'s episode with [audioUrl]: the same episode when its guid
+  /// changed.
+  Future<Episode?> findEpisodeByAudio(String podcastId, String audioUrl) =>
+      (select(episodes)
+            ..where((e) => e.podcastId.equals(podcastId) & e.audioUrl.equals(audioUrl))
+            ..limit(1))
+          .getSingleOrNull();
+
+  /// A backup's play state, as it was: unlike [updatePlaybackPosition] the
+  /// time it was last played stays the backup's, so the newer of two merged
+  /// states can still be told.
+  Future<void> restorePlayState(
+    String id, {
+    required int positionMs,
+    required bool finished,
+    required DateTime? lastPlayed,
+    int durationSeconds = 0,
+  }) =>
+      (update(episodes)..where((e) => e.id.equals(id))).write(EpisodesCompanion(
+        lastPositionMs: Value(positionMs),
+        playbackPositionSeconds: Value(positionMs ~/ 1000),
+        isFinished: Value(finished),
+        lastPlayed: Value(lastPlayed),
+        durationSeconds:
+            durationSeconds > 0 ? Value(durationSeconds) : const Value.absent(),
+        markedForDownload: finished ? const Value(false) : const Value.absent(),
+      ));
+
   /// Explicitly mark episode as unfinished (reset).
   Future<void> markUnfinished(String id) =>
       (update(episodes)..where((e) => e.id.equals(id))).write(
