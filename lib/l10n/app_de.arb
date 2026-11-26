@@ -115,5 +115,6 @@
   "importNotOpml": "Diese Datei ist keine OPML-Datei",
   "importUnreadable": "Die Datei ließ sich nicht lesen",
   "exportSaved": "Gespeichert",
-  "exportFailed": "Die Datei ließ sich nicht speichern"
+  "exportFailed": "Die Datei ließ sich nicht speichern",
+  "offFeed": "nicht im Feed"
 }

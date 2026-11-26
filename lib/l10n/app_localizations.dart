@@ -794,6 +794,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t save the file'**
   String get exportFailed;
+
+  /// Short tag by an episode its subscribed feed no longer lists, kept while in use
+  ///
+  /// In en, this message translates to:
+  /// **'off feed'**
+  String get offFeed;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

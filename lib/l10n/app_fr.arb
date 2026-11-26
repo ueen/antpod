@@ -115,5 +115,6 @@
   "importNotOpml": "Ce fichier n'est pas un fichier OPML",
   "importUnreadable": "Impossible de lire ce fichier",
   "exportSaved": "Enregistré",
-  "exportFailed": "Impossible d'enregistrer le fichier"
+  "exportFailed": "Impossible d'enregistrer le fichier",
+  "offFeed": "hors fil"
 }

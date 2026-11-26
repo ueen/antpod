@@ -206,11 +206,16 @@ class EpisodeTile extends StatelessWidget {
   final VoidCallback onCoverTap;
   final bool isSubscribedContext;
 
+  /// A subscribed podcast's episode that its feed no longer lists (taken
+  /// out, or replaced by a new version), kept while it's in use.
+  final bool offFeed;
+
   const EpisodeTile({
     super.key,
     required this.episode,
     required this.onCoverTap,
     this.isSubscribedContext = true,
+    this.offFeed = false,
   });
 
   String _fmt(int s) {
@@ -404,6 +409,7 @@ class EpisodeTile extends StatelessWidget {
                     child: _EpisodeMetadata(
                       episode: episode,
                       isCurrent: isCurrent,
+                      offFeed: offFeed,
                       cs: cs,
                       formatDuration: _fmt,
                     ),
@@ -641,11 +647,12 @@ class _CoverPlaceholder extends StatelessWidget {
 class _EpisodeMetadata extends StatelessWidget {
   final Episode episode;
   final bool isCurrent;
+  final bool offFeed;
   final ColorScheme cs;
   final String Function(int) formatDuration;
 
   const _EpisodeMetadata({
-    required this.episode, required this.isCurrent,
+    required this.episode, required this.isCurrent, required this.offFeed,
     required this.cs, required this.formatDuration,
   });
 
@@ -696,6 +703,13 @@ class _EpisodeMetadata extends StatelessWidget {
                             : const SizedBox.shrink(key: ValueKey('none')),
               ),
             ),
+            if (offFeed) ...[
+              _statusIcon('offFeed', Icons.link_off_rounded, cs.onSurfaceVariant),
+              Text(
+                '${AppLocalizations.of(context)!.offFeed}  ·  ',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              ),
+            ],
             Text(
               DateFormat('d. MMM yyyy',
                       Localizations.localeOf(context).toString())
@@ -703,9 +717,12 @@ class _EpisodeMetadata extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
             if (episode.durationSeconds > 0)
-              Text(
-                '  ·  ${formatDuration(episode.durationSeconds)}',
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              Flexible(
+                child: Text(
+                  '  ·  ${formatDuration(episode.durationSeconds)}',
+                  maxLines: 1, softWrap: false, overflow: TextOverflow.fade,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
               ),
           ],
         ),

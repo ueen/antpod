@@ -62,6 +62,9 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   StreamSubscription<List<Episode>>? _sub;
   StreamSubscription<int>? _markedSub;
   StreamSubscription<int>? _downloadedCountSub;
+  StreamSubscription<List<Podcast>>? _podcastsSub;
+  /// Subscribed podcasts: their temp episodes are off the feed.
+  Set<String> _subscribed = const {};
   bool _initialLoad = true;
   bool _showMarked = false;
   int _markedCount = 0;
@@ -78,6 +81,12 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     });
     _downloadedCountSub = widget.db.watchDownloadedEpisodeCount().listen((c) {
       if (c != _totalDownloadedCount) setState(() => _totalDownloadedCount = c);
+    });
+    _podcastsSub = widget.db.watchAllPodcasts().listen((pods) {
+      final ids = {for (final p in pods) p.id};
+      if (ids.length != _subscribed.length || !ids.containsAll(_subscribed)) {
+        setState(() => _subscribed = ids);
+      }
     });
     _scrollCtrl.addListener(() {
       final show = _scrollCtrl.offset > 300;
@@ -112,6 +121,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     if (_openFeed != null) widget.db.openFeeds.remove(_openFeed);
     _markedSub?.cancel();
     _downloadedCountSub?.cancel();
+    _podcastsSub?.cancel();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -278,7 +288,11 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   Widget _tile(Episode ep) => RepaintBoundary(
         child: Column(
           children: [
-            EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+            EpisodeTile(
+              episode: ep,
+              onCoverTap: () => widget.onCoverTap(ep, widget.db),
+              offFeed: !ep.isSubscribed && _subscribed.contains(ep.podcastId),
+            ),
             Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
           ],
         ),
@@ -300,7 +314,11 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
           child: RepaintBoundary(
             child: Column(
               children: [
-                EpisodeTile(episode: ep, onCoverTap: () => widget.onCoverTap(ep, widget.db)),
+                EpisodeTile(
+              episode: ep,
+              onCoverTap: () => widget.onCoverTap(ep, widget.db),
+              offFeed: !ep.isSubscribed && _subscribed.contains(ep.podcastId),
+            ),
                 Divider(height: 1, color: widget.cs.outlineVariant.withValues(alpha: 0.5), indent: 88),
               ],
             ),

@@ -414,4 +414,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get exportFailed => 'Die Datei ließ sich nicht speichern';
+
+  @override
+  String get offFeed => 'nicht im Feed';
 }

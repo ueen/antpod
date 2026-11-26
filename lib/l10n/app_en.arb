@@ -174,5 +174,7 @@
   "importNotOpml": "This file isn't an OPML file",
   "importUnreadable": "Couldn't read this file",
   "exportSaved": "Saved",
-  "exportFailed": "Couldn't save the file"
+  "exportFailed": "Couldn't save the file",
+  "offFeed": "off feed",
+  "@offFeed": {"description": "Short tag by an episode its subscribed feed no longer lists, kept while in use"}
 }
