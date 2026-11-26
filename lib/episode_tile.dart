@@ -651,9 +651,11 @@ class _EpisodeMetadata extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The current episode's bar runs on the player's duration (see
+    // _LiveProgressBar), so a feed without durations still gets one.
     final showProgress = !episode.isFinished &&
-        episode.durationSeconds > 0 &&
-        (episode.lastPositionMs > 0 || isCurrent);
+        (isCurrent ||
+            (episode.durationSeconds > 0 && episode.lastPositionMs > 0));
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,

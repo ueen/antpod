@@ -273,8 +273,35 @@ class AppDatabase extends _$AppDatabase {
           .watch()
           .distinct(_sameEpisodeList);
 
-  Future<void> insertEpisodes(List<EpisodesCompanion> eps) =>
-      batch((b) => b.insertAllOnConflictUpdate(episodes, eps));
+  /// Upsert feed episodes: a row that's already there takes the feed's
+  /// columns, except its duration once it was played. updatePlaybackPosition
+  /// wrote the audio's own duration then, and RSS durations are often
+  /// rounded, wrong or 0.
+  Future<void> insertEpisodes(List<EpisodesCompanion> eps) => batch((b) {
+        for (final e in eps) {
+          b.insert(
+            episodes,
+            e,
+            onConflict:
+                DoUpdate<$EpisodesTable, Episode>.withExcluded((old, excluded) {
+              final cols = e.toColumns(true)..remove('id');
+              if (cols.containsKey('duration_seconds')) {
+                cols['duration_seconds'] = CaseWhenExpression<int>(
+                  cases: [
+                    CaseWhen(
+                      old.lastPlayed.isNotNull() &
+                          old.durationSeconds.isBiggerThanValue(0),
+                      then: old.durationSeconds,
+                    ),
+                  ],
+                  orElse: excluded.durationSeconds,
+                );
+              }
+              return RawValuesInsertable<Episode>(cols);
+            }),
+          );
+        }
+      });
 
   /// A row that's already there (subscribed, played, downloaded) is kept,
   /// except for its chapters link: a fresh one from the feed wins, and none
