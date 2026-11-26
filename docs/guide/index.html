@@ -15,7 +15,7 @@
         extend: {
           colors: {
             orange: { DEFAULT: '#FF9A30', dark: '#E07E18', light: '#FFF3E6' },
-            brown:  { DEFAULT: '#7B3F00', dark: '#2C1A0E', mid: '#5C2E0A' },
+            brown:  { DEFAULT: '#7B3F00', dark: '#582614', mid: '#5C2E0A' },
           },
           fontFamily: { sans: ['system-ui', '-apple-system', 'sans-serif'] },
         },
@@ -27,14 +27,14 @@
 
     /* ── Prose ───────────────────────────────────────────────────────────── */
     .prose h2 {
-      font-size: 1.15rem; font-weight: 700; color: #1A0E07;
+      font-size: 1.15rem; font-weight: 700; color: #451806;
       margin: 2.25rem 0 0.6rem; padding-bottom: 0.4rem;
       border-bottom: 1px solid #F0E4D4;
     }
     .prose h2:first-child { margin-top: 0; }
     .prose p  { font-size: 0.95rem; color: #5C3A1E; line-height: 1.75; margin: 0 0 0.9rem; }
     .prose p:last-child { margin-bottom: 0; }
-    .prose strong { color: #1A0E07; }
+    .prose strong { color: #451806; }
     .prose code {
       font-family: ui-monospace, monospace;
       font-size: 0.82rem; background: #F7EFE6;
@@ -64,7 +64,7 @@
       padding: 0.55rem 0.75rem; border-bottom: 1px solid #F7EFE6;
       vertical-align: top;
     }
-    .guide-table td:first-child { padding-left: 0; color: #1A0E07; font-weight: 600; }
+    .guide-table td:first-child { padding-left: 0; color: #451806; font-weight: 600; }
     .guide-table tr:last-child td { border-bottom: none; }
     @media (min-width: 520px) {
       .guide-table td:first-child { white-space: nowrap; }
@@ -121,7 +121,7 @@
     .lang-select:hover { border-color: #FF9A30; color: #FF9A30; }
   </style>
 </head>
-<body style="background:#FFFAF5; color:#1A0E07; font-family:system-ui,sans-serif;">
+<body style="background:#FFFAF5; color:#451806; font-family:system-ui,sans-serif;">
 
   <!-- ── Nav ──────────────────────────────────────────────────────────────── -->
   <nav style="border-bottom:1px solid #F0E4D4; background:#FFFAF5; position:sticky; top:0; z-index:100;">
@@ -133,7 +133,7 @@
         antpod.eu
       </a>
       <span style="color:#F0E4D4;">|</span>
-      <span data-i18n="navGuide" style="font-size:0.85rem; font-weight:600; color:#1A0E07;">Guide</span>
+      <span data-i18n="navGuide" style="font-size:0.85rem; font-weight:600; color:#451806;">Guide</span>
       <select id="lang-select" class="lang-select" aria-label="Language" onchange="setLang(this.value)">
         <option value="en">EN</option>
         <option value="de">DE</option>
