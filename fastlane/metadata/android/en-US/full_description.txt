@@ -1,5 +1,7 @@
 The anthill for your podcasts — every episode carried home tirelessly. A nimble scout hatched from the spirit of the grand old AntennaPod.
 
-Browse and subscribe to any podcast via the PodcastIndex catalogue. Your episode feed spans all subscriptions and can be filtered by podcast, downloaded, or played status. Audio keeps playing in the background with lock screen and notification controls. Save episodes for offline listening, discover trending and recommended shows, and enjoy full Material You theming on Android 12+.
+Browse and subscribe to any podcast via the PodcastIndex catalogue. Your episode feed spans all subscriptions and can be filtered by podcast, downloaded, played status or favourites. Audio keeps playing in the background with lock screen and notification controls. Save episodes for offline listening, discover trending and recommended shows, and pick a light or dark theme, with Material You colours on Android 12+.
+
+Coming from another app? Bring your subscriptions along via OPML, or take everything to a new phone with a backup.
 
 No ads. No tracking. No accounts. Just podcasts.

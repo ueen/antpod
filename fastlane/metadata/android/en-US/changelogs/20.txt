@@ -1,0 +1,6 @@
+AntPod 1.0 is here! 🐜
+• Favourites: heart the episodes you love and find them under their own filter
+• Settings: light, dark or system theme, right from the AntPod logo
+• Backup & OPML: move to a new phone, or bring your shows from another app
+• Rewind on resume: back from a break, AntPod steps back 10 s so you pick up the thread
+• Plus ant-coloured icons, bigger tap targets and many smaller improvements
