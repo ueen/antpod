@@ -136,7 +136,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
             ? widget.db.watchEpisodesForPodcast(widget.podcastIdFilter!)
             : widget.filter.downloaded
                 ? widget.db.watchDownloadedOrMarkedEpisodes()
-                : widget.db.watchAllFeedEpisodes(downloadedOnly: false))
+                : widget.db.watchAllFeedEpisodes())
         .listen(_onData);
   }
 

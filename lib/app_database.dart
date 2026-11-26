@@ -271,52 +271,48 @@ class AppDatabase extends _$AppDatabase {
 
   // ── Episodes ──────────────────────────────────────────────────────────────
 
-  /// Default feed: subscribed or actively-used temp episodes, not yet finished.
-  Stream<List<Episode>> watchUnfinishedEpisodes({bool downloadedOnly = false}) {
-    return (select(episodes)
-          ..where((e) {
-            final base = e.isFinished.equals(false) &
-                (e.isSubscribed.equals(true) |
-                 e.isDownloaded.equals(true) |
-                 e.lastPositionMs.isBiggerThanValue(0));
-            return downloadedOnly ? base & e.isDownloaded.equals(true) : base;
-          })
-          ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-        .watch();
-  }
-
-  /// All subscribed + actively-used temp episodes (no finished filter).
-  Stream<List<Episode>> watchAllFeedEpisodes({bool downloadedOnly = false}) {
-    return (select(episodes)
-          ..where((e) {
-            final base = e.isSubscribed.equals(true) |
-                e.isDownloaded.equals(true) |
-                e.lastPositionMs.isBiggerThanValue(0);
-            return downloadedOnly ? base & e.isDownloaded.equals(true) : base;
-          })
-          ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-        .watch()
-        .distinct(_sameEpisodeList);
-  }
-
-  /// Finished/played episodes (history view). Includes temp episodes still within
-  /// the 7-day cleanup window so they appear in history until automatically removed.
-  Stream<List<Episode>> watchFinishedEpisodes({bool downloadedOnly = false}) {
-    return (select(episodes)
-          ..where((e) {
-            final base = e.isFinished.equals(true);
-            return downloadedOnly ? base & e.isDownloaded.equals(true) : base;
-          })
-          ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-        .watch();
-  }
+  /// Subscribed episodes and actively used temp ones (downloaded, started):
+  /// the home feed before its filters.
+  Stream<List<Episode>> watchAllFeedEpisodes() => _watchList(_inFeed);
 
   Stream<List<Episode>> watchEpisodesForPodcast(String podcastId) =>
-      (select(episodes)
-            ..where((e) => e.podcastId.equals(podcastId))
-            ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-          .watch()
-          .distinct(_sameEpisodeList);
+      _watchList(episodes.podcastId.equals(podcastId));
+
+  /// Episodes that are downloaded OR queued for WiFi download.
+  /// Used when the user taps "Show marked for download" in the downloaded filter.
+  Stream<List<Episode>> watchDownloadedOrMarkedEpisodes() => _watchList(
+      (episodes.isDownloaded.equals(true) | episodes.markedForDownload.equals(true)) &
+          _inFeed);
+
+  Expression<bool> get _inFeed =>
+      episodes.isSubscribed.equals(true) |
+      episodes.isDownloaded.equals(true) |
+      episodes.lastPositionMs.isBiggerThanValue(0);
+
+  /// Every column but the show notes: kilobytes of HTML per episode that no
+  /// list shows, read again by every list on every episode write.
+  late final List<GeneratedColumn> _listColumns = [
+    for (final c in episodes.$columns)
+      if (c.$name != episodes.description.$name) c,
+  ];
+
+  /// Episodes matching [where], newest first, without their show notes: a
+  /// list's Episode has description ''. What needs the notes (the player)
+  /// reads the episode itself, see [getEpisode] and [watchEpisode].
+  Stream<List<Episode>> _watchList(Expression<bool> where) {
+    final query = selectOnly(episodes)
+      ..addColumns(_listColumns)
+      ..where(where)
+      ..orderBy([OrderingTerm.desc(episodes.publishDate)]);
+    return query
+        .watch()
+        .map((rows) => [
+              for (final r in rows)
+                episodes.map({...r.rawData.data, 'episodes.description': ''},
+                    tablePrefix: 'episodes'),
+            ])
+        .distinct(_sameEpisodeList);
+  }
 
   /// Upsert feed episodes: a row that's already there takes the feed's
   /// columns, except its duration once it was played. updatePlaybackPosition
@@ -614,20 +610,6 @@ class AppDatabase extends _$AppDatabase {
         .watchSingle()
         .map((row) => row.read(count) ?? 0)
         .distinct();
-  }
-
-  /// Episodes that are downloaded OR queued for WiFi download.
-  /// Used when the user taps "Show marked for download" in the downloaded filter.
-  Stream<List<Episode>> watchDownloadedOrMarkedEpisodes() {
-    return (select(episodes)
-          ..where((e) =>
-              (e.isDownloaded.equals(true) | e.markedForDownload.equals(true)) &
-              (e.isSubscribed.equals(true) |
-               e.isDownloaded.equals(true) |
-               e.lastPositionMs.isBiggerThanValue(0)))
-          ..orderBy([(e) => OrderingTerm.desc(e.publishDate)]))
-        .watch()
-        .distinct(_sameEpisodeList);
   }
 
   /// User-initiated "delete download": removes the file, and for a temp

@@ -239,19 +239,25 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     // Nothing read because a fetch failed (offline?): the next play retries.
     final feedFailed = hasFeed && feed == null;
-    if (_chapters.isEmpty && (file == null || feedFailed)) _chaptersKey = null;
+    final retry = _chapters.isEmpty && (file == null || feedFailed);
 
-    // Neither has chapters: timestamps in the show notes, if any.
+    // Neither has chapters: timestamps in the show notes, if any. An episode
+    // from a list comes without its notes (see AppDatabase._watchList).
     if (_chapters.isEmpty) {
+      final description = episode.description.isNotEmpty
+          ? episode.description
+          : (await _db.getEpisode(episode.id))?.description ?? '';
+      if (stale()) return;
       final secs = episode.durationSeconds > _duration.inSeconds
           ? episode.durationSeconds
           : _duration.inSeconds;
-      final notes = notesChapters(episode.description, secs);
+      final notes = notesChapters(description, secs);
       if (notes.isNotEmpty) {
         _chapters = notes;
         notifyListeners();
       }
     }
+    if (retry) _chaptersKey = null;
   }
 
   // ── Playback ──────────────────────────────────────────────────────────────
@@ -503,19 +509,19 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     // A feed refresh can bring a chapters link, and a download a file whose
     // tag (another ad variation) has its own times.
     if (chaptersMoved) _loadChapters(updated);
+    // Also the first row after play(): an episode from a list comes without
+    // its show notes, which the player shows.
+    notifyListeners();
 
-    if (!_audioReady) {
-      // Nothing loaded (restored, or the load failed): no source to swap,
-      // the next play() picks the file or the stream itself.
-      notifyListeners();
-    } else if (prevLocal == null && newLocal != null) {
+    // Nothing loaded (restored, or the load failed): no source to swap, the
+    // next play() picks the file or the stream itself.
+    if (!_audioReady) return;
+    if (prevLocal == null && newLocal != null) {
       // Download finished while streaming — switch to local file seamlessly
       _pivotSource(localPath: newLocal);
     } else if (prevLocal != null && newLocal == null) {
       // Local file deleted while playing — fall back to stream
       _pivotSource(audioUrl: updated.audioUrl);
-    } else {
-      notifyListeners();
     }
   }
 

@@ -14,8 +14,10 @@ List<Episode> sortEpisodes(List<Episode> eps, SortMode sort,
   List<Episode> result;
   switch (sort) {
     case SortMode.alphabetical:
-      result = List.of(eps)
-        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      // Each title lowered once, not twice per comparison.
+      final keyed = [for (final e in eps) (e.title.toLowerCase(), e)]
+        ..sort((a, b) => a.$1.compareTo(b.$1));
+      result = [for (final (_, e) in keyed) e];
     case SortMode.oldest:
       result = List.of(eps)
         ..sort((a, b) => a.publishDate.compareTo(b.publishDate));

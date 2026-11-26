@@ -136,6 +136,52 @@ void main() {
 
   Future<Podcast> pod() => db.getPodcast(_feed).then((p) => p!);
 
+  group('list streams', () {
+    test("a list's episode is the stored one without its show notes", () async {
+      await db.insertEpisodes([
+        _rss('a').copyWith(
+          description: const Value('<p>01:00 Intro</p>'),
+          isSubscribed: const Value(true),
+          chaptersUrl: const Value('https://example.com/a.json'),
+        ),
+      ]);
+      await db.updatePlaybackPosition('a', positionMs: 5000, durationMs: 1800000);
+      final stored = (await db.getEpisode('a'))!;
+      expect(stored.description, '<p>01:00 Intro</p>');
+      expect(stored.lastPlayed, isNotNull);
+
+      final listed = [stored.copyWith(description: '')];
+      expect(await db.watchAllFeedEpisodes().first, listed);
+      expect(await db.watchEpisodesForPodcast(_feed).first, listed);
+    });
+
+    test('each list has its episodes, newest first', () async {
+      EpisodesCompanion at(String id, int day, {bool subscribed = true,
+              bool downloaded = false, bool marked = false}) =>
+          _rss(id).copyWith(
+            publishDate: Value(DateTime(2026, 1, day)),
+            isSubscribed: Value(subscribed),
+            isDownloaded: Value(downloaded),
+            markedForDownload: Value(marked),
+          );
+      await db.insertEpisodes([
+        at('old', 1),
+        at('new', 3, marked: true),
+        at('mid', 2, subscribed: false, downloaded: true),
+        at('temp', 4, subscribed: false),
+        _rss('other').copyWith(podcastId: const Value('elsewhere'),
+            isSubscribed: const Value(true),
+            publishDate: Value(DateTime(2025, 12, 1))),
+      ]);
+      Future<List<String>> ids(Stream<List<Episode>> s) =>
+          s.first.then((l) => [for (final e in l) e.id]);
+
+      expect(await ids(db.watchAllFeedEpisodes()), ['new', 'mid', 'old', 'other']);
+      expect(await ids(db.watchEpisodesForPodcast(_feed)), ['temp', 'new', 'mid', 'old']);
+      expect(await ids(db.watchDownloadedOrMarkedEpisodes()), ['new', 'mid']);
+    });
+  });
+
   group('saveFeedRefresh', () {
     test('writes episodes and podcast columns together', () async {
       await db.saveFeedRefresh([_rss('a')], {
