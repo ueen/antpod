@@ -253,16 +253,85 @@ class _MiniProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = context.select<PlayerProvider, double>((p) => p.progress);
+    final player = context.read<PlayerProvider>();
+    // Rebuild on a new duration too, not only on position ticks.
+    context.select<PlayerProvider, Duration>((p) => p.duration);
     final cs = Theme.of(context).colorScheme;
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: LinearProgressIndicator(
-        value: progress.clamp(0.0, 1.0),
-        minHeight: 5,
-        backgroundColor: Colors.transparent,
-        color: cs.inversePrimary,
+      child: ValueListenableBuilder<Duration>(
+        valueListenable: player.positionListenable,
+        builder: (_, pos, __) => LinearProgressIndicator(
+          value: player.progressAt(pos),
+          minHeight: 5,
+          backgroundColor: Colors.transparent,
+          color: cs.inversePrimary,
+        ),
       ),
+    );
+  }
+}
+
+/// The sheet's slider and time labels. They follow the position on their
+/// own (the rest of the sheet doesn't rebuild per tick), and while dragging
+/// they follow the finger: the seek happens once, on release.
+class _SeekBar extends StatefulWidget {
+  final PlayerProvider player;
+  final String Function(Duration) fmt;
+  const _SeekBar({required this.player, required this.fmt});
+
+  @override
+  State<_SeekBar> createState() => _SeekBarState();
+}
+
+class _SeekBarState extends State<_SeekBar> {
+  /// 0..1 while the finger is on the slider.
+  double? _drag;
+
+  @override
+  Widget build(BuildContext context) {
+    final player = widget.player;
+    final cs = Theme.of(context).colorScheme;
+    final label = TextStyle(fontSize: 11, color: cs.onSurfaceVariant);
+    return ValueListenableBuilder<Duration>(
+      valueListenable: player.positionListenable,
+      builder: (context, pos, _) {
+        final dur = player.duration;
+        final shown = _drag != null ? dur * _drag! : pos;
+        return Column(children: [
+          SliderTheme(
+            data: SliderThemeData(
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              trackHeight: 3,
+              activeTrackColor: cs.primary,
+              inactiveTrackColor: cs.primary.withValues(alpha: 0.2),
+              thumbColor: cs.primary,
+            ),
+            child: Slider(
+              value: _drag ?? player.progressAt(pos),
+              onChangeStart: (v) => setState(() => _drag = v),
+              onChanged: (v) => setState(() => _drag = v),
+              onChangeEnd: (v) {
+                // Clear the drag after the seek is sent: the player already
+                // reports the target, so the thumb doesn't spring back.
+                player.seekTo(dur * v);
+                setState(() => _drag = null);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(widget.fmt(shown), style: label),
+                Text(widget.fmt(dur), style: label),
+              ],
+            ),
+          ),
+        ]);
+      },
     );
   }
 }
@@ -461,34 +530,7 @@ class _PlayerSheet extends StatelessWidget {
               const SizedBox(height: 4),
             ],
 
-            SliderTheme(
-              data: SliderThemeData(
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                trackHeight: 3,
-                activeTrackColor: cs.primary,
-                inactiveTrackColor: cs.primary.withValues(alpha: 0.2),
-                thumbColor: cs.primary,
-              ),
-              child: Slider(
-                value: player.progress,
-                onChanged: (v) => player.seekTo(
-                  Duration(seconds: (v * player.duration.inSeconds).round()),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(_fmtDur(player.position),
-                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                  Text(_fmtDur(player.duration),
-                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                ],
-              ),
-            ),
+            _SeekBar(player: player, fmt: _fmtDur),
             const SizedBox(height: 8),
 
             // Controls row: speed | skip-back | play | skip-fwd | share

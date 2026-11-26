@@ -732,8 +732,8 @@ class _ProgressBar extends StatelessWidget {
 }
 
 /// The current episode's bar, in step with the mini player: it follows the
-/// player position (whole seconds), not the DB value that's saved every 5 s.
-/// Own widget so the 1 Hz rebuild stays this small.
+/// player position, not the DB value, which is only saved now and then.
+/// Own widget so the position ticks rebuild only this.
 class _LiveProgressBar extends StatelessWidget {
   final Episode episode;
   final ColorScheme cs;
@@ -741,10 +741,15 @@ class _LiveProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (posSec, durSec) = context.select<PlayerProvider, (int, int)>(
-        (p) => (p.position.inSeconds, p.duration.inSeconds));
-    final total = durSec > 0 ? durSec : episode.durationSeconds;
-    return _ProgressBar(value: total > 0 ? posSec / total : 0.0, cs: cs);
+    final player = context.read<PlayerProvider>();
+    final durMs = context.select<PlayerProvider, int>(
+        (p) => p.duration.inMilliseconds);
+    final total = durMs > 0 ? durMs : episode.durationSeconds * 1000;
+    return ValueListenableBuilder<Duration>(
+      valueListenable: player.positionListenable,
+      builder: (_, pos, __) => _ProgressBar(
+          value: total > 0 ? pos.inMilliseconds / total : 0.0, cs: cs),
+    );
   }
 }
 

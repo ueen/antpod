@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_database.dart';
 import 'audio_handler.dart';
@@ -11,12 +13,11 @@ import 'chapters.dart';
 import 'file_chapters.dart';
 import 'network.dart';
 
-class PlayerProvider extends ChangeNotifier {
+class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   final AppDatabase _db;
 
   Episode? _currentEpisode;
   bool _isPlaying = false;
-  Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isLoading = false;
   // False after restoreLastEpisode() — audio source is not configured until
@@ -31,9 +32,29 @@ class PlayerProvider extends ChangeNotifier {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _isOffline = false;
 
-  static const _saveIntervalMs = 5000;
   static const _prefLastEpisodeId = 'player_last_episode_id';
-  int _lastSavedMs = 0;
+
+  /// The position, on its own channel: it ticks 5 times a second, and only
+  /// the widgets showing it (progress bars, time labels) listen. The provider
+  /// itself notifies for real state changes, and when the chapter changes.
+  final _positionNotifier = ValueNotifier<Duration>(Duration.zero);
+  int _notifiedChapter = -1;
+
+  Duration get _position => _positionNotifier.value;
+  set _position(Duration p) {
+    _positionNotifier.value = p;
+    final i = currentChapterIndex;
+    if (i != _notifiedChapter) {
+      _notifiedChapter = i;
+      notifyListeners();
+    }
+  }
+
+  /// Positions are saved when something happens (pause, seek, skip, episode
+  /// switch, close, app sent to the background), so this timer only guards
+  /// against the process being killed mid-playback.
+  static const _saveEvery = Duration(seconds: 30);
+  Timer? _saveTimer;
 
   /// True while a new source loads (episode switch, source pivot): the
   /// player's position/duration events then still belong to the old source
@@ -44,7 +65,10 @@ class PlayerProvider extends ChangeNotifier {
 
   bool get isOffline => _isOffline;
 
+  AudioPlayer get _player => (audioHandler as AntPodAudioHandler).player;
+
   PlayerProvider(this._db) {
+    WidgetsBinding.instance.addObserver(this);
     // Track connectivity for offline indicators in UI.
     Connectivity().checkConnectivity().then((results) => _isOffline = results.isOffline);
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
@@ -55,66 +79,80 @@ class PlayerProvider extends ChangeNotifier {
     });
 
     final handler = audioHandler as AntPodAudioHandler;
-    handler.onUserPause = () {
-      _position = handler.player.position;
-      _flushPosition();
-      _maybeComplete();
-    };
+    handler.onUserPause = _maybeComplete;
 
     handler.playbackState.listen((state) {
-      _isPlaying = state.playing;
-      if (!_settling) _position = state.updatePosition;
+      var playing = state.playing;
+      var loading = _isLoading;
       // Skip idle — fired transiently by _player.stop() before setUrl(), which
       // would clear _isLoading and cause the spinner to flash off and back on.
       if (state.processingState != AudioProcessingState.idle) {
         final isLocal = _currentEpisode?.localPath != null;
-        _isLoading = !isLocal &&
+        loading = !isLocal &&
             (state.processingState == AudioProcessingState.loading ||
              state.processingState == AudioProcessingState.buffering);
       }
+      final completed =
+          state.processingState == AudioProcessingState.completed && !_settling;
+      if (completed) playing = false;
 
-      if (state.processingState == AudioProcessingState.completed &&
-          !_settling) {
-        _isPlaying = false;
-        _finishCurrent();
+      if (playing != _isPlaying) {
+        // Any stop of playback (user, call, headphones unplugged) saves.
+        if (!playing) _flushPosition();
+        _playingChanged(playing);
       }
+      if (completed) _finishCurrent();
+      // Playback events also fire for buffer progress: only notify on change.
+      if (playing != _isPlaying || loading != _isLoading) {
+        _isPlaying = playing;
+        _isLoading = loading;
+        notifyListeners();
+      }
+    });
+
+    _player.durationStream.listen((d) {
+      if (d == null || _settling || d == _duration) return;
+      _duration = d;
       notifyListeners();
     });
 
-    handler.player.durationStream.listen((d) {
-      if (d != null && !_settling) { _duration = d; notifyListeners(); }
+    _player.positionStream.listen((p) {
+      if (!_settling && _audioReady) _position = p;
     });
+  }
 
-    handler.player.positionStream.listen((p) {
-      if (_settling) return;
-      _position = p;
-      final ms = p.inMilliseconds;
-      // abs(): a rewind or skip back must be saved too, not only once
-      // playback passes the last saved mark again.
-      if ((ms - _lastSavedMs).abs() >= _saveIntervalMs && _currentEpisode != null) {
-        _lastSavedMs = ms;
-        _db.updatePlaybackPosition(
-          _currentEpisode!.id,
-          positionMs: ms,
-          durationMs: _duration.inMilliseconds,
-        );
-      }
-      notifyListeners();
-    });
+  void _playingChanged(bool playing) {
+    _saveTimer?.cancel();
+    _saveTimer = playing
+        ? Timer.periodic(_saveEvery, (_) => _flushPosition())
+        : null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _flushPosition();
+    }
   }
 
   // ── Getters ───────────────────────────────────────────────────────────────
 
   Episode? get currentEpisode => _currentEpisode;
   bool get isPlaying => _isPlaying;
+  /// The position right now; widgets that show it listen to
+  /// [positionListenable] instead of rebuilding with the whole provider.
   Duration get position => _position;
+  ValueListenable<Duration> get positionListenable => _positionNotifier;
   Duration get duration => _duration;
   bool get isLoading => _isLoading;
   bool get hasEpisode => _currentEpisode != null;
 
-  double get progress =>
+  /// [pos] (default: now) as a share of the duration, 0..1.
+  double progressAt([Duration? pos]) =>
       _duration.inMilliseconds > 0
-          ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
+          ? ((pos ?? _position).inMilliseconds / _duration.inMilliseconds)
+              .clamp(0.0, 1.0)
           : 0.0;
 
   // ── Chapters ──────────────────────────────────────────────────────────────
@@ -249,7 +287,6 @@ class PlayerProvider extends ChangeNotifier {
     _settling = true;
     _position = Duration(milliseconds: startMs);
     if (durationSeconds > 0) _duration = Duration(seconds: durationSeconds);
-    _lastSavedMs = startMs;
     return ++_sourceGen;
   }
 
@@ -258,11 +295,9 @@ class PlayerProvider extends ChangeNotifier {
   void _endSettle(int gen) {
     if (gen != _sourceGen || !_settling) return;
     _settling = false;
-    final player = (audioHandler as AntPodAudioHandler).player;
-    _position = player.position;
-    final d = player.duration;
+    _position = _player.position;
+    final d = _player.duration;
     if (d != null && d > Duration.zero) _duration = d;
-    _lastSavedMs = _position.inMilliseconds;
     notifyListeners();
   }
 
@@ -271,8 +306,8 @@ class PlayerProvider extends ChangeNotifier {
   /// [next], so the outgoing tile gets its final position.
   void _switchTo(Episode next) {
     final prev = _currentEpisode;
-    if (prev != null && prev.id != next.id && _audioReady &&
-        _position.inMilliseconds > 0) {
+    if (prev != null && prev.id != next.id &&
+        _exactPosition.inMilliseconds > 0) {
       _flushPosition();
     }
     _db.livePositionEpisodeId = next.id;
@@ -318,7 +353,7 @@ class PlayerProvider extends ChangeNotifier {
     final ep = _currentEpisode;
     if (ep == null) return;
     final wasReady = _audioReady;
-    final ms = _position.inMilliseconds;
+    final ms = _exactPosition.inMilliseconds;
     final durationMs = _duration.inMilliseconds;
     // Clear state first: detaches the episode watch (so our own position write
     // below can't re-enter _onEpisodeUpdated) and stops the position listener
@@ -329,6 +364,7 @@ class PlayerProvider extends ChangeNotifier {
     _audioReady = false;
     _settling = false;
     _sourceGen++;
+    _playingChanged(false);
     _chapters = [];
     _chaptersKey = null;
     // Before the save below, so the lists pick up the final position.
@@ -336,7 +372,6 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
 
     if (savePosition && wasReady && ms > 0) {
-      _lastSavedMs = ms;
       try {
         await _db.updatePlaybackPosition(ep.id,
             positionMs: ms, durationMs: durationMs);
@@ -484,7 +519,7 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _pivotSource({String? localPath, String? audioUrl}) async {
     final handler = audioHandler as AntPodAudioHandler;
     final wasPlaying = _isPlaying;
-    final savedPos = _position;
+    final savedPos = _exactPosition;
     final gen = _beginSettle(
         savedPos.inMilliseconds, _duration.inSeconds);
     try {
@@ -518,7 +553,7 @@ class PlayerProvider extends ChangeNotifier {
   void _maybeComplete() {
     if (_currentEpisode == null) return;
     if (_duration.inSeconds <= 0) return;
-    if (_position.inSeconds < _duration.inSeconds - 60) return;
+    if (_exactPosition.inSeconds < _duration.inSeconds - 60) return;
     _finishCurrent();
   }
 
@@ -534,13 +569,23 @@ class PlayerProvider extends ChangeNotifier {
     await _db.markFinished(ep.id);
   }
 
+  /// Seeks and saves the new position (saved only once the player is there,
+  /// so a quick save can't land the old one). The bar moves at once: the
+  /// player reports a seek's target before it gets there.
   Future<void> seekTo(Duration pos) async {
     await audioHandler.seek(pos);
     _flushPosition();
   }
 
-  Future<void> skipForward() => audioHandler.fastForward();
-  Future<void> skipBackward() => audioHandler.rewind();
+  Future<void> skipForward() async {
+    await audioHandler.fastForward();
+    _flushPosition();
+  }
+
+  Future<void> skipBackward() async {
+    await audioHandler.rewind();
+    _flushPosition();
+  }
 
   // ── Speed + skip config ───────────────────────────────────────────────────
 
@@ -569,22 +614,32 @@ class PlayerProvider extends ChangeNotifier {
 
   // ── Internal ──────────────────────────────────────────────────────────────
 
+  /// Where playback is to the millisecond: the player's own position, not
+  /// the last 200 ms tick. While a source loads (or before the first play
+  /// after a restore) it's the start position held in [_position].
+  Duration get _exactPosition =>
+      _audioReady && !_settling ? _player.position : _position;
+
+  /// Save the current episode's position. Not while a source loads: the
+  /// player has nothing new to say yet, and the start position is saved.
   void _flushPosition() {
-    if (_currentEpisode != null) {
-      _lastSavedMs = _position.inMilliseconds;
-      _db.updatePlaybackPosition(
-        _currentEpisode!.id,
-        positionMs: _position.inMilliseconds,
-        durationMs: _duration.inMilliseconds,
-      );
-    }
+    final ep = _currentEpisode;
+    if (ep == null || !_audioReady || _settling) return;
+    _db.updatePlaybackPosition(
+      ep.id,
+      positionMs: _exactPosition.inMilliseconds,
+      durationMs: _duration.inMilliseconds,
+    );
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _saveTimer?.cancel();
     _episodeWatchSub?.cancel();
     _connectivitySub?.cancel();
     _flushPosition();
+    _positionNotifier.dispose();
     super.dispose();
   }
 }
