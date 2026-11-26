@@ -329,14 +329,16 @@ class _DiscoverListState extends State<DiscoverList> {
                     style: TextStyle(color: cs.onSurfaceVariant))),
               )
             else
-              SliverPadding(
-                padding: const EdgeInsets.only(bottom: 88),
-                sliver: SliverList.builder(
-                  itemCount: widget.trending.length,
-                  itemBuilder: (_, i) => _DiscoverPodcastTile(
-                    result: widget.trending[i], rank: i + 1,
-                    cs: widget.cs, l10n: widget.l10n,
-                    onPreview: widget.onOpen,
+              _SliverFadeIn(
+                sliver: SliverPadding(
+                  padding: const EdgeInsets.only(bottom: 88),
+                  sliver: SliverList.builder(
+                    itemCount: widget.trending.length,
+                    itemBuilder: (_, i) => _DiscoverPodcastTile(
+                      result: widget.trending[i], rank: i + 1,
+                      cs: widget.cs, l10n: widget.l10n,
+                      onPreview: widget.onOpen,
+                    ),
                   ),
                 ),
               ),
@@ -381,6 +383,31 @@ class _DiscoverListState extends State<DiscoverList> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Discover podcast tile
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Fades [sliver] in when it first appears (the trends after the spinner).
+class _SliverFadeIn extends StatefulWidget {
+  final Widget sliver;
+  const _SliverFadeIn({required this.sliver});
+
+  @override
+  State<_SliverFadeIn> createState() => _SliverFadeInState();
+}
+
+class _SliverFadeInState extends State<_SliverFadeIn>
+    with SingleTickerProviderStateMixin {
+  late final _ctrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 220))..forward();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      SliverFadeTransition(opacity: _ctrl, sliver: widget.sliver);
+}
 
 class _DiscoverPodcastTile extends StatelessWidget {
   final PodcastResult result;
