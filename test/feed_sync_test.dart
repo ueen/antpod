@@ -129,7 +129,7 @@ void main() {
       final p = await pod('f3');
       expect(p.imageUrl, 'https://example.com/cover.jpg');
       expect(p.feedEtag, feeds['f3']!.etag);
-      expect(p.feedHash, startsWith('1:'));
+      expect(p.feedHash, matches(r'^\d+:[0-9a-f]+$'), reason: 'version:hash');
 
       await FeedSync.refreshAll(db);
       expect(feeds.values.every((f) => f.requests == 2 && f.notModified == 1),

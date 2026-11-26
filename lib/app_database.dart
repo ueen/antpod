@@ -23,6 +23,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import 'app_settings.dart';
+import 'feed_items.dart';
 
 part 'app_database.g.dart';
 
@@ -71,7 +72,9 @@ class Episodes extends Table {
   TextColumn get description => text()();
   TextColumn get audioUrl => text()();
   IntColumn get durationSeconds => integer().withDefault(const Constant(0))();
-  DateTimeColumn get publishDate => dateTime()();
+  /// When the feed dates it; an undated item's first sighting (a feed's
+  /// later refreshes leave it be, see PodcastService.fetchFeed).
+  DateTimeColumn get publishDate => dateTime().clientDefault(DateTime.now)();
   BoolColumn get isDownloaded => boolean().withDefault(const Constant(false))();
   TextColumn get localPath => text().nullable()();
   TextColumn get downloadTaskId => text().nullable()();
@@ -431,69 +434,101 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Episodes a feed republished under a new guid (Legion's guid is the
-  /// mp3's URL, and a re-upload got a new one): a row the feed no longer
-  /// has, with the title of one it has, from the same day. It hands its
-  /// progress, played state, favourite and download to the feed's row and
-  /// goes, so the episode isn't listed twice; an Apple search stub likewise.
-  /// Only rows within the feed's span: one that aged out of a feed keeping
-  /// just its latest isn't republished, even under the same title (news).
+  /// Episodes a feed has under another guid now (see twinOf): Legion's
+  /// guid is the mp3's URL, and a re-upload got a new one; a host moved, a
+  /// guid-less item's title was fixed, a feed listed one twice (see
+  /// distinctItems), an Apple search stub. Rows the feed no longer has, from
+  /// within its span: one that aged out of a feed keeping just its latest
+  /// isn't republished, even under the same title (news). See [_foldInto].
   Future<void> _mergeRepublished(
       String podcastId, List<EpisodesCompanion> feed) async {
-    final inFeed = {for (final e in feed) e.id.value};
-    final oldest = feed
-        .map((e) => e.publishDate.value)
-        .reduce((a, b) => a.isBefore(b) ? a : b);
+    final facts = [for (final e in feed) itemFacts(e)];
+    final dates = [for (final f in facts) if (f.date != null) f.date!];
+    final oldest = dates.isEmpty
+        ? null
+        : dates.reduce((a, b) => a.isBefore(b) ? a : b)
+            .subtract(const Duration(days: 1));
     final gone = await (select(episodes)
           ..where((e) =>
               e.podcastId.equals(podcastId) &
-              e.publishDate.isBiggerOrEqualValue(oldest) &
-              e.id.isNotIn(inFeed)))
+              (oldest == null
+                  ? const Constant(true)
+                  : e.publishDate.isBiggerOrEqualValue(oldest)) &
+              e.id.isNotIn(facts.map((f) => f.id))))
         .get();
-    if (gone.isEmpty) return;
-    final byTitle = <String, List<EpisodesCompanion>>{};
-    for (final e in feed) {
-      byTitle.putIfAbsent(_titleKey(e.title.value), () => []).add(e);
-    }
     for (final old in gone) {
-      final twin = byTitle[_titleKey(old.title)]
-          ?.where((e) =>
-              e.publishDate.value.difference(old.publishDate).abs() <
-              const Duration(days: 1))
-          .firstOrNull;
-      final now = twin == null ? null : await getEpisode(twin.id.value);
-      // Both downloaded: two files, left as they are.
-      if (now == null || (now.isDownloaded && old.isDownloaded)) continue;
-      final played =
-          now.lastPlayed != null || now.isFinished || now.lastPositionMs > 0;
-      final p = played ? now : old;
-      final hasFile = now.isDownloaded || now.downloadTaskId != null;
-      final d = hasFile ? now : old;
-      await (update(episodes)..where((e) => e.id.equals(now.id)))
-          .write(EpisodesCompanion(
-        lastPositionMs: Value(p.lastPositionMs),
-        playbackPositionSeconds: Value(p.playbackPositionSeconds),
-        isFinished: Value(p.isFinished),
-        lastPlayed: Value(p.lastPlayed),
-        isFavorite: Value(now.isFavorite || old.isFavorite),
-        isDownloaded: Value(d.isDownloaded),
-        localPath: Value(d.localPath),
-        downloadTaskId: Value(d.downloadTaskId),
-        markedForDownload: Value(!d.isDownloaded &&
-            (now.markedForDownload || old.markedForDownload)),
-      ));
-      await (delete(episodes)..where((e) => e.id.equals(old.id))).go();
-      _merged[old.id] = now.id;
+      final twin = twinOf(rowFacts(old), facts);
+      final now = twin == null ? null : await getEpisode(twin);
+      if (now != null) await _foldInto(old, now);
     }
   }
 
-  static String _titleKey(String title) =>
-      title.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  /// [old], the same episode as the feed's [now] under another guid:
+  /// - In use (in the player, started, downloaded or downloading): kept as
+  ///   a temp episode, off the feed, to be finished on its own audio; then
+  ///   it folds in (markFinished), or the temp rules take it.
+  /// - Finished: [now] takes the played state, unless played on its own,
+  ///   and the file, so the episode isn't new again; [old] goes.
+  /// - Untouched: it goes.
+  /// A favourite or WiFi mark moves to [now] either way. [done]: [old] was
+  /// just finished in the player, which closes.
+  Future<void> _foldInto(Episode old, Episode now, {bool done = false}) async {
+    if (old.isFavorite && !now.isFavorite) await setFavorite(now.id, true);
+    final inUse = !done &&
+        (old.id == livePositionEpisodeId ||
+            old.downloadTaskId != null ||
+            (!old.isFinished && (old.isDownloaded || old.lastPositionMs > 0)));
+    if (inUse) {
+      if (old.isSubscribed || old.isFavorite) {
+        await (update(episodes)..where((e) => e.id.equals(old.id))).write(
+            const EpisodesCompanion(
+                isSubscribed: Value(false), isFavorite: Value(false)));
+      }
+      return;
+    }
+    final takePlayed =
+        old.isFinished && now.lastPlayed == null && now.lastPositionMs == 0;
+    final free = !now.isDownloaded && now.downloadTaskId == null;
+    final takeFile = old.isDownloaded && free;
+    if (old.isDownloaded && !takeFile && old.localPath != null) {
+      final f = File(old.localPath!);
+      if (f.existsSync()) f.deleteSync();
+    }
+    await (update(episodes)..where((e) => e.id.equals(now.id)))
+        .write(EpisodesCompanion(
+      isFinished: takePlayed ? const Value(true) : const Value.absent(),
+      lastPositionMs:
+          takePlayed ? Value(old.lastPositionMs) : const Value.absent(),
+      playbackPositionSeconds: takePlayed
+          ? Value(old.playbackPositionSeconds)
+          : const Value.absent(),
+      lastPlayed: takePlayed ? Value(old.lastPlayed) : const Value.absent(),
+      isDownloaded: takeFile ? const Value(true) : const Value.absent(),
+      localPath: takeFile ? Value(old.localPath) : const Value.absent(),
+      markedForDownload: old.markedForDownload && free && !takePlayed
+          ? const Value(true)
+          : const Value.absent(),
+    ));
+    await (delete(episodes)..where((e) => e.id.equals(old.id))).go();
+  }
 
-  /// Rows [_mergeRepublished] merged away, old id → the feed's: the player
-  /// carries on with the new one instead of closing.
-  final _merged = <String, String>{};
-  String? mergedInto(String id) => _merged[id];
+  /// A temp episode just finished, the off-feed copy of one its subscribed
+  /// feed has under another guid (or a search stub): it folds into that
+  /// one, so it isn't new there and isn't listed twice. Whether it did.
+  Future<bool> _foldIntoTwin(String id) async {
+    final old = await getEpisode(id);
+    if (old == null || old.isSubscribed) return false;
+    final rows = await (select(episodes)
+          ..where((e) =>
+              e.podcastId.equals(old.podcastId) &
+              e.isSubscribed.equals(true)))
+        .get();
+    final twin = twinOf(rowFacts(old), rows.map(rowFacts));
+    if (twin == null) return false;
+    await _foldInto(old, rows.firstWhere((r) => r.id == twin), done: true);
+    await cleanupTempFeedIfDone(old.podcastId);
+    return true;
+  }
 
   /// Counts one more failed refresh for each podcast in [ids].
   Future<void> countFeedFailures(List<String> ids) =>
@@ -648,14 +683,18 @@ class AppDatabase extends _$AppDatabase {
   /// Explicitly mark episode as finished (e.g. after natural completion).
   /// Also clears any pending WiFi download queue — no point downloading
   /// something the user has already listened to.
-  Future<void> markFinished(String id) =>
-      (update(episodes)..where((e) => e.id.equals(id))).write(
-        EpisodesCompanion(
-          isFinished: const Value(true),
-          lastPlayed: Value(DateTime.now()),
-          markedForDownload: const Value(false),
-        ),
-      );
+  /// A temp episode with a twin in its subscribed feed folds into it
+  /// (see [_foldIntoTwin]).
+  Future<void> markFinished(String id) async {
+    await (update(episodes)..where((e) => e.id.equals(id))).write(
+      EpisodesCompanion(
+        isFinished: const Value(true),
+        lastPlayed: Value(DateTime.now()),
+        markedForDownload: const Value(false),
+      ),
+    );
+    await _foldIntoTwin(id);
+  }
 
   /// Whether [id] is a favourite, as it changes; false once it's gone.
   Stream<bool> watchFavorite(String id) {
@@ -955,6 +994,7 @@ class AppDatabase extends _$AppDatabase {
     final ep = await getEpisode(id);
     if (ep == null) return;
     if (ep.isSubscribed || ep.isFavorite) return markFinished(id);
+    await markFinished(id); // folds into a twin in its feed, if it has one
     await cleanupTempEpisode(id);
   }
 

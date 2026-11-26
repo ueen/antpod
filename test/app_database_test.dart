@@ -7,7 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 const _feed = 'https://example.com/feed.xml';
 
-EpisodesCompanion _rss(String id, {int durationSeconds = 1800, String? title}) =>
+EpisodesCompanion _rss(String id,
+        {int durationSeconds = 1800, String? title, DateTime? date}) =>
     EpisodesCompanion.insert(
       id: id,
       podcastId: _feed,
@@ -17,7 +18,7 @@ EpisodesCompanion _rss(String id, {int durationSeconds = 1800, String? title}) =
       description: '',
       audioUrl: 'https://example.com/$id.mp3',
       durationSeconds: Value(durationSeconds),
-      publishDate: DateTime(2026, 1, 1),
+      publishDate: Value(date ?? DateTime(2026, 1, 1)),
     );
 
 void main() {
@@ -295,29 +296,95 @@ void main() {
       expect((await pod()).feedEtag, isNull);
     });
 
-    test('a republished episode (new guid) takes over the old one', () async {
-      final older = _rss('z').copyWith(publishDate: Value(DateTime(2025, 12)));
-      await db.saveFeedRefresh(
-          [older, _rss('a', title: 'Kingdom Come 1')], const {});
-      await (db.update(db.episodes)..where((e) => e.id.equals('a'))).write(
-          EpisodesCompanion(
-              lastPositionMs: const Value(600000),
-              lastPlayed: Value(DateTime(2026, 1, 2)),
-              isFavorite: const Value(true),
-              isDownloaded: const Value(true),
-              localPath: const Value('/files/a.mp3')));
-      await db.saveFeedRefresh([
-        older,
-        _rss('b', title: ' kingdom  come 1').copyWith(
-            publishDate: Value(DateTime(2026, 1, 1, 12))),
-      ], const {});
-      expect(await db.getEpisode('a'), isNull);
-      final b = await ep('b');
-      expect(b.lastPositionMs, 600000);
+    // The feed's oldest item, so the republished one is inside its span.
+    final older = _rss('z', date: DateTime(2025, 12));
+    Future<void> refresh(List<EpisodesCompanion> feed) =>
+        db.saveFeedRefresh(feed, const {});
+    Future<void> set(String id, EpisodesCompanion c) =>
+        (db.update(db.episodes)..where((e) => e.id.equals(id))).write(c);
+    final republished =
+        _rss('b', title: ' kingdom  come 1', date: DateTime(2026, 1, 1, 12));
+
+    test('a republished episode in use stays off the feed until finished',
+        () async {
+      await refresh([older, _rss('a', title: 'Kingdom Come 1')]);
+      await set('a', EpisodesCompanion(
+          lastPositionMs: const Value(600000),
+          lastPlayed: Value(DateTime(2026, 1, 2)),
+          isFavorite: const Value(true),
+          isDownloaded: const Value(true),
+          localPath: const Value('/files/a.mp3')));
+      await refresh([older, republished]);
+
+      var a = await ep('a');
+      expect(a.isSubscribed, isFalse, reason: 'a temp episode now');
+      expect(a.isFavorite, isFalse, reason: 'the mark moved');
+      expect(a.lastPositionMs, 600000);
+      var b = await ep('b');
       expect(b.isFavorite, isTrue);
+      expect(b.lastPositionMs, 0);
+      expect(b.isFinished, isFalse);
+
+      await refresh([older, republished]);
+      a = await ep('a');
+      expect(a.lastPositionMs, 600000, reason: 'a refresh leaves it be');
+
+      await db.markFinished('a');
+      expect(await db.getEpisode('a'), isNull, reason: 'it folded in');
+      b = await ep('b');
+      expect(b.isFinished, isTrue);
+      expect(b.lastPositionMs, 600000);
       expect(b.isDownloaded, isTrue);
       expect(b.localPath, '/files/a.mp3');
-      expect(db.mergedInto('a'), 'b', reason: 'the player follows');
+    });
+
+    test('a finished one folds in at once', () async {
+      await refresh([older, _rss('a', title: 'Kingdom Come 1')]);
+      await db.markFinished('a');
+      await refresh([older, republished]);
+      expect(await db.getEpisode('a'), isNull);
+      expect((await ep('b')).isFinished, isTrue);
+    });
+
+    test('an untouched one goes, and its WiFi mark moves', () async {
+      await refresh([older, _rss('a', title: 'Kingdom Come 1')]);
+      await set('a', const EpisodesCompanion(markedForDownload: Value(true)));
+      await refresh([older, republished]);
+      expect(await db.getEpisode('a'), isNull);
+      expect((await ep('b')).markedForDownload, isTrue);
+    });
+
+    test('same audio under a new guid and title: one episode', () async {
+      await refresh([older, _rss('a')]);
+      await db.markFinished('a');
+      await refresh([
+        older,
+        _rss('b', title: 'Episode a (fixed typo)', date: DateTime(2026, 2))
+            .copyWith(audioUrl: const Value('https://example.com/a.mp3')),
+      ]);
+      expect(await db.getEpisode('a'), isNull);
+      expect((await ep('b')).isFinished, isTrue);
+    });
+
+    test('a temp episode finished folds into its twin in the feed', () async {
+      await refresh([older, republished]);
+      await db.insertTempEpisodes([
+        _rss('stub', title: 'Kingdom Come 1')
+            .copyWith(isSubscribed: const Value(false)),
+      ]);
+      await db.markPlayedByUser('stub');
+      expect(await db.getEpisode('stub'), isNull);
+      expect((await ep('b')).isFinished, isTrue);
+    });
+
+    test('an undated item keeps the date it was first seen', () async {
+      final undated = _rss('u').copyWith(publishDate: const Value.absent());
+      await refresh([older, undated]);
+      final first = (await ep('u')).publishDate;
+      expect(DateTime.now().difference(first).inMinutes, 0);
+      await set('u', EpisodesCompanion(publishDate: Value(DateTime(2026, 1))));
+      await refresh([older, undated]);
+      expect((await ep('u')).publishDate, DateTime(2026, 1));
     });
 
     test('same title, but older than the feed or another day: stays', () async {

@@ -22,6 +22,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:podcast_search/podcast_search.dart' as ps;
 import 'app_database.dart';
 import 'chapters.dart';
+import 'feed_items.dart';
 
 // ── Zugangsdaten ──────────────────────────────────────────────────────────────
 
@@ -351,7 +352,7 @@ class PodcastService {
 
   /// Bump when parsing changes (fields read, chapters, ids): stored hashes
   /// stop matching, so every feed is parsed again on its next refresh.
-  static const _parseVersion = 1;
+  static const _parseVersion = 2;
 
   /// The feed at [feedUrl], parsed by podcast_search, which leaves out
   /// Podlove Simple Chapters: so the XML is fetched here and those read from
@@ -389,7 +390,7 @@ class PodcastService {
         if (current && validators.hash == known.hash) {
           return (data: null, validators: validators);
         }
-        final xml = utf8.decode(body, allowMalformed: true);
+        final xml = normalizePubDates(utf8.decode(body, allowMalformed: true));
         // podcast_search parses from a string only via a file.
         final file = File('$tempDir/feed-${feedUrl.hashCode}-'
             '${DateTime.now().microsecondsSinceEpoch}.xml');
@@ -423,12 +424,15 @@ class PodcastService {
             description: Value(ep.description),
             audioUrl: Value(ep.contentUrl ?? ''),
             durationSeconds: Value((ep.duration ?? Duration.zero).inSeconds),
-            publishDate: Value(ep.publicationDate ?? DateTime.now()),
+            // Undated: first seen (the column's default), and kept after.
+            publishDate: ep.publicationDate == null
+                ? const Value.absent()
+                : Value(ep.publicationDate!),
             chaptersUrl: Value(chapUrl),
           );
         }).toList();
         return (
-          data: (podcast: podcast, episodes: episodes),
+          data: (podcast: podcast, episodes: distinctItems(episodes)),
           validators: validators,
         );
       });

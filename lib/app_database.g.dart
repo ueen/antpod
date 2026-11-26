@@ -769,7 +769,9 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
   @override
   late final GeneratedColumn<DateTime> publishDate = GeneratedColumn<DateTime>(
       'publish_date', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      clientDefault: DateTime.now);
   static const VerificationMeta _isDownloadedMeta =
       const VerificationMeta('isDownloaded');
   @override
@@ -951,8 +953,6 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
           _publishDateMeta,
           publishDate.isAcceptableOrUnknown(
               data['publish_date']!, _publishDateMeta));
-    } else if (isInserting) {
-      context.missing(_publishDateMeta);
     }
     if (data.containsKey('is_downloaded')) {
       context.handle(
@@ -1087,6 +1087,9 @@ class Episode extends DataClass implements Insertable<Episode> {
   final String description;
   final String audioUrl;
   final int durationSeconds;
+
+  /// When the feed dates it; an undated item's first sighting (a feed's
+  /// later refreshes leave it be, see PodcastService.fetchFeed).
   final DateTime publishDate;
   final bool isDownloaded;
   final String? localPath;
@@ -1488,7 +1491,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     required String description,
     required String audioUrl,
     this.durationSeconds = const Value.absent(),
-    required DateTime publishDate,
+    this.publishDate = const Value.absent(),
     this.isDownloaded = const Value.absent(),
     this.localPath = const Value.absent(),
     this.downloadTaskId = const Value.absent(),
@@ -1507,8 +1510,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
         podcastImageUrl = Value(podcastImageUrl),
         title = Value(title),
         description = Value(description),
-        audioUrl = Value(audioUrl),
-        publishDate = Value(publishDate);
+        audioUrl = Value(audioUrl);
   static Insertable<Episode> custom({
     Expression<String>? id,
     Expression<String>? podcastId,
@@ -2036,7 +2038,7 @@ typedef $$EpisodesTableCreateCompanionBuilder = EpisodesCompanion Function({
   required String description,
   required String audioUrl,
   Value<int> durationSeconds,
-  required DateTime publishDate,
+  Value<DateTime> publishDate,
   Value<bool> isDownloaded,
   Value<String?> localPath,
   Value<String?> downloadTaskId,
@@ -2376,7 +2378,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             required String description,
             required String audioUrl,
             Value<int> durationSeconds = const Value.absent(),
-            required DateTime publishDate,
+            Value<DateTime> publishDate = const Value.absent(),
             Value<bool> isDownloaded = const Value.absent(),
             Value<String?> localPath = const Value.absent(),
             Value<String?> downloadTaskId = const Value.absent(),
