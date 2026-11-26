@@ -102,7 +102,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
           ),
           Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        height: 64,
+        height: 68,
         decoration: BoxDecoration(
           color: cs.inverseSurface,
           borderRadius: BorderRadius.circular(12),
@@ -124,7 +124,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
               ),
 
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                // More room below the cover than above: the progress bar.
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                 child: Row(
                   children: [
                     ClipRRect(
@@ -212,7 +213,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
       onPressed: onTap,
       icon: ico,
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 42, minHeight: 42),
+      // Narrow, so the three buttons sit close together on the right.
+      constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
     );
   }
 }
@@ -234,7 +236,7 @@ class _MiniProgress extends StatelessWidget {
         valueListenable: player.positionListenable,
         builder: (_, pos, __) => LinearProgressIndicator(
           value: player.progressAt(pos),
-          minHeight: 5,
+          minHeight: 3, // the episode tiles' progress ring
           backgroundColor: Colors.transparent,
           color: cs.inversePrimary,
         ),
