@@ -2,12 +2,10 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart' show Value, BooleanExpressionOperators;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -24,9 +22,12 @@ import 'episode_feed.dart';
 import 'feed_state.dart';
 import 'feed_sync.dart';
 import 'filter_chips.dart';
+import 'home_toolbar.dart';
 import 'l10n/app_localizations.dart';
 import 'mini_player.dart';
 import 'player_provider.dart';
+import 'podcast_feed.dart';
+import 'podcast_grid.dart';
 import 'podcast_header.dart';
 import 'podcast_service.dart';
 import 'share_utils.dart';
@@ -983,8 +984,12 @@ class _HomeScreenState extends State<HomeScreen> {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  _Toolbar(
-                    mode: _mode, searchOpen: searchOpen,
+                  HomeToolbar(
+                    inPodcast: _mode == _FeedMode.podcastFilter ||
+                        _mode == _FeedMode.previewPodcast,
+                    discoverSearch: _mode == _FeedMode.discover,
+                    episodeSearch: _mode == _FeedMode.searchEpisodes,
+                    searchOpen: searchOpen,
                     searchCtrl: _searchCtrl, filter: _effectiveFilter,
                     filterChipsVisible: _effectiveChipsVisible,
                     l10n: l10n, cs: cs,
@@ -1082,7 +1087,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBody(AppDatabase db, ColorScheme cs, AppLocalizations l10n) {
     switch (_mode) {
       case _FeedMode.previewPodcast:
-        return _PodcastFeed(
+        return PodcastFeed(
           db: db, cs: cs, l10n: l10n,
           feedId: _previewResult!.feedUrl,
           imageUrl: _previewResult!.imageUrl,
@@ -1113,7 +1118,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
       case _FeedMode.podcastFilter:
-        return _PodcastFeed(
+        return PodcastFeed(
           db: db, cs: cs, l10n: l10n,
           feedId: _filterPodcastId!,
           imageUrl: _filterPodcast?.imageUrl ?? '',
@@ -1159,7 +1164,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return const SizedBox.expand();
         }
         if (_filter.podcasts && !_isSearchMode) {
-          return _PodcastGrid(
+          return PodcastGrid(
             db: db, cs: cs, l10n: l10n,
             onSelect: _onPodcastTileSelect,
           );
@@ -1180,379 +1185,4 @@ class _HomeScreenState extends State<HomeScreen> {
         );
     }
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Toolbar
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Toolbar extends StatelessWidget {
-  final _FeedMode mode;
-  final bool searchOpen;
-  final TextEditingController searchCtrl;
-  final FilterState filter;
-  final bool filterChipsVisible;
-  final AppLocalizations l10n;
-  final ColorScheme cs;
-  final VoidCallback onBack;
-  final ValueChanged<String> onSearchChanged;
-  final VoidCallback onClearSearch;
-  final VoidCallback onSearchOpen;
-  final VoidCallback onPlusPressed;
-  final VoidCallback onFilterToggle;
-  final VoidCallback onLogoTap;
-  final VoidCallback onInfoPressed;
-
-  const _Toolbar({
-    required this.mode, required this.searchOpen, required this.searchCtrl,
-    required this.filter, required this.filterChipsVisible,
-    required this.l10n, required this.cs,
-    required this.onBack, required this.onSearchChanged, required this.onClearSearch,
-    required this.onSearchOpen, required this.onPlusPressed,
-    required this.onFilterToggle, required this.onLogoTap,
-    required this.onInfoPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.5))),
-      child: searchOpen ? _searchRow() : _defaultRow(),
-    );
-  }
-
-  Widget _searchRow() {
-    return Row(
-      children: [
-        IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: onBack),
-        Expanded(
-          child: TextField(
-            controller: searchCtrl, autofocus: true,
-            onChanged: onSearchChanged,
-            decoration: InputDecoration(
-              hintText: mode == _FeedMode.discover
-                  ? l10n.searchHint : l10n.toolbarSearchHint,
-              border: InputBorder.none,
-              hintStyle: TextStyle(color: cs.onSurfaceVariant),
-            ),
-          ),
-        ),
-        if (searchCtrl.text.isNotEmpty)
-          IconButton(icon: const Icon(Icons.clear_rounded, size: 20), onPressed: onClearSearch),
-        if (mode == _FeedMode.searchEpisodes) _filterButton(),
-      ],
-    );
-  }
-
-  /// Toggles the filter chips; a dot shows while any filter is on.
-  Widget _filterButton() => Stack(
-        clipBehavior: Clip.none,
-        children: [
-          IconButton(
-            icon: Icon(Icons.tune_rounded,
-                color: filterChipsVisible ? cs.primary : cs.onSurface),
-            onPressed: onFilterToggle,
-            tooltip: l10n.tooltipFilter,
-          ),
-          if (filter.hasAny)
-            Positioned(right: 8, top: 8, child: Container(
-              width: 8, height: 8,
-              decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
-            )),
-        ],
-      );
-
-  Widget _defaultRow() {
-    final inPodcast = mode == _FeedMode.podcastFilter || mode == _FeedMode.previewPodcast;
-    return Row(
-      children: [
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: inPodcast
-              ? IconButton(
-                  key: const ValueKey('back'),
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  onPressed: onBack)
-              : Row(
-                  key: const ValueKey('brand'),
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: onLogoTap,
-                      child: ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: onLogoTap,
-                      child: Text('AntPod', style: TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 20,
-                        color: cs.onSurface, letterSpacing: -0.5)),
-                    ),
-                    Tooltip(
-                      message: l10n.tooltipGuide,
-                      child: GestureDetector(
-                        onTap: onInfoPressed,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 16, 28, 16),
-                          child: Icon(Icons.info_rounded, size: 18, color: cs.onSurfaceVariant),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-        const Spacer(),
-        _filterButton(),
-        IconButton(
-          icon: Icon(Icons.search_rounded, color: cs.onSurface),
-          onPressed: onSearchOpen,
-          tooltip: l10n.tooltipSearch),
-        IconButton(
-          icon: Icon(Icons.add_rounded, color: cs.onSurface),
-          onPressed: onPlusPressed,
-          tooltip: l10n.tooltipDiscover),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Podcast grid
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PodcastGrid extends StatelessWidget {
-  final AppDatabase db;
-  final ColorScheme cs;
-  final AppLocalizations l10n;
-  final ValueChanged<Podcast> onSelect;
-
-  const _PodcastGrid({
-    required this.db, required this.cs,
-    required this.l10n, required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<Podcast>>(
-      stream: db.watchAllPodcasts(),
-      builder: (context, snap) {
-        final pods = snap.data ?? [];
-        if (pods.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.podcasts_rounded, size: 52, color: cs.onSurfaceVariant),
-                const SizedBox(height: 16),
-                Text(l10n.emptyPodcastsTitle,
-                    style: TextStyle(
-                        fontSize: 16, color: cs.onSurfaceVariant)),
-              ],
-            ),
-          );
-        }
-
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 0.68,
-          ),
-          itemCount: pods.length,
-          itemBuilder: (_, i) => _PodcastGridTile(
-            podcast: pods[i], cs: cs, onTap: () => onSelect(pods[i]),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _PodcastGridTile extends StatelessWidget {
-  final Podcast podcast;
-  final ColorScheme cs;
-  final VoidCallback onTap;
-
-  const _PodcastGridTile({
-    required this.podcast, required this.cs, required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPress: () => ShareUtils.sharePodcast(podcast.title, podcast.feedUrl),
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: 1,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: CachedNetworkImage(
-                imageUrl: podcast.imageUrl,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Container(
-                    color: cs.surfaceContainerHighest,
-                    child: const Icon(Icons.podcasts_rounded, size: 36)),
-                errorWidget: (_, __, ___) => Container(
-                    color: cs.surfaceContainerHighest,
-                    child: const Icon(Icons.podcasts_rounded, size: 36)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            podcast.title,
-            maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w600,
-              color: cs.onSurface),
-          ),
-          if (podcast.author.isNotEmpty)
-            Text(
-              podcast.author,
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PodcastFeed extends StatelessWidget {
-  final AppDatabase db;
-  final ColorScheme cs;
-  final AppLocalizations l10n;
-  /// Podcast id, which is its feed URL.
-  final String feedId;
-  final String imageUrl;
-  final String title;
-  final String author;
-  final String description;
-  final bool isSubscribed;
-  final FilterState filter;
-  final bool filterChipsVisible;
-  final ValueChanged<String> onFilterToggle;
-  final Future<void> Function(Episode, AppDatabase)? onCoverTap;
-  final VoidCallback? onSubscribe;
-  final VoidCallback? onUnsubscribe;
-  final Future<void> Function()? onRefresh;
-  final bool isLoading;
-  final bool syncPaused;
-
-  const _PodcastFeed({
-    required this.db, required this.cs, required this.l10n,
-    required this.feedId, required this.imageUrl, required this.title,
-    required this.author, required this.description,
-    required this.isSubscribed,
-    required this.filter, required this.filterChipsVisible,
-    required this.onFilterToggle,
-    this.onCoverTap, this.onSubscribe, this.onUnsubscribe,
-    this.onRefresh, this.isLoading = false, this.syncPaused = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return EpisodeFeed(
-      db: db, cs: cs, l10n: l10n,
-      filter: filter,
-      podcastIdFilter: feedId,
-      onCoverTap: onCoverTap ?? (_, __) async {},
-      onRefresh: onRefresh ?? () async {},
-      isLoading: isLoading,
-      headerSlivers: [
-        _FinishingWatcher(
-          db: db,
-          podcastId: feedId,
-          enabled: !isSubscribed,
-          builder: (finishing) => PodcastHeader(
-            imageUrl: imageUrl,
-            title: title,
-            author: author,
-            description: description,
-            feedUrl: feedId,
-            onSubscribe: onSubscribe,
-            onUnsubscribe: onUnsubscribe,
-            syncPaused: syncPaused,
-            finishing: finishing,
-          ),
-        ),
-        ClipRect(
-          child: AnimatedAlign(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            heightFactor: filterChipsVisible ? 1.0 : 0.0,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 200),
-              opacity: filterChipsVisible ? 1.0 : 0.0,
-              child: FilterChipsRow(
-                filter: filter, l10n: l10n, cs: cs,
-                onToggle: onFilterToggle,
-                showPodcastsChip: true,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Rebuilds [builder] with whether an unsubscribed feed still has episodes
-/// left to finish (started or downloaded). Keeps one stream per podcast.
-class _FinishingWatcher extends StatefulWidget {
-  final AppDatabase db;
-  final String podcastId;
-  final bool enabled;
-  final Widget Function(bool finishing) builder;
-
-  const _FinishingWatcher({
-    required this.db, required this.podcastId,
-    required this.enabled, required this.builder,
-  });
-
-  @override
-  State<_FinishingWatcher> createState() => _FinishingWatcherState();
-}
-
-class _FinishingWatcherState extends State<_FinishingWatcher> {
-  Stream<bool>? _stream;
-
-  @override
-  void initState() {
-    super.initState();
-    _subscribe();
-  }
-
-  @override
-  void didUpdateWidget(_FinishingWatcher old) {
-    super.didUpdateWidget(old);
-    if (old.podcastId != widget.podcastId || old.enabled != widget.enabled ||
-        old.db != widget.db) {
-      _subscribe();
-    }
-  }
-
-  void _subscribe() => _stream = widget.enabled
-      ? widget.db.watchHasEpisodesToFinish(widget.podcastId)
-      : null;
-
-  // Always a StreamBuilder (null stream when disabled): switching widget type
-  // here would rebuild the header from scratch on (re)subscribe and cut its
-  // animations short. A dropped stream keeps its last value, hence the check.
-  @override
-  Widget build(BuildContext context) => StreamBuilder<bool>(
-        stream: _stream,
-        builder: (_, snap) =>
-            widget.builder(_stream != null && (snap.data ?? false)),
-      );
 }

@@ -116,6 +116,9 @@ bool _episodeListEqual(List<Episode> a, List<Episode> b, String? liveId) {
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'antpod'));
 
+  /// Over any executor, e.g. `NativeDatabase.memory()` in tests.
+  AppDatabase.forTesting(super.e);
+
   /// The episode the player is on, set by PlayerProvider. List streams skip
   /// its position-only changes while it plays; every other position change
   /// (the final save when the player stops or switches episode, mark as

@@ -46,7 +46,7 @@ Map<String, String> _authHeaders() {
   };
 }
 
-// ── Hilfsmodell für Suchergebnisse ────────────────────────────────────────────
+// ── Search result model ───────────────────────────────────────────────────────
 
 class PodcastResult {
   final String id;
@@ -106,7 +106,7 @@ class PodcastResult {
   }
 
   factory PodcastResult.fromJson(Map<String, dynamic> j) {
-    // categories: Map<String,String> {"1":"Arts","2":"Music"} oder null
+    // categories: Map<String,String> {"1":"Arts","2":"Music"} or null
     final cats = <String>[];
     final rawCats = j['categories'];
     if (rawCats is Map) {
