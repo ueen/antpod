@@ -251,7 +251,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trendsCountrySearch => 'Search countries…';
 
   @override
-  String get settingsNetwork => 'Network';
+  String get settingsPrivacy => 'Privacy';
 
   @override
   String get settingsAppleApiSub => 'Trends and episode search come from Apple. Off, search finds podcasts through PodcastIndex only';

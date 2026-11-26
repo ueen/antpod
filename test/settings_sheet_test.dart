@@ -133,7 +133,7 @@ void main() {
 
     final order = [
       'Appearance', 'Theme', 'Playback', 'Rewind on resume', 'Played in the last minute',
-      'Downloads', 'Delete played downloads', 'Network', 'Apple Podcasts',
+      'Downloads', 'Delete played downloads', 'Privacy', 'Apple Podcasts',
       'Import & export', 'Export backup',
       'Import backup', 'Export subscriptions (OPML)', 'Import subscriptions (OPML)',
     ].map((t) => tester.getTopLeft(find.text(t)).dy).toList();

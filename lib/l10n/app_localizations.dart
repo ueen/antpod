@@ -519,11 +519,11 @@ abstract class AppLocalizations {
   /// **'Search countries…'**
   String get trendsCountrySearch;
 
-  /// No description provided for @settingsNetwork.
+  /// No description provided for @settingsPrivacy.
   ///
   /// In en, this message translates to:
-  /// **'Network'**
-  String get settingsNetwork;
+  /// **'Privacy'**
+  String get settingsPrivacy;
 
   /// No description provided for @settingsAppleApiSub.
   ///

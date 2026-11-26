@@ -312,7 +312,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
               subtitleError: _downloadsFailed,
               trailing: Icon(Icons.open_in_new_rounded, size: 20, color: cs.onSurfaceVariant),
               onTap: (_) => _openDownloads()),
-        _header(l10n.settingsNetwork, cs),
+        _header(l10n.settingsPrivacy, cs),
         _switch(cs,
             icon: Icons.travel_explore_rounded,
             title: 'Apple Podcasts',
