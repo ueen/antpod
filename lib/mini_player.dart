@@ -1,4 +1,6 @@
 // lib/mini_player.dart
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -20,21 +22,37 @@ class _MiniPlayerState extends State<MiniPlayer> {
   /// The open (or opening) player sheet pushed from here.
   PlayerSheetRoute? _route;
 
+  /// The sheet out or on its way, until its transition has run out: the
+  /// mini player hides meanwhile, its stand-in rides the sheet's edge.
+  PlayerSheetRoute? _shown;
+
   /// Pushes the sheet; [tracking]: the finger moves it, from closed.
   PlayerSheetRoute? _push({required bool tracking}) {
     if (_route != null) return null;
     final route = _playerRoute(context,
-        onPodcastTap: widget.onPodcastTap, tracking: tracking);
+        onPodcastTap: widget.onPodcastTap, tracking: tracking, locate: _locate);
     _route = route;
     Navigator.of(context).push(route).whenComplete(() {
       if (identical(_route, route)) _route = null;
     });
+    setState(() => _shown = route);
+    route.completed.whenComplete(() {
+      if (mounted && identical(_shown, route)) setState(() => _shown = null);
+    });
     return route;
   }
 
-  /// The sheet's open height: the finger moves the sheet as far as it moves.
-  double get _sheetHeight =>
-      MediaQuery.sizeOf(context).height * _PlayerSheet.initialSize;
+  /// Where the mini player is in the navigator, when it's laid out.
+  Rect? _locate() {
+    if (!mounted) return null;
+    final box = context.findRenderObject();
+    final nav = Navigator.of(context).context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize ||
+        box.size.isEmpty || nav is! RenderBox) {
+      return null;
+    }
+    return box.localToGlobal(Offset.zero, ancestor: nav) & box.size;
+  }
 
   // An upward drag pushes the sheet at once and it follows the finger; one
   // that starts downward does nothing.
@@ -45,28 +63,50 @@ class _MiniPlayerState extends State<MiniPlayer> {
       r = _push(tracking: true);
       if (r == null) return;
     }
-    r.drag(-d.delta.dy / _sheetHeight);
+    r.drag(-d.delta.dy);
   }
 
   void _onDragEnd(DragEndDetails d) =>
-      _route?.release(-(d.primaryVelocity ?? 0) / _sheetHeight);
+      _route?.release(-(d.primaryVelocity ?? 0));
 
   @override
   Widget build(BuildContext context) {
     // select() avoids rebuilding the whole mini player on every position tick.
     // Only _MiniProgress (the thin bar) rebuilds at 5Hz during playback.
     final hasEpisode = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
+    final sheet = _shown?.animation ?? kAlwaysDismissedAnimation;
 
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeInOut,
-      alignment: Alignment.bottomCenter,
-      child: hasEpisode ? _buildContent(context) : const SizedBox.shrink(),
+    // Hidden while the sheet is out: its stand-in moves instead. Built the
+    // same way either way, so the drag that opens the sheet goes on.
+    return AnimatedBuilder(
+      animation: sheet,
+      builder: (_, child) =>
+          Opacity(opacity: sheet.value > 0 ? 0 : 1, child: child),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeInOut,
+        alignment: Alignment.bottomCenter,
+        child: hasEpisode
+            ? GestureDetector(
+                onTap: () => _push(tracking: false),
+                onVerticalDragUpdate: _onDragUpdate,
+                onVerticalDragEnd: _onDragEnd,
+                onVerticalDragCancel: () => _route?.release(0),
+                child: const _MiniCard(),
+              )
+            : const SizedBox.shrink(),
+      ),
     );
   }
+}
 
-  Widget _buildContent(BuildContext context) {
+/// The mini player as it looks: a handle over the card. Its stand-in on
+/// the sheet's edge looks the same.
+class _MiniCard extends StatelessWidget {
+  const _MiniCard();
 
+  @override
+  Widget build(BuildContext context) {
     final imageUrl = context.select<PlayerProvider, String>(
         (p) => p.currentEpisode?.podcastImageUrl ?? '');
     final title = context.select<PlayerProvider, String>(
@@ -83,12 +123,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final cs = Theme.of(context).colorScheme;
     final canPlay = !isOffline || isDownloaded;
 
-    return GestureDetector(
-      onTap: () => _push(tracking: false),
-      onVerticalDragUpdate: _onDragUpdate,
-      onVerticalDragEnd: _onDragEnd,
-      onVerticalDragCancel: () => _route?.release(0),
-      child: Column(
+    return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Drag handle
@@ -201,8 +236,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
         ),
           ), // Container (mini player card)
         ],   // Column children
-      ),     // Column
-    );       // GestureDetector
+      );     // Column
   }
 
   Widget _iconBtn(ColorScheme cs, IconData icon, VoidCallback onTap,
@@ -348,44 +382,70 @@ IconData? _skipForwardIconDirect(int s) {
 }
 
 
+/// Opens the player sheet from elsewhere (a link): it rises from the
+/// bottom edge.
 Future<void> showPlayerSheet(BuildContext context,
         {VoidCallback? onPodcastTap}) =>
     Navigator.of(context).push(
         _playerRoute(context, onPodcastTap: onPodcastTap, tracking: false));
 
 PlayerSheetRoute _playerRoute(BuildContext context,
-    {VoidCallback? onPodcastTap, required bool tracking}) {
+    {VoidCallback? onPodcastTap,
+    required bool tracking,
+    Rect? Function()? locate}) {
   final player = context.read<PlayerProvider>();
   final themes = InheritedTheme.capture(
       from: context, to: Navigator.of(context).context);
+  Widget wrap(Widget child) => themes
+      .wrap(ChangeNotifierProvider.value(value: player, child: child));
   return PlayerSheetRoute(
     tracking: tracking,
+    openSize: _PlayerSheet.initialSize,
+    locate: locate,
+    standIn: locate == null ? null : (_) => wrap(const _MiniCard()),
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    builder: (_) => themes.wrap(ChangeNotifierProvider.value(
-      value: player,
-      child: _PlayerSheet(onPodcastTap: onPodcastTap),
-    )),
+    builder: (_) => wrap(_PlayerSheet(onPodcastTap: onPodcastTap)),
   );
 }
 
-/// The player sheet over a dark barrier. It rises from the bottom and fades
-/// in. A tap opens it on its own; a drag on the mini player moves it with the
-/// finger, and on release it goes on at the finger's speed: a flick goes its
-/// way, a slow release opens past half way and closes before. Dragged down
-/// to its smallest size, or tapped above, it closes.
+/// The player sheet over a dark barrier. Its top edge starts at the mini
+/// player, which rides up on it and fades into the sheet; closing, the
+/// same backwards. A tap opens it on its own; a drag on the mini player
+/// moves it with the finger, and on release it goes on at the finger's
+/// speed: a flick goes its way, a slow release opens past half way and
+/// closes before. Dragged down to its smallest size, or tapped above, it
+/// closes.
 class PlayerSheetRoute extends PopupRoute<void> {
   PlayerSheetRoute({
     super.settings,
     required this.builder,
     required this.barrierLabel,
     required bool tracking,
+    this.openSize = 0.6,
+    this.locate,
+    this.standIn,
   }) : _tracking = tracking;
 
   final WidgetBuilder builder;
 
+  /// The open sheet's height, of the navigator's.
+  final double openSize;
+
+  /// Where the mini player is in the navigator; the sheet starts there.
+  /// None: from the bottom edge.
+  final Rect? Function()? locate;
+
+  /// The mini player's look-alike on the sheet's top edge.
+  final WidgetBuilder? standIn;
+
+  Rect? _from;
+
   /// The controller's value is the sheet's position as it is (the finger
   /// or a release moves it); otherwise it's eased.
   bool _tracking;
+
+  /// The pop goes on from a drag on the sheet: it leaves at speed.
+  bool _goOn = false;
 
   @override
   final String? barrierLabel;
@@ -400,10 +460,27 @@ class PlayerSheetRoute extends PopupRoute<void> {
   @override
   Duration get reverseTransitionDuration => const Duration(milliseconds: 250);
 
+  /// A release's: it leaves at the finger's speed and settles.
   static const _curve = Curves.easeOutCubic;
 
-  /// Sheet heights per second: faster is a flick.
+  /// A tap's: it sets off gently and settles, either way.
+  static const _ease = Curves.fastOutSlowIn;
+
+  /// Travels per second: faster is a flick.
   static const _flick = 1.0;
+
+  /// Pixels the sheet's top moves from closed to open.
+  double get _travel {
+    final h = navigator?.context.size?.height ?? 0;
+    final start = _from?.top ?? h;
+    return math.max(1.0, start - h * (1 - openSize));
+  }
+
+  @override
+  void install() {
+    _from = locate?.call();
+    super.install();
+  }
 
   @override
   TickerFuture didPush() {
@@ -414,22 +491,30 @@ class PlayerSheetRoute extends PopupRoute<void> {
 
   @override
   bool didPop(void result) {
-    // From fully open, closing leaves at full speed rather than easing in;
-    // the same position either way, so no jump.
-    if (controller!.isCompleted) _tracking = true;
-    return super.didPop(result);
+    // Back to where the mini player is now.
+    _from = locate?.call() ?? _from;
+    final popped = super.didPop(result);
+    if (_goOn) {
+      // Same position either way, so no jump.
+      _goOn = false;
+      _tracking = true;
+      controller!.animateBack(0,
+          duration: reverseTransitionDuration, curve: _curve);
+    }
+    return popped;
   }
 
-  /// The finger moved [delta] sheet heights, up positive.
-  void drag(double delta) {
+  /// The finger moved [dy] pixels, up positive.
+  void drag(double dy) {
     if (!isActive || !_tracking || controller!.isAnimating) return;
-    controller!.value += delta;
+    controller!.value += dy / _travel;
   }
 
-  /// The finger let go at [velocity] sheet heights per second, up positive.
-  void release(double velocity) {
+  /// The finger let go at [vy] pixels per second, up positive.
+  void release(double vy) {
     if (!isActive || !_tracking || controller!.isAnimating) return;
     final c = controller!;
+    final velocity = vy / _travel;
     final open =
         velocity.abs() > _flick ? velocity > 0 : c.value > 0.5;
     final distance = open ? 1 - c.value : c.value;
@@ -450,7 +535,10 @@ class PlayerSheetRoute extends PopupRoute<void> {
   }
 
   bool _onExtent(DraggableScrollableNotification n) {
-    if (n.extent <= n.minExtent + 1e-6 && isCurrent) navigator?.pop();
+    if (n.extent <= n.minExtent + 1e-6 && isCurrent) {
+      _goOn = true;
+      navigator?.pop();
+    }
     return false;
   }
 
@@ -474,24 +562,65 @@ class PlayerSheetRoute extends PopupRoute<void> {
   @override
   Widget buildTransitions(BuildContext context, Animation<double> animation,
       Animation<double> secondaryAnimation, Widget child) {
+    final card = standIn == null
+        ? null
+        : IgnorePointer(
+            child: Material(
+                type: MaterialType.transparency, child: standIn!(context)));
     return AnimatedBuilder(
       animation: animation,
       child: child,
       builder: (context, child) {
-        final t = _tracking ? animation.value : _curve.transform(animation.value);
-        // Opaque by half way.
-        final opacity = Curves.easeOut.transform((t * 2).clamp(0.0, 1.0));
-        return Align(
-          alignment: Alignment.bottomCenter,
-          // By the sheet's own height: fully out at 0, whatever its size.
-          child: FractionalTranslation(
-            translation: Offset(0, 1 - t),
-            child: Opacity(opacity: opacity, child: child),
-          ),
+        final t = (_tracking ? animation.value : _ease.transform(animation.value))
+            .clamp(0.0, 1.0);
+        final from = _from;
+        return CustomMultiChildLayout(
+          delegate: _SheetLayout(t, from),
+          children: [
+            // Opaque soon: the mini player fades into it.
+            LayoutId(
+              id: _SheetLayout.sheet,
+              child: Opacity(opacity: (t / 0.2).clamp(0.0, 1.0), child: child),
+            ),
+            if (card != null && from != null)
+              LayoutId(
+                id: _SheetLayout.card,
+                child: Opacity(
+                    opacity: 1 - (t / 0.35).clamp(0.0, 1.0), child: card),
+              ),
+          ],
         );
       },
     );
   }
+}
+
+/// The sheet's top edge from [from]'s top (or the bottom) at 0 to open at
+/// 1, the mini player's stand-in on that edge.
+class _SheetLayout extends MultiChildLayoutDelegate {
+  _SheetLayout(this.t, this.from);
+
+  static const sheet = #sheet;
+  static const card = #card;
+
+  final double t;
+  final Rect? from;
+
+  @override
+  void performLayout(Size size) {
+    final s = layoutChild(sheet, BoxConstraints.loose(size));
+    final start = from?.top ?? size.height;
+    final top = start + (size.height - s.height - start) * t;
+    positionChild(sheet, Offset((size.width - s.width) / 2, top));
+    final f = from;
+    if (f != null && hasChild(card)) {
+      layoutChild(card, BoxConstraints.tight(f.size));
+      positionChild(card, Offset(f.left, top));
+    }
+  }
+
+  @override
+  bool shouldRelayout(_SheetLayout old) => old.t != t || old.from != from;
 }
 
 // ── Player bottom sheet ───────────────────────────────────────────────────────
