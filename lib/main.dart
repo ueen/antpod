@@ -130,10 +130,13 @@ class AntPodApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           supportedLocales: AppLocalizations.supportedLocales,
-          // The language picked in the settings; null (or one this version
-          // doesn't have, from a newer backup) follows the phone.
+          // The language picked in the settings; none (or one this version
+          // doesn't have, from a newer backup) follows the phone, as it
+          // changes, in English if the app hasn't the phone's.
           locale: AppLocalizations.supportedLocales
               .where((l) => l.languageCode == language).firstOrNull,
+          localeListResolutionCallback: (phone, _) =>
+              appLocale(null, phone ?? const []),
           home: HomeScreen(initialLink: initialLink),
         );
       },

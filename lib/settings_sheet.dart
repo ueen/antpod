@@ -283,7 +283,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
         _language(l10n, cs, settings),
         _header(l10n.settingsPlayback, cs),
         _switch(cs,
-            icon: Icons.replay_10_rounded,
+            icon: Icons.replay_rounded,
             title: l10n.settingsRewindOnResume,
             subtitle: l10n.settingsRewindOnResumeSub,
             value: settings.rewindOnResume,
@@ -356,7 +356,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
             color: cs.primary, fontSize: 14, fontWeight: FontWeight.w600)),
       );
 
-  /// System, light or dark: three segments under the title.
+  /// Adaptive, light or dark: three segments under the title.
   Widget _theme(AppLocalizations l10n, ColorScheme cs, AppSettings settings) => ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 24),
         leading: Icon(Icons.contrast_rounded, color: cs.primary),
@@ -369,7 +369,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
               showSelectedIcon: false,
               style: const ButtonStyle(visualDensity: VisualDensity.compact),
               segments: [
-                ButtonSegment(value: ThemeMode.system, label: Text(l10n.settingsThemeSystem)),
+                ButtonSegment(value: ThemeMode.system, label: Text(l10n.settingsThemeAdaptive)),
                 ButtonSegment(value: ThemeMode.light, label: Text(l10n.settingsThemeLight)),
                 ButtonSegment(value: ThemeMode.dark, label: Text(l10n.settingsThemeDark)),
               ],
@@ -385,30 +385,35 @@ class _SettingsSheetState extends State<_SettingsSheet> {
     'en': 'English', 'de': 'Deutsch', 'fr': 'Français', 'es': 'Español',
   };
 
-  /// The phone's language or one of the app's: a menu from the tile.
+  /// One of the app's languages, a menu from the tile. Until one is picked,
+  /// the phone's if the app has it, else English (see appLocale).
   Widget _language(AppLocalizations l10n, ColorScheme cs, AppSettings settings) {
-    String name(String? code) =>
-        _languages[code] ?? l10n.settingsLanguageSystem;
-    final current = _languages.containsKey(settings.language) ? settings.language : null;
+    final current = Localizations.localeOf(context).languageCode;
     return MenuAnchor(
       // Under the tile's title (24 padding + 24 icon + 16 gap, less the
       // item's own 12).
       alignmentOffset: const Offset(52, 0),
       menuChildren: [
-        for (final code in [null, ..._languages.keys])
+        for (final MapEntry(key: code, value: name) in _languages.entries)
           MenuItemButton(
             trailingIcon: code == current
                 ? Icon(Icons.check_rounded, color: cs.primary)
                 : null,
             onPressed: () => settings.language = code,
-            child: Text(name(code)),
+            child: Text(name),
           ),
       ],
       builder: (_, menu, __) => ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 24),
         leading: Icon(Icons.translate_rounded, color: cs.primary),
         title: Text(l10n.settingsLanguage),
-        subtitle: Text(name(current)),
+        subtitle: Text(_languages[current] ?? current),
+        // A menu: the chevron turns while it's open.
+        trailing: AnimatedRotation(
+          turns: menu.isOpen ? 0.5 : 0,
+          duration: const Duration(milliseconds: 200),
+          child: Icon(Icons.expand_more_rounded, color: cs.onSurfaceVariant),
+        ),
         onTap: () => menu.isOpen ? menu.close() : menu.open(),
       ),
     );

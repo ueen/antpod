@@ -284,7 +284,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsTheme => 'Theme';
 
   @override
-  String get settingsThemeSystem => 'System';
+  String get settingsThemeAdaptive => 'Adaptive';
 
   @override
   String get settingsThemeLight => 'Light';
@@ -294,9 +294,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsLanguage => 'Language';
-
-  @override
-  String get settingsLanguageSystem => 'System';
 
   @override
   String get settingsPlayback => 'Playback';

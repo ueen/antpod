@@ -12,7 +12,6 @@
 // iOS: no-op. Downloads already continue in the background there via
 // URLSession, and iOS has no ongoing progress notifications.
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -161,14 +160,11 @@ class DownloadNotification {
     });
   }
 
-  /// The language picked in the settings, else the phone's, else English.
+  /// The app's language, as the app has it (see appLocale).
   static Future<AppLocalizations> _l10n() async {
     final prefs = await SharedPreferences.getInstance();
-    final language = prefs.getString(AppSettings.keyLanguage) ??
-        PlatformDispatcher.instance.locale.languageCode;
-    final supported = AppLocalizations.supportedLocales
-        .any((l) => l.languageCode == language);
-    return lookupAppLocalizations(
-        supported ? Locale(language) : const Locale('en'));
+    return lookupAppLocalizations(appLocale(
+        prefs.getString(AppSettings.keyLanguage),
+        PlatformDispatcher.instance.locales));
   }
 }

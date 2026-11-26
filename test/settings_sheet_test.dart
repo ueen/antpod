@@ -88,6 +88,32 @@ void main() {
     }
   });
 
+  test("the app's language: the one picked, else the phone's, else English",
+      () {
+    expect(appLocale('fr', const [Locale('de')]), const Locale('fr'));
+    expect(appLocale(null, const [Locale('ja'), Locale('de', 'CH')]),
+        const Locale('de'), reason: "the phone's first one the app has");
+    expect(appLocale(null, const [Locale('ja')]), const Locale('en'));
+    expect(appLocale('xx', const []), const Locale('en'),
+        reason: 'one from a newer version');
+  });
+
+  testWidgets('the language menu has the four languages, no "system"',
+      (tester) async {
+    tallScreen(tester);
+    await openSheet(tester, locale: const Locale('en'));
+    expect(find.text('English'), findsOneWidget, reason: 'the current one');
+    await tester.tap(find.text('Language'));
+    await tester.pumpAndSettle();
+    for (final name in ['Deutsch', 'Français', 'Español']) {
+      expect(find.text(name), findsOneWidget);
+    }
+    expect(find.text('System'), findsNothing);
+    await tester.tap(find.text('Deutsch'));
+    await tester.pumpAndSettle();
+    expect(settings.language, 'de');
+  });
+
   test('a resume rewinds only after a long pause, and only when on', () {
     expect(settings.rewindOnResume, isTrue);
     expect(settings.resumeRewind(const Duration(minutes: 4)), Duration.zero);

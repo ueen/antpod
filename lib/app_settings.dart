@@ -1,7 +1,20 @@
 // lib/app_settings.dart
-import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'l10n/app_localizations.dart';
+
+/// The app's language: the one [picked] in the settings, else the first of
+/// the [phone]'s languages it has, else English.
+Locale appLocale(String? picked, Iterable<Locale> phone) {
+  for (final code in [picked, for (final l in phone) l.languageCode]) {
+    for (final l in AppLocalizations.supportedLocales) {
+      if (l.languageCode == code) return l;
+    }
+  }
+  return const Locale('en');
+}
 
 /// The switches in the settings sheet, kept in SharedPreferences.
 /// (Speed and skip intervals live with the player: PlayerProvider.)
@@ -24,7 +37,8 @@ class AppSettings extends ChangeNotifier {
     keyTheme, keyRewindOnResume, keyTrendsCountry, keyAppleApi, keyLanguage,
   ];
 
-  /// System, light or dark; stored by name ('system', 'light', 'dark').
+  /// Adaptive (the phone's), light or dark; stored by name ('system',
+  /// 'light', 'dark').
   ThemeMode get themeMode => ThemeMode.values.asNameMap()[_prefs.getString(keyTheme)] ??
       ThemeMode.system;
   set themeMode(ThemeMode v) {
@@ -32,7 +46,8 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The app's language code (en, de, fr, es); null follows the phone.
+  /// The app's language code (en, de, fr, es); null until one is picked,
+  /// following the phone (see [appLocale]).
   String? get language => _prefs.getString(keyLanguage);
   set language(String? v) {
     v == null ? _prefs.remove(keyLanguage) : _prefs.setString(keyLanguage, v);

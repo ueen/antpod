@@ -585,11 +585,11 @@ abstract class AppLocalizations {
   /// **'Theme'**
   String get settingsTheme;
 
-  /// No description provided for @settingsThemeSystem.
+  /// No description provided for @settingsThemeAdaptive.
   ///
   /// In en, this message translates to:
-  /// **'System'**
-  String get settingsThemeSystem;
+  /// **'Adaptive'**
+  String get settingsThemeAdaptive;
 
   /// No description provided for @settingsThemeLight.
   ///
@@ -608,12 +608,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Language'**
   String get settingsLanguage;
-
-  /// No description provided for @settingsLanguageSystem.
-  ///
-  /// In en, this message translates to:
-  /// **'System'**
-  String get settingsLanguageSystem;
 
   /// No description provided for @settingsPlayback.
   ///
