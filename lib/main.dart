@@ -63,6 +63,35 @@ class AntPodApp extends StatelessWidget {
 
   static const _seed = Color(0xFF8B5E3C);
 
+  /// AntPod's own colors: Material's scheme from the seed, its near-blacks
+  /// turned reddish brown, and one highlight, a mellow orange (HCT hue 60,
+  /// chroma 44): the mini player's elements (inversePrimary) and the
+  /// favorite heart (tertiary). With Material You the wallpaper's take over.
+  static ColorScheme _antScheme(Brightness brightness) {
+    final s = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness);
+    if (brightness == Brightness.light) {
+      return s.copyWith(
+        onSurface: const Color(0xFF451806), // titles, wordmark
+        inverseSurface: const Color(0xFF582614), // mini player
+        inversePrimary: const Color(0xFFFAA65A), // tone 75 on it
+        tertiary: const Color(0xFFAC661F), // tone 50, 4:1 on the sheets
+      );
+    }
+    // The same hue at chroma 10 for the dark backgrounds.
+    return s.copyWith(
+      surface: const Color(0xFF1E100B),
+      surfaceDim: const Color(0xFF1E100B),
+      surfaceBright: const Color(0xFF47352F),
+      surfaceContainerLowest: const Color(0xFF180B07),
+      surfaceContainerLow: const Color(0xFF271813),
+      surfaceContainer: const Color(0xFF2B1C17),
+      surfaceContainerHigh: const Color(0xFF362621),
+      surfaceContainerHighest: const Color(0xFF42312B),
+      inversePrimary: const Color(0xFF8E4E02), // tone 40 on the light mini player
+      tertiary: const Color(0xFFFAA65A),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final materialYou = context.select<AppSettings, bool>((s) => s.materialYou);
@@ -72,10 +101,9 @@ class AntPodApp extends StatelessWidget {
         // Material You: the wallpaper's colors where the system has them
         // (Android 12+), otherwise AntPod's brown.
         final lightScheme = (materialYou ? lightDynamic : null) ??
-            ColorScheme.fromSeed(seedColor: _seed);
+            _antScheme(Brightness.light);
         final darkScheme = (materialYou ? darkDynamic : null) ??
-            ColorScheme.fromSeed(
-                seedColor: _seed, brightness: Brightness.dark);
+            _antScheme(Brightness.dark);
 
         return MaterialApp(
           title: 'AntPod',

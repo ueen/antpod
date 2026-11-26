@@ -433,7 +433,7 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
             child: Icon(
               fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
               key: ValueKey(fav),
-              size: 24, color: cs.primary),
+              size: 24, color: fav ? cs.tertiary : cs.primary),
           ),
           tooltip: fav ? l10n.removeFavorite : l10n.addFavorite,
           padding: EdgeInsets.zero,
@@ -461,7 +461,7 @@ class _PlayerSheet extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     showDialog(
       context: context,
-      barrierColor: Colors.black87,
+      barrierColor: const Color(0xDE180B07), // the darkest brown, 87 %
       builder: (ctx) => GestureDetector(
         onTap: () => Navigator.of(ctx).pop(),
         child: Scaffold(

@@ -1104,6 +1104,7 @@ class _EpisodeContextMenu extends StatelessWidget {
               icon: episode.isFavorite
                   ? Icons.favorite_rounded : Icons.favorite_border_rounded,
               label: episode.isFavorite ? l10n.removeFavorite : l10n.addFavorite,
+              iconColor: episode.isFavorite ? cs.tertiary : null,
               cs: cs, onTap: onToggleFavorite),
           _MenuItem(icon: Icons.share_rounded, label: l10n.shareEpisode, cs: cs, onTap: onShare),
           if (onExportFile != null)
@@ -1124,18 +1125,19 @@ class _MenuItem extends StatelessWidget {
   final String label;
   final ColorScheme cs;
   final Color? color;
+  final Color? iconColor;
   final VoidCallback onTap;
 
   const _MenuItem({
     required this.icon, required this.label,
-    required this.cs, required this.onTap, this.color,
+    required this.cs, required this.onTap, this.color, this.iconColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Icons in the primary color, labels black; a given color (red for
-    // delete) takes both.
-    final iconColor = color ?? cs.primary;
+    // Icons in the primary color, labels dark brown; a given color (red for
+    // delete) takes both, an icon color (the accent) just the icon.
+    final iconColor = this.iconColor ?? color ?? cs.primary;
     final labelColor = color ?? cs.onSurface;
     return InkWell(
       onTap: onTap,
