@@ -85,6 +85,44 @@ void main() {
     });
   });
 
+  group('findHit: a search hit in its feed', () {
+    final now = DateTime.utc(2026, 1, 1, 12);
+    final items = [
+      itemFacts(_item('g1', 'News', now, 300, url: 'https://x/1.mp3')),
+      itemFacts(_item('g2', 'News', now.subtract(const Duration(days: 1)), 300,
+          url: 'https://x/2.mp3')),
+      itemFacts(_item('g3', 'The “Big” One — Part 1', now, 3000,
+          url: 'https://x/3.mp3')),
+    ];
+    ItemFacts hit(
+            {String id = '', String title = '', DateTime? date, String url = ''}) =>
+        (id: id, title: titleKey(title), date: date, seconds: 0, url: url);
+
+    test('by guid first, whatever the rest says', () {
+      expect(findHit(hit(id: 'g2', title: 'Other', url: 'https://x/1.mp3'), items), 1);
+    });
+
+    test('else by audio, http or https', () {
+      expect(findHit(hit(id: 'apple-1', url: 'http://x/3.mp3'), items), 2);
+    });
+
+    test('else by title, the one nearest in date', () {
+      expect(findHit(hit(title: 'the "big" one - part 1'), items), 2);
+      expect(
+          findHit(hit(title: 'News', date: now.subtract(const Duration(hours: 20))),
+              items),
+          1);
+      expect(findHit(hit(title: 'News', date: now), items), 0);
+    });
+
+    test('nothing alike, no match', () {
+      expect(findHit(hit(id: 'x', title: 'Gone', url: 'https://y/z.mp3'), items),
+          isNull);
+      expect(findHit(hit(), [itemFacts(_item('e', '', now, 0, url: ''))]), isNull,
+          reason: 'no title is no title match');
+    });
+  });
+
   group('parseFeedDate', () {
     test('RFC 822 as podcasters write it', () {
       expect(parseFeedDate('Mon, 03 Jun 2019 10:00:00 +0000'),

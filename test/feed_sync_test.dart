@@ -29,7 +29,7 @@ class _Feed {
   int notModified = 0;
   /// Redirects with [status] to this path instead.
   final String? to;
-  _Feed(this.body, {this.status = 200, this.conditional = true, this.to});
+  _Feed(this.body, {this.status = 200, this.conditional = true}) : to = null;
   _Feed.redirect(this.to, this.status) : body = '', conditional = false;
   String get etag => '"${body.hashCode}"';
 }
@@ -159,6 +159,45 @@ void main() {
       f = (await PodcastService.fetchFeed(url('old')))!;
       expect(f.data!.episodes, hasLength(1));
       expect(f.url, url('old'));
+    });
+  });
+
+  group('piEpisode: a PodcastIndex item as its feed has it', () {
+    const podcast = {'title': ' The Show ', 'artwork': 'https://x/art.jpg'};
+
+    test('under its guid, its feed and the podcast\'s title', () {
+      final e = PodcastService.piEpisode({
+        'guid': ' abc ',
+        'title': 'Ep 1',
+        'enclosureUrl': 'https://x/1.mp3',
+        'duration': 1800,
+        'datePublished': 1767225600,
+        'feedUrl': 'https://pi.example/feed',
+        'chaptersUrl': '',
+      }, feedUrl: 'https://apple.example/feed', podcast: podcast)!;
+      expect(e.id.value, 'abc');
+      expect(e.podcastId.value, 'https://pi.example/feed');
+      expect(e.podcastTitle.value, 'The Show');
+      expect(e.podcastImageUrl.value, 'https://x/art.jpg');
+      expect(e.durationSeconds.value, 1800);
+      expect(e.publishDate.value, DateTime.utc(2026, 1, 1));
+      expect(e.chaptersUrl.value, isNull);
+    });
+
+    test('guid-less, the id its feed gives it; no audio or title, none', () {
+      final e = PodcastService.piEpisode(
+          {'title': 'Ep 2', 'enclosureUrl': 'https://x/2.mp3', 'duration': null},
+          feedUrl: 'https://f', podcast: podcast)!;
+      expect(e.id.value, 'https://f_Ep 2');
+      expect(e.durationSeconds.value, 0);
+      expect(e.publishDate.present, isFalse);
+      expect(
+          PodcastService.piEpisode({'guid': 'a'}, feedUrl: 'f', podcast: podcast),
+          isNull);
+      expect(
+          PodcastService.piEpisode({'guid': 'a', 'enclosureUrl': 'https://x'},
+              feedUrl: 'f', podcast: const {}),
+          isNull);
     });
   });
 

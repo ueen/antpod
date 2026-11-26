@@ -3,7 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:drift/drift.dart' show Value, BooleanExpressionOperators;
+import 'package:drift/drift.dart' show BooleanExpressionOperators;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
@@ -803,23 +803,20 @@ class _HomeScreenState extends State<HomeScreen> {
       PodcastService.search(trimmed),
       _settings.appleApi
           ? PodcastService.searchEpisodes(trimmed, country: country)
-          : Future.value(<Episode>[]),
+          : Future.value(<EpisodesCompanion>[]),
     ]);
     if (!mounted || _searchQuery != q) return;
     final podcasts = fetched[0] as List<PodcastResult>;
-    final apiEpisodes = fetched[1] as List<Episode>;
-    final companions = apiEpisodes.map((e) => EpisodesCompanion(
-      id: Value(e.id), podcastId: Value(e.podcastId),
-      podcastTitle: Value(e.podcastTitle), podcastImageUrl: Value(e.podcastImageUrl),
-      title: Value(e.title), description: Value(e.description),
-      audioUrl: Value(e.audioUrl), durationSeconds: Value(e.durationSeconds),
-      publishDate: Value(e.publishDate), chaptersUrl: Value(e.chaptersUrl),
-      isSubscribed: const Value(false),
-    )).toList();
-    await db.insertTempEpisodes(companions);
+    // Stored as temp episodes, and shown as stored: one of a subscribed
+    // feed is that feed's own row, with its progress.
+    final ids = await db.insertTempEpisodes(fetched[1] as List<EpisodesCompanion>);
+    final episodes = <Episode>[
+      for (final id in {...ids})
+        if (await db.getEpisode(id) case final e?) e,
+    ];
     if (!mounted || _searchQuery != q) return;
     setState(() {
-      _unifiedSearchResults = _buildUnified(podcasts, apiEpisodes);
+      _unifiedSearchResults = _buildUnified(podcasts, episodes);
       _searchHasMore = (fetched[0] as List).length == 20;
       _searchingPI = false;
     });

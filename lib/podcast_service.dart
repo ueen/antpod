@@ -4,9 +4,10 @@
 //
 //   PodcastIndex /search/byterm        → podcast search
 //   PodcastIndex /podcasts/trending    → trending fallback (30-day window)
-//   PodcastIndex /episodes/byfeedurl   → real RSS GUIDs for episode search hits
+//   PodcastIndex /…/byfeedurl          → episode search hits as their feed has them
 //   Apple charts + lookup              → trending by country
-//   Apple search (podcastEpisode)      → episode search
+//   Apple search (podcastEpisode)      → episode search: the hits only, not
+//                                        Apple's ids or audio
 //   RSS (podcast_search)               → feeds themselves, parsed off-isolate
 //                                        (plus their Podlove chapters)
 
@@ -96,7 +97,7 @@ class PodcastResult {
   factory PodcastResult.fromAppleJson(Map<String, dynamic> j) {
     final genre = j['primaryGenreName'] as String?;
     return PodcastResult(
-      id: j['collectionId']?.toString() ?? '',
+      id: j['feedUrl'] ?? '',
       title: j['collectionName'] ?? '',
       author: j['artistName'] ?? '',
       description: '',
@@ -191,46 +192,49 @@ class PodcastService {
     }
   }
 
-  /// Episode search: Apple finds by keyword, PI resolves real RSS GUIDs.
-  /// If a feed is not indexed by PI the Apple episode is kept as a fallback
-  /// (id: 'apple-{trackId}'); migrateAppleEpisodeStubs cleans those up when
-  /// the feed is opened.
-  static Future<List<Episode>> searchEpisodes(String query, {String country = 'us'}) async {
-    final appleEps = await appleEpisodeSearch(query, country: country);
-    if (appleEps.isEmpty) return [];
+  /// Episode search. Apple's search finds them, by keyword, but its ids and
+  /// audio (a preview, at times a clip) aren't kept: each hit is looked up in
+  /// its feed, as PodcastIndex has it, else the feed itself, and found there
+  /// by guid, audio or title ([findHit]). A hit found in neither is left out.
+  /// In Apple's order, each episode once, under its feed's guid.
+  static Future<List<EpisodesCompanion>> searchEpisodes(String query,
+      {String country = 'us'}) async {
+    final hits = await _appleEpisodeHits(query, country: country);
+    final found = List<EpisodesCompanion?>.filled(hits.length, null);
+    final byFeed = <String, List<int>>{};
+    for (var i = 0; i < hits.length; i++) {
+      (byFeed[hits[i].feed] ??= []).add(i);
+    }
+    await Future.wait(byFeed.entries.map((f) async {
+      var open = f.value;
+      void look(List<EpisodesCompanion> items) {
+        final facts = items.map(itemFacts).toList();
+        open = open.where((i) {
+          final j = findHit(hits[i].facts, facts);
+          if (j != null) found[i] = items[j];
+          return j == null;
+        }).toList();
+      }
 
-    // Fetch PI episodes for every unique feedUrl in parallel to resolve GUIDs.
-    final uniqueFeeds = appleEps.map((e) => e.podcastId).toSet();
-    final piByFeed = <String, List<Map<String, dynamic>>>{};
-    await Future.wait(uniqueFeeds.map((feedUrl) async {
-      try {
-        final uri = Uri.parse('$_baseUrl/episodes/byfeedurl')
-            .replace(queryParameters: {'url': feedUrl, 'max': '30'});
-        final res = await _get(uri, headers: _authHeaders());
-        if (res.statusCode == 200) {
-          final items = _json(res)['items'] as List? ?? [];
-          piByFeed[feedUrl] = items.cast();
-        }
-      } catch (e) { debugPrint('[podcast] PI episodes error: $e'); }
+      look(await _piEpisodes(f.key));
+      if (open.isEmpty) return;
+      // Not in PodcastIndex, or older than its latest: the feed has them all.
+      look((await loadFeed(f.key)
+                  .timeout(const Duration(seconds: 12), onTimeout: () => null))
+              ?.episodes ??
+          const []);
     }));
-
-    // For each Apple episode, swap in the PI GUID + enclosureUrl if matched.
-    return appleEps.map((ep) {
-      final piItems = piByFeed[ep.podcastId] ?? [];
-      final appleTitle = ep.title.trim().toLowerCase();
-      final match = piItems.where(
-        (m) => (m['title'] as String? ?? '').trim().toLowerCase() == appleTitle,
-      ).firstOrNull;
-      if (match == null) return ep; // iTunes-only podcast, keep Apple data
-      final guid  = (match['guid']         as String? ?? '').trim();
-      final audio = (match['enclosureUrl'] as String? ?? '').trim();
-      if (guid.isEmpty || audio.isEmpty) return ep;
-      return ep.copyWith(id: guid, audioUrl: audio,
-          chaptersUrl: Value(match['chaptersUrl'] as String?));
-    }).toList();
+    final seen = <(String, String)>{};
+    return [
+      for (final e in found)
+        if (e != null && seen.add((e.podcastId.value, e.id.value))) e,
+    ];
   }
 
-  static Future<List<Episode>> appleEpisodeSearch(String query, {String country = 'us'}) async {
+  /// Apple's episode search hits: in which feed, and what tells the episode
+  /// apart there (its guid, audio, title, date and length).
+  static Future<List<({String feed, ItemFacts facts})>> _appleEpisodeHits(
+      String query, {String country = 'us'}) async {
     try {
       final uri = Uri.parse('https://itunes.apple.com/search').replace(
         queryParameters: {'term': query, 'media': 'podcast', 'entity': 'podcastEpisode',
@@ -239,46 +243,85 @@ class PodcastService {
       final res = await _get(uri);
       if (res.statusCode != 200) return [];
       final results = _json(res)['results'] as List? ?? [];
-      final episodes = <Episode>[];
-      for (final r in results) {
-        final audioUrl = r['previewUrl'] as String? ?? '';
-        final feedUrl  = r['feedUrl']    as String? ?? '';
-        if (audioUrl.isEmpty || feedUrl.isEmpty) continue;
-        final millis = r['trackTimeMillis'] as int? ?? 0;
-        DateTime publishDate;
-        try {
-          publishDate = DateTime.parse(r['releaseDate'] as String? ?? '');
-        } catch (_) {
-          publishDate = DateTime.now();
-        }
-        episodes.add(Episode(
-          id:                    'apple-${r['trackId']}',
-          podcastId:             feedUrl,
-          podcastTitle:          r['collectionName'] ?? '',
-          podcastImageUrl:       r['artworkUrl600'] ?? r['artworkUrl160'] ?? '',
-          title:                 r['trackName'] ?? '',
-          description:           r['description'] ?? r['shortDescription'] ?? '',
-          audioUrl:              audioUrl,
-          durationSeconds:       millis ~/ 1000,
-          publishDate:           publishDate,
-          isDownloaded:          false,
-          localPath:             null,
-          downloadTaskId:        null,
-          lastPositionMs:        0,
-          playbackPositionSeconds: 0,
-          isFinished:            false,
-          isSubscribed:          false,
-          chaptersUrl:           null,
-          lastPlayed:            null,
-          markedForDownload:     false,
-          isFavorite:            false,
-        ));
-      }
-      return episodes;
+      return [
+        for (final r in results.whereType<Map<String, dynamic>>())
+          if ((r['feedUrl'] as String? ?? '').trim() case final feed
+              when feed.isNotEmpty)
+            (
+              feed: feed,
+              facts: (
+                id: (r['episodeGuid'] as String? ?? '').trim(),
+                title: titleKey(r['trackName'] as String? ?? ''),
+                date: DateTime.tryParse(r['releaseDate'] as String? ?? ''),
+                seconds: (r['trackTimeMillis'] as num? ?? 0) ~/ 1000,
+                url: (r['episodeUrl'] as String? ?? '').trim(),
+              ),
+            ),
+      ];
     } catch (e) {
       debugPrint('[podcast] episode search error: $e');
       return [];
     }
+  }
+
+  /// [feedUrl]'s latest episodes as PodcastIndex has them; none when it
+  /// doesn't know the feed.
+  static Future<List<EpisodesCompanion>> _piEpisodes(String feedUrl) async {
+    Future<http.Response> get(String path, Map<String, String> query) => _get(
+        Uri.parse('$_baseUrl/$path').replace(queryParameters: query),
+        headers: _authHeaders());
+    try {
+      final (pod, eps) = await (
+        get('podcasts/byfeedurl', {'url': feedUrl}),
+        get('episodes/byfeedurl', {'url': feedUrl, 'max': '100'}),
+      ).wait;
+      if (pod.statusCode != 200 || eps.statusCode != 200) return [];
+      final feed = _json(pod)['feed'];
+      if (feed is! Map<String, dynamic>) return [];
+      final items = _json(eps)['items'] as List? ?? [];
+      return [
+        for (final m in items.whereType<Map<String, dynamic>>())
+          if (piEpisode(m, feedUrl: feedUrl, podcast: feed) case final e?) e,
+      ];
+    } catch (e) {
+      debugPrint('[podcast] PI episodes error: $e');
+      return [];
+    }
+  }
+
+  /// A PodcastIndex episode item [m] of the PodcastIndex [podcast] (asked
+  /// for by [feedUrl]) as the feed has it: under its guid (guid-less, as the
+  /// feed names it, see [fetchFeed]), the podcast's title and cover. Null
+  /// without audio, or when the podcast has no title.
+  static EpisodesCompanion? piEpisode(Map<String, dynamic> m,
+      {required String feedUrl, required Map<String, dynamic> podcast}) {
+    String str(Object? v) => v is String ? v.trim() : '';
+    final podcastTitle = str(podcast['title']);
+    final audio = str(m['enclosureUrl']);
+    if (podcastTitle.isEmpty || audio.isEmpty) return null;
+    final feed = str(m['feedUrl']).isNotEmpty ? str(m['feedUrl']) : feedUrl;
+    final title = m['title'] is String ? m['title'] as String : '';
+    final guid = str(m['guid']);
+    final cover = [m['feedImage'], podcast['artwork'], podcast['image']]
+        .map(str)
+        .firstWhere((s) => s.isNotEmpty, orElse: () => '');
+    final published = m['datePublished'];
+    final chapters = str(m['chaptersUrl']);
+    return EpisodesCompanion(
+      id: Value(guid.isNotEmpty ? guid : '${feed}_$title'),
+      podcastId: Value(feed),
+      podcastTitle: Value(podcastTitle),
+      podcastImageUrl: Value(cover),
+      title: Value(title.trim()),
+      description: Value(m['description'] is String ? m['description'] as String : ''),
+      audioUrl: Value(audio),
+      durationSeconds: Value(m['duration'] is num ? (m['duration'] as num).toInt() : 0),
+      publishDate: published is num && published > 0
+          ? Value(DateTime.fromMillisecondsSinceEpoch(published.toInt() * 1000,
+              isUtc: true))
+          : const Value.absent(),
+      chaptersUrl: Value(chapters.isEmpty ? null : chapters),
+    );
   }
 
   // Apple Charts top podcasts for a country, resolved to feedUrl via iTunes lookup.

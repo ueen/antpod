@@ -83,11 +83,41 @@ String? twinOf(ItemFacts old, Iterable<ItemFacts> items) {
   return best?.id;
 }
 
+/// Which of a feed's [items] a directory's search [hit] is (its guid,
+/// audio, title and date as the directory has them): the one under its
+/// guid, else the one with its audio, else the one under its title nearest
+/// its date. Null when none is.
+int? findHit(ItemFacts hit, List<ItemFacts> items) {
+  if (hit.id.isNotEmpty) {
+    final i = items.indexWhere((e) => e.id == hit.id);
+    if (i >= 0) return i;
+  }
+  final url = _bareUrl(hit.url);
+  if (url.isNotEmpty) {
+    final i = items.indexWhere((e) => _bareUrl(e.url) == url);
+    if (i >= 0) return i;
+  }
+  if (hit.title.isEmpty) return null;
+  int? best;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].title != hit.title) continue;
+    if (best == null || _apart(hit, items[i]) < _apart(hit, items[best])) {
+      best = i;
+    }
+  }
+  return best;
+}
+
+String _bareUrl(String url) => url.trim().replaceFirst(RegExp(r'^https?://'), '');
+
+/// How far apart [a] and [b] were published, in minutes; an unknown date
+/// is furthest.
+int _apart(ItemFacts a, ItemFacts b) => a.date == null || b.date == null
+    ? 1 << 30
+    : a.date!.difference(b.date!).inMinutes.abs();
+
 int _gap(ItemFacts a, ItemFacts b) {
-  final dates = a.date == null || b.date == null
-      ? 1 << 30
-      : a.date!.difference(b.date!).inMinutes.abs();
-  return dates * 100000 + (a.seconds - b.seconds).abs().clamp(0, 99999);
+  return _apart(a, b) * 100000 + (a.seconds - b.seconds).abs().clamp(0, 99999);
 }
 
 /// A feed's items, each episode once. Some list one twice: under one guid,
