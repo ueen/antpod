@@ -131,6 +131,9 @@ String _unescape(String s) => s.replaceAllMapped(_entity, (m) {
 /// missing. The same number of chapters means the same chapters: times come
 /// from the file, titles and pictures from the file, else the feed. Otherwise
 /// one list is taken whole: the one with pictures, else the file's.
+/// Untitled chapters are left out, and a single chapter isn't a list of
+/// chapters: an editor's cue mark carried into the tag ("Marker 1 - 1",
+/// 0.4 s long, in Talk ohne Gast's MP3s) next to untitled ones.
 List<PodcastChapter> mergeChapters(
     List<PodcastChapter>? feed, List<FileChapter>? file) {
   final fromFile = [
@@ -158,15 +161,23 @@ List<PodcastChapter> mergeChapters(
     final feedPictures = fromFeed.any((c) => c.imageUrl != null);
     merged = feedPictures && !filePictures ? fromFeed : fromFile;
   }
-  return merged.where((c) => c.title.isNotEmpty).toList();
+  final titled = merged.where((c) => c.title.isNotEmpty).toList();
+  return titled.length >= 2 ? titled : const [];
 }
 
-// A line opening with a timestamp, "1:02:03", "12:34", "(12:34)" or
-// "[12:34]", maybe after a bullet, then the title. A letter right after the
-// time ("20:15h") means it isn't one.
+// A line opening with a timestamp, "1:02:03", "12:34", "(12:34)", "[12:34]",
+// "▶ 12:34", then the title; whatever isn't a letter or digit around the time
+// is skipped ("(01:20) - Title"). A range's end is skipped too ("00:00:00 –
+// 00:02:12 – Title", "00:22:33 – End – Title"). A letter right after the
+// time ("20:15h") means it isn't one; so does a clock word after it, see
+// [_clockWord].
 final _notesLine = RegExp(
-    r'^[\s•·*>\-–—]*[(\[]?(?:(\d{1,2}):)?(\d{1,3}):(\d{2})[)\]]?(?!\w|:\d)'
-    r'[\s\-–—:|.)\]]*(.+)$');
+    r'^[^\p{L}\p{N}]*(?:(\d{1,2}):)?(\d{1,3}):(\d{2})(?![\p{L}\p{N}_]|:\d)'
+    r'(?:\s*[\-–—~]\s*(?:(?:\d{1,2}:)?\d{1,3}:\d{2}(?![\p{L}\p{N}_]|:\d)'
+    r'|[Ee]nde?(?=\s*[\-–—:|])))?'
+    // An opening bracket or quote belongs to the title.
+    r'''[^\p{L}\p{N}(\["'“„‚‘«¿¡]*(.+)$''',
+    unicode: true);
 // A time of day: "20:15 Uhr", "8:30 am" (but "Am Ende" is a title).
 final _clockWord = RegExp(r"^(?:uhr|h|a\.m\.|p\.m\.|o'?clock)(?!\p{L})",
     caseSensitive: false, unicode: true);
@@ -175,13 +186,25 @@ final _hasWord = RegExp(r'[\p{L}\p{N}]', unicode: true);
 
 /// Chapters from timestamps listed in the show notes, one per line: at
 /// least three, in order, all within [durationSeconds] when that's known.
-/// Empty when the notes don't have such a list.
+/// Empty when the notes don't have such a list. Time going back starts
+/// another list (some notes list the chapters twice, as ranges and again as
+/// starts; or a time of day stands before them): the longest one counts, the
+/// last of equally long ones.
 List<PodcastChapter> notesChapters(String description, int durationSeconds) {
   if (!description.contains(':')) return const [];
   // Timestamps are often links (to the web player's position): keep the text.
   final text = htmlToText(
       description.replaceAll(RegExp(r'</?a\b[^>]*>', caseSensitive: false), ''));
-  final chapters = <PodcastChapter>[];
+  var best = const <PodcastChapter>[];
+  var chapters = <PodcastChapter>[];
+  void endList() {
+    final fits = durationSeconds <= 0 ||
+        chapters.last.startTimeSeconds < durationSeconds;
+    if (chapters.length >= 3 && fits && chapters.length >= best.length) {
+      best = chapters;
+    }
+    chapters = [];
+  }
   for (final line in text.split('\n')) {
     final m = _notesLine.firstMatch(line.trim());
     if (m == null) continue;
@@ -195,13 +218,10 @@ List<PodcastChapter> notesChapters(String description, int durationSeconds) {
     if (title.length > 120) title = '${title.substring(0, 119)}…';
     final start = (h * 3600 + min * 60 + sec).toDouble();
     if (chapters.isNotEmpty && start <= chapters.last.startTimeSeconds) {
-      return const [];
+      endList();
     }
     chapters.add(PodcastChapter(title: title, startTimeSeconds: start));
   }
-  if (chapters.length < 3) return const [];
-  if (durationSeconds > 0 && chapters.last.startTimeSeconds >= durationSeconds) {
-    return const [];
-  }
-  return chapters;
+  if (chapters.isNotEmpty) endList();
+  return best;
 }
