@@ -892,7 +892,7 @@ class _ActionAreaState extends State<_ActionArea>
             progress: _drainFrom * (1.0 - CurvedAnimation(
                 parent: _drainCtrl, curve: Curves.easeIn).value),
             color: widget.cs.primary,
-            trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
+            trackColor: widget.cs.outlineVariant,
           ),
         ),
       );
@@ -902,7 +902,7 @@ class _ActionAreaState extends State<_ActionArea>
         painter: _RingPainter(
           progress: 1.0,
           color: ringColor,
-          trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
+          trackColor: widget.cs.outlineVariant,
         ),
       );
     } else if (isDownloading) {
@@ -919,7 +919,7 @@ class _ActionAreaState extends State<_ActionArea>
           painter: _RingPainter(
             progress: showProgress ? animValue : null,
             color: ringColor,
-            trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
+            trackColor: widget.cs.outlineVariant,
           ),
         ),
       );
@@ -930,7 +930,7 @@ class _ActionAreaState extends State<_ActionArea>
         painter: _RingPainter(
           progress: null,
           color: ringColor,
-          trackColor: widget.cs.outlineVariant.withValues(alpha: 0.5),
+          trackColor: widget.cs.outlineVariant,
         ),
       );
     }
