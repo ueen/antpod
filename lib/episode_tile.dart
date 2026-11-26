@@ -249,12 +249,8 @@ class EpisodeTile extends StatelessWidget {
         // (see build), so its lastPositionMs can still read 0.
         onMarkUnplayed: (episode.isFinished || episode.lastPositionMs > 0 || isCurrent)
             ? () {
-                final messenger = ScaffoldMessenger.of(context);
                 context.read<PlayerProvider>().setPlayed(episode.id, false);
                 Navigator.pop(context);
-                messenger.showSnackBar(SnackBar(
-                    content: Text(l10n.markUnplayed),
-                    duration: const Duration(seconds: 2)));
               }
             : null,
         onDownload: (!episode.isDownloaded && !isDownloading && !isMarked)
