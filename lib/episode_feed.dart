@@ -320,7 +320,17 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
       curve: Curves.easeOut,
       right: 16,
       bottom: fabBottom,
-      child: GestureDetector(
+      // Always there, so it fades and grows in rather than popping up.
+      child: IgnorePointer(
+        ignoring: !_showScrollTop,
+        child: AnimatedOpacity(
+          opacity: _showScrollTop ? 1 : 0,
+          duration: const Duration(milliseconds: 180),
+          child: AnimatedScale(
+            scale: _showScrollTop ? 1 : 0.6,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: GestureDetector(
         onTap: () => _scrollCtrl.animateTo(
             0, duration: const Duration(milliseconds: 350), curve: Curves.easeOut),
         child: Container(
@@ -332,13 +342,24 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
           ),
           child: Icon(Icons.arrow_upward_rounded, color: cs.onPrimaryContainer, size: 22),
         ),
+            ),
+          ),
+        ),
       ),
     );
   }
 
+  /// The first load fades into the list.
   @override
-  Widget build(BuildContext context) {
-    if (_initialLoad) return const Center(child: CircularProgressIndicator());
+  Widget build(BuildContext context) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: _initialLoad
+            ? const Center(
+                key: ValueKey('loading'), child: CircularProgressIndicator())
+            : KeyedSubtree(key: const ValueKey('feed'), child: _feed(context)),
+      );
+
+  Widget _feed(BuildContext context) {
 
     final cs = widget.cs;
     final isSearching = widget.searchQuery.isNotEmpty;
@@ -380,9 +401,12 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
               child: SizedBox(
                 height: 320,
                 child: Center(
+                  child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
                   child: widget.isLoading
-                      ? const CircularProgressIndicator()
+                      ? const CircularProgressIndicator(key: ValueKey('loading'))
                       : Column(
+                    key: const ValueKey('empty'),
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.podcasts_rounded, size: 52,
@@ -435,6 +459,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
                         ),
                       ],
                     ],
+                  ),
                   ),
                 ),
               ),
@@ -489,7 +514,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     return Stack(
       children: [
         child,
-        if (_showScrollTop) _scrollTopFab(cs),
+        _scrollTopFab(cs),
       ],
     );
   }
