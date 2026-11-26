@@ -57,5 +57,6 @@
   "tooltipDiscover": "Entdecken",
   "tooltipGuide": "Anleitung",
   "trendingError": "Trends konnten nicht geladen werden",
-  "trendingEmpty": "Gerade keine Trends verfügbar."
+  "trendingEmpty": "Gerade keine Trends verfügbar.",
+  "playbackError": "Episode konnte nicht abgespielt werden"
 }

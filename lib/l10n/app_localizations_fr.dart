@@ -205,4 +205,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get trendingEmpty => 'Aucune tendance disponible.';
+
+  @override
+  String get playbackError => 'Impossible de lire cet épisode';
 }

@@ -57,5 +57,6 @@
   "tooltipDiscover": "Découvrir",
   "tooltipGuide": "Guide",
   "trendingError": "Impossible de charger les tendances",
-  "trendingEmpty": "Aucune tendance disponible."
+  "trendingEmpty": "Aucune tendance disponible.",
+  "playbackError": "Impossible de lire cet épisode"
 }

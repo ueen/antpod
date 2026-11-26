@@ -205,4 +205,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trendingEmpty => 'No trending podcasts available.';
+
+  @override
+  String get playbackError => 'Couldn\'t play this episode';
 }

@@ -446,6 +446,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No trending podcasts available.'**
   String get trendingEmpty;
+
+  /// No description provided for @playbackError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t play this episode'**
+  String get playbackError;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

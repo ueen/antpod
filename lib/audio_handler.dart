@@ -4,20 +4,34 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
-/// Globale Instanz – wird in main.dart über AudioService.init() gesetzt.
-late AudioHandler audioHandler;
+/// The one instance, set in main.dart from AudioService.init().
+late AntPodAudioHandler audioHandler;
 
-/// Implementiert Background-Playback (Lock-Screen, Notification, Headset-Tasten)
-/// für Android und iOS über das audio_service-Paket.
+/// Background playback (lock screen, notification, headset buttons) on
+/// Android and iOS through audio_service. The only place that drives the
+/// just_audio player; PlayerProvider goes through the methods here.
 class AntPodAudioHandler extends BaseAudioHandler
     with QueueHandler, SeekHandler {
   final AudioPlayer _player = AudioPlayer();
 
-  AntPodAudioHandler() {
-    // Playback-Events → audio_service-State weiterleiten
-    _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
+  /// Errors the player reports while playing (stream dropped, source gone).
+  /// Load errors are thrown by [loadEpisode]/[playEpisode]/[switchSource].
+  void Function(Object error)? onPlayerError;
 
-    // Laufzeit sobald bekannt ins MediaItem schreiben
+  AntPodAudioHandler() {
+    // Playback events → audio_service state. listen + add, not pipe: pipe
+    // holds the subject in addStream, so super.stop()'s own state update
+    // would throw "Bad state: You cannot add items while items are being
+    // added from addStream".
+    _player.playbackEventStream.listen(
+      (e) => playbackState.add(_transformEvent(e)),
+      onError: (Object e, StackTrace st) {
+        debugPrint('[audio] playback error: $e');
+        onPlayerError?.call(e);
+      },
+    );
+
+    // The duration into the MediaItem once known (notification seek bar).
     _player.durationStream.listen((d) {
       if (d != null && mediaItem.value != null) {
         mediaItem.add(mediaItem.value!.copyWith(duration: d));
@@ -25,7 +39,7 @@ class AntPodAudioHandler extends BaseAudioHandler
     });
   }
 
-  // ── Öffentliche API ───────────────────────────────────────────────────────
+  // ── Public API ────────────────────────────────────────────────────────────
 
   /// Loads an episode and seeks to position but does NOT start playback.
   Future<void> loadEpisode({
@@ -35,7 +49,7 @@ class AntPodAudioHandler extends BaseAudioHandler
   }) => _setup(id: id, title: title, podcast: podcast, artUri: artUri,
         audioUrl: audioUrl, localPath: localPath, startPosition: startPosition);
 
-  /// Lädt und startet eine Episode. Wird aus [PlayerProvider] aufgerufen.
+  /// Loads and starts an episode. Called from [PlayerProvider].
   Future<void> playEpisode({
     required String id, required String title, required String podcast,
     required String artUri, required String audioUrl,
@@ -53,16 +67,32 @@ class AntPodAudioHandler extends BaseAudioHandler
     mediaItem.add(MediaItem(
       id: id, title: title, artist: podcast, artUri: Uri.tryParse(artUri),
     ));
+    await _load(localPath: localPath, audioUrl: audioUrl,
+        position: startPosition, andPlay: andPlay);
+  }
+
+  /// Same episode, other source (download finished, file deleted): picks up
+  /// at [position] and keeps playing if [andPlay].
+  Future<void> switchSource({
+    String? localPath, String? audioUrl,
+    required Duration position, required bool andPlay,
+  }) => _load(localPath: localPath, audioUrl: audioUrl ?? '',
+        position: position, andPlay: andPlay);
+
+  Future<void> _load({
+    String? localPath, required String audioUrl,
+    required Duration position, required bool andPlay,
+  }) async {
     // Skip stop() when the player is already idle — saves a round-trip on
     // first play after launch.
     if (_player.processingState != ProcessingState.idle) await _player.stop();
     try {
-      // Pass initialPosition so just_audio seeks during load instead of after,
+      // initialPosition: just_audio seeks during load instead of after,
       // saving a separate seek() round-trip.
       if (localPath != null) {
-        await _player.setFilePath(localPath, initialPosition: startPosition);
+        await _player.setFilePath(localPath, initialPosition: position);
       } else {
-        await _player.setUrl(audioUrl, initialPosition: startPosition);
+        await _player.setUrl(audioUrl, initialPosition: position);
       }
       // Not awaited: just_audio's play() future only completes once playback
       // pauses or stops, and callers wait for the source to be loaded.
@@ -72,9 +102,9 @@ class AntPodAudioHandler extends BaseAudioHandler
         }));
       }
     } on PlayerInterruptedException {
-      // A newer _setup() call interrupted this one — expected, ignore.
+      // A newer load interrupted this one — expected, ignore.
     } catch (e) {
-      debugPrint('[audio] _setup error: $e');
+      debugPrint('[audio] load error: $e');
       rethrow;
     }
   }
@@ -105,19 +135,20 @@ class AntPodAudioHandler extends BaseAudioHandler
   Future<void> seek(Duration position) => _player.seek(position);
 
   @override
-  Future<void> fastForward() => _player.seek(
-        Duration(
-          seconds: (_player.position.inSeconds + _forwardSeconds)
-              .clamp(0, _player.duration?.inSeconds ?? 0),
-        ),
-      );
+  Future<void> fastForward() =>
+      _player.seek(_clamped(_player.position + Duration(seconds: _forwardSeconds)));
 
   @override
-  Future<void> rewind() => _player.seek(
-        Duration(
-          seconds: (_player.position.inSeconds - _rewindSeconds).clamp(0, 9999),
-        ),
-      );
+  Future<void> rewind() =>
+      _player.seek(_clamped(_player.position - Duration(seconds: _rewindSeconds)));
+
+  /// [t] within the episode: not before 0, not past the end once it's known
+  /// (a stream may not report its duration yet; seek then goes as asked).
+  Duration _clamped(Duration t) {
+    if (t < Duration.zero) return Duration.zero;
+    final d = _player.duration;
+    return d != null && d > Duration.zero && t > d ? d : t;
+  }
 
   // ── Skip configuration ────────────────────────────────────────────────────
 
@@ -137,7 +168,7 @@ class AntPodAudioHandler extends BaseAudioHandler
 
   AudioPlayer get player => _player;
 
-  // ── Hilfsmethoden ─────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   PlaybackState _transformEvent(PlaybackEvent event) {
     return PlaybackState(

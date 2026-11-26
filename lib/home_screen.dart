@@ -95,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   StreamSubscription<Uri>? _linkSub;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  StreamSubscription<Object>? _playerErrorSub;
   Uri? _pendingDeepLink;
   bool _appReady = false;
   // While a launch link is being routed the home feed stays blank, so the
@@ -124,6 +125,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
       if (results.isOffline != _isOffline) setState(() => _isOffline = results.isOffline);
       if (results.isUnmetered) _downloadMarkedEpisodes();
+    });
+
+    // Playback that failed: say so, instead of a player that just stops.
+    _playerErrorSub = context.read<PlayerProvider>().errors.listen((_) {
+      if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
+      final player = context.read<PlayerProvider>();
+      final offline =
+          player.isOffline && player.currentEpisode?.localPath == null;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text(offline ? l10n.offlineSub : l10n.playbackError)));
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -290,6 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _piSearchTimer?.cancel();
     _linkSub?.cancel();
     _connectivitySub?.cancel();
+    _playerErrorSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -320,7 +335,8 @@ class _HomeScreenState extends State<HomeScreen> {
           );
           if (taskId != null) downloads.trackDownload(taskId, episodeId: ep.id, title: ep.title);
           // If taskId is null, mark is preserved for retry on next WiFi connect.
-        } catch (_) {
+        } catch (e) {
+          debugPrint('[home] queued download error: $e');
           // Keep mark set so the episode retries on next WiFi connect.
         }
       }

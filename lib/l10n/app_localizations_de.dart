@@ -205,4 +205,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get trendingEmpty => 'Gerade keine Trends verfügbar.';
+
+  @override
+  String get playbackError => 'Episode konnte nicht abgespielt werden';
 }

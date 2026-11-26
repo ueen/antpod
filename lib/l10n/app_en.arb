@@ -78,5 +78,6 @@
   "tooltipDiscover": "Discover",
   "tooltipGuide": "Guide",
   "trendingError": "Could not load trending podcasts",
-  "trendingEmpty": "No trending podcasts available."
+  "trendingEmpty": "No trending podcasts available.",
+  "playbackError": "Couldn't play this episode"
 }

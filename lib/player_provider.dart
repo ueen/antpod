@@ -65,7 +65,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get isOffline => _isOffline;
 
-  AudioPlayer get _player => (audioHandler as AntPodAudioHandler).player;
+  AudioPlayer get _player => audioHandler.player;
 
   PlayerProvider(this._db) {
     WidgetsBinding.instance.addObserver(this);
@@ -78,10 +78,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
     });
 
-    final handler = audioHandler as AntPodAudioHandler;
-    handler.onUserPause = _maybeComplete;
+    audioHandler.onUserPause = _maybeComplete;
+    audioHandler.onPlayerError = _onPlayerError;
+    _restoreSettings();
 
-    handler.playbackState.listen((state) {
+    audioHandler.playbackState.listen((state) {
       var playing = state.playing;
       var loading = _isLoading;
       // Skip idle — fired transiently by _player.stop() before setUrl(), which
@@ -277,7 +278,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       _episodeWatchSub?.cancel();
       _episodeWatchSub = _db.watchEpisode(ep.id).listen(_onEpisodeUpdated);
       notifyListeners();
-    } catch (_) {}
+    } catch (e) { debugPrint('[player] restore error: $e'); }
   }
 
   /// Start loading a new source: from now until [_endSettle] the shown
@@ -375,18 +376,16 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       try {
         await _db.updatePlaybackPosition(ep.id,
             positionMs: ms, durationMs: durationMs);
-      } catch (_) {}
+      } catch (e) { debugPrint('[player] final save error: $e'); }
     }
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefLastEpisodeId);
-    } catch (_) {}
+    } catch (e) { debugPrint('[player] prefs error: $e'); }
     try {
       await audioHandler.stop();
-    } catch (_) {
-      // audio_service can throw "Bad state: You cannot add items while items are
-      // being added from addStream" if the player is mid-stream. State is
-      // already cleared above, so nothing else to do.
+    } catch (e) {
+      debugPrint('[player] stop error: $e');
     }
   }
 
@@ -406,7 +405,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     _episodeWatchSub?.cancel();
     _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
     try {
-      await (audioHandler as AntPodAudioHandler).loadEpisode(
+      await audioHandler.loadEpisode(
         id: episode.id,
         title: episode.title,
         podcast: episode.podcastTitle,
@@ -416,7 +415,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         startPosition: Duration(milliseconds: startMs),
       );
     } catch (e) {
-      debugPrint('[player] load error: $e');
+      if (gen == _sourceGen) _loadFailed(e);
     } finally {
       _endSettle(gen);
       _isLoading = false;
@@ -442,12 +441,17 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       await audioHandler.play();
       return;
     }
+    // Again after a failed load (or a restore): from where it was, which the
+    // episode row may not have caught up with.
+    final again = _currentEpisode?.id == episode.id;
     _switchTo(episode);
     _currentEpisode = episode;
     _persistLastEpisode(episode.id);
     _loadChapters(episode);
 
-    final startMs = episode.isFinished ? 0 : episode.lastPositionMs;
+    final startMs = episode.isFinished
+        ? 0
+        : again ? _position.inMilliseconds : episode.lastPositionMs;
     final gen = _beginSettle(startMs, episode.durationSeconds);
     final localPath = _resolveLocalPath(episode.localPath);
     _isLoading = localPath == null && episode.audioUrl.isNotEmpty;
@@ -459,15 +463,12 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     _episodeWatchSub = _db.watchEpisode(episode.id).listen(_onEpisodeUpdated);
 
     if (episode.audioUrl.isEmpty && localPath == null) {
-      debugPrint('[player] no audio source for episode ${episode.id}');
-      _settling = false;
-      _isLoading = false;
-      notifyListeners();
+      _loadFailed('no audio source for episode ${episode.id}');
       return;
     }
 
     try {
-      await (audioHandler as AntPodAudioHandler).playEpisode(
+      await audioHandler.playEpisode(
         id: episode.id,
         title: episode.title,
         podcast: episode.podcastTitle,
@@ -477,9 +478,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         startPosition: Duration(milliseconds: startMs),
       );
     } catch (e) {
-      debugPrint('[player] play error: $e');
-      _isLoading = false;
-      notifyListeners();
+      if (gen == _sourceGen) _loadFailed(e);
     } finally {
       _endSettle(gen);
     }
@@ -517,24 +516,24 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _pivotSource({String? localPath, String? audioUrl}) async {
-    final handler = audioHandler as AntPodAudioHandler;
     final wasPlaying = _isPlaying;
     final savedPos = _exactPosition;
     final gen = _beginSettle(
         savedPos.inMilliseconds, _duration.inSeconds);
     try {
-      await handler.player.stop();
-      if (localPath != null) {
-        await handler.player.setFilePath(localPath, initialPosition: savedPos);
-      } else {
-        await handler.player.setUrl(audioUrl!, initialPosition: savedPos);
-      }
-      // Not awaited: play()'s future only completes once playback pauses.
-      if (wasPlaying) unawaited(handler.player.play().catchError((_) {}));
-    } catch (_) {}
-    _endSettle(gen);
-    _isLoading = localPath == null;
-    notifyListeners();
+      await audioHandler.switchSource(
+        localPath: localPath,
+        audioUrl: audioUrl,
+        position: savedPos,
+        andPlay: wasPlaying,
+      );
+    } catch (e) {
+      if (gen == _sourceGen) _loadFailed(e);
+    } finally {
+      _endSettle(gen);
+    }
+    // The spinner follows the player's own state (playbackState listener);
+    // the episode, and so local or not, was updated before the pivot.
   }
 
   Future<void> togglePlayPause() async {
@@ -589,27 +588,99 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // ── Speed + skip config ───────────────────────────────────────────────────
 
-  double get speed => (audioHandler as AntPodAudioHandler).player.speed;
-  int get forwardSeconds => (audioHandler as AntPodAudioHandler).forwardSeconds;
-  int get rewindSeconds => (audioHandler as AntPodAudioHandler).rewindSeconds;
+  double get speed => audioHandler.player.speed;
+  int get forwardSeconds => audioHandler.forwardSeconds;
+  int get rewindSeconds => audioHandler.rewindSeconds;
+
+  static const _prefSpeed = 'player_speed';
+  static const _prefForward = 'player_forward_seconds';
+  static const _prefRewind = 'player_rewind_seconds';
+
+  /// Speed and skip intervals as the user last set them.
+  Future<void> _restoreSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final speed = prefs.getDouble(_prefSpeed);
+      final fwd = prefs.getInt(_prefForward);
+      final rew = prefs.getInt(_prefRewind);
+      if (fwd != null && fwd > 0) audioHandler.setForwardSeconds(fwd);
+      if (rew != null && rew > 0) audioHandler.setRewindSeconds(rew);
+      if (speed != null && speed > 0) await audioHandler.setSpeed(speed);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[player] settings restore error: $e');
+    }
+  }
+
+  void _saveSetting(void Function(SharedPreferences p) write) {
+    SharedPreferences.getInstance().then(write).catchError((Object e) {
+      debugPrint('[player] settings save error: $e');
+    });
+  }
 
   Future<void> cycleSpeed() async {
     const speeds = [1.0, 1.5, 2.0, 0.8];
     final current = speed;
     final idx = speeds.indexWhere((s) => (s - current).abs() < 0.05);
     final next = speeds[(idx < 0 ? 0 : idx + 1) % speeds.length];
-    await (audioHandler as AntPodAudioHandler).setSpeed(next);
+    await audioHandler.setSpeed(next);
+    _saveSetting((p) => p.setDouble(_prefSpeed, next));
     notifyListeners();
   }
 
   void setForwardSeconds(int s) {
-    (audioHandler as AntPodAudioHandler).setForwardSeconds(s);
+    audioHandler.setForwardSeconds(s);
+    _saveSetting((p) => p.setInt(_prefForward, s));
     notifyListeners();
   }
 
   void setRewindSeconds(int s) {
-    (audioHandler as AntPodAudioHandler).setRewindSeconds(s);
+    audioHandler.setRewindSeconds(s);
+    _saveSetting((p) => p.setInt(_prefRewind, s));
     notifyListeners();
+  }
+
+  // ── Errors ────────────────────────────────────────────────────────────────
+
+  final _errors = StreamController<Object>.broadcast();
+
+  /// Playback that failed (load error, stream dropped, no audio): the home
+  /// screen shows a message for each.
+  Stream<Object> get errors => _errors.stream;
+
+  /// An error the player reported while playing. During a load it belongs
+  /// to the old source, or the load's own catch reports it.
+  void _onPlayerError(Object e) {
+    final ep = _currentEpisode;
+    if (ep == null || _settling || !_audioReady) return;
+    // The player may already have lost its position: the last tick is it.
+    final ms = _position.inMilliseconds;
+    if (ms > 0) {
+      _db.updatePlaybackPosition(ep.id,
+          positionMs: ms, durationMs: _duration.inMilliseconds);
+    }
+    _audioReady = false;
+    _playingChanged(false);
+    _player.pause();
+    _reportError(e);
+  }
+
+  /// The source didn't load: the player has nothing (its position is 0), so
+  /// nothing of it is shown or saved. The start position stays in
+  /// [_position], and the next tap loads again from there.
+  void _loadFailed(Object e) {
+    _audioReady = false;
+    _settling = false;
+    _reportError(e);
+  }
+
+  void _reportError(Object e) {
+    debugPrint('[player] error: $e');
+    // The idle state that follows an error is skipped by the playbackState
+    // listener (see there), so the spinner would otherwise stay on.
+    _isLoading = false;
+    notifyListeners();
+    if (!_errors.isClosed) _errors.add(e);
   }
 
   // ── Internal ──────────────────────────────────────────────────────────────
@@ -640,6 +711,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     _connectivitySub?.cancel();
     _flushPosition();
     _positionNotifier.dispose();
+    _errors.close();
     super.dispose();
   }
 }
