@@ -34,7 +34,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   static const _prefLastEpisodeId = 'player_last_episode_id';
 
-  /// The position, on its own channel: it ticks 5 times a second, and only
+  /// The position, on its own channel: it ticks once a second, and only
   /// the widgets showing it (progress bars, time labels) listen. The provider
   /// itself notifies for real state changes, and when the chapter changes.
   final _positionNotifier = ValueNotifier<Duration>(Duration.zero);
@@ -116,7 +116,13 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
     });
 
-    _player.positionStream.listen((p) {
+    // Once a second is plenty for bars and m:ss labels; seeks, pauses and
+    // other playback events still report at once.
+    _player
+        .createPositionStream(
+            minPeriod: const Duration(seconds: 1),
+            maxPeriod: const Duration(seconds: 1))
+        .listen((p) {
       if (!_settling && _audioReady) _position = p;
     });
   }
@@ -615,7 +621,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   // ── Internal ──────────────────────────────────────────────────────────────
 
   /// Where playback is to the millisecond: the player's own position, not
-  /// the last 200 ms tick. While a source loads (or before the first play
+  /// the last 1 s tick. While a source loads (or before the first play
   /// after a restore) it's the start position held in [_position].
   Duration get _exactPosition =>
       _audioReady && !_settling ? _player.position : _position;
