@@ -607,43 +607,20 @@ class PlayerSheetRoute extends PopupRoute<void> {
     _from = locate?.call() ?? _from;
     _drift?.stop();
     _onTop = null;
-    _closing = controller!.value.clamp(0.0, 1.0);
     return super.didPop(result);
   }
 
-  /// Where it was when it set off closed, once it's on its way.
-  double? _closing;
-
-  static double _smooth(double x) {
-    final s = x.clamp(0.0, 1.0);
-    return s * s * (3 - 2 * s);
-  }
-
   /// How much of the sheet's colour, of its content and of the mini
-  /// player's look-alike shows at [t]. On the way, by the finger or not:
-  /// the card's colour holds most of the way, the content shows only near
-  /// the top, the look-alike only near the bottom. Closing, from wherever
-  /// it set off, one gives way to the other over the whole way down: a
-  /// quick release takes the look along evenly, not all in its first
-  /// frames, and the frame is never empty.
-  ({double colour, double content, double mini}) _look(double t) {
-    ({double colour, double content, double mini}) at(double t) {
-      final q = ((t - 0.5) / 0.5).clamp(0.0, 1.0);
-      return (
-        colour: t * t * t,
-        content: q * q,
-        mini: t < 0.4 ? 1 - t / 0.4 : 0.0,
-      );
-    }
-
-    final t0 = _closing;
-    if (t0 == null) return at(t);
-    final from = at(t0);
-    final w = t0 > 0 ? _smooth(t / t0) : 0.0;
+  /// player's look-alike shows at [t] on the way, up or down alike: the
+  /// look-alike fades in the first 40%, then it's the card's colour, the
+  /// content comes in the last 40%, easing in and out of it (held at the
+  /// top, so a drag down doesn't take it at once).
+  static ({double colour, double content, double mini}) _at(double t) {
+    final c = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
     return (
-      colour: from.colour * w,
-      content: from.content * w,
-      mini: 1 - (1 - from.mini) * w,
+      colour: t * t * t,
+      content: c * c * (3 - 2 * c),
+      mini: t < 0.4 ? 1 - t / 0.4 : 0.0,
     );
   }
 
@@ -833,7 +810,7 @@ class PlayerSheetRoute extends PopupRoute<void> {
           // From the bottom edge it's the sheet all the way.
           final look = f == null
               ? (colour: 1.0, content: 1.0, mini: 0.0)
-              : _look(t);
+              : _at(t);
           final bg = Color.lerp(cardColor, sheetColor, look.colour)!;
           final shadow = f == null ? 0.0 : 0.25 * (1 - t);
           final clip = corners.toRRect(Rect.fromLTRB(
@@ -868,13 +845,18 @@ class PlayerSheetRoute extends PopupRoute<void> {
                 child: Opacity(opacity: look.content, child: child),
               ),
             ),
-            if (card != null && f != null && look.mini > 0)
+            // Kept all the way, so it's there as it was when it comes back.
+            if (card != null && f != null)
               Positioned(
                 left: f.left,
                 top: frame.top - fromInsets.top,
                 width: f.width,
                 height: f.height,
-                child: Opacity(opacity: look.mini, child: card),
+                child: Visibility(
+                  visible: look.mini > 0,
+                  maintainState: true,
+                  child: Opacity(opacity: look.mini, child: card),
+                ),
               ),
           ]);
         },
