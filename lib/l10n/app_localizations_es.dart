@@ -246,4 +246,127 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get playbackError => 'No se pudo reproducir el episodio';
+
+  @override
+  String get settings => 'Ajustes';
+
+  @override
+  String get settingsAppearance => 'Apariencia';
+
+  @override
+  String get settingsMaterialYou => 'Material You';
+
+  @override
+  String get settingsMaterialYouSub => 'Los colores de tu fondo de pantalla en lugar del marrón de AntPod (Android 12 o posterior)';
+
+  @override
+  String get settingsPlayback => 'Reproducción';
+
+  @override
+  String get settingsMarkPlayedNearEnd => 'Escuchado en el último minuto';
+
+  @override
+  String get settingsMarkPlayedNearEndSub => 'Pausar en los últimos 60 segundos marca el episodio como escuchado, para que las despedidas no lo dejen a medias';
+
+  @override
+  String get settingsDownloads => 'Descargas';
+
+  @override
+  String get settingsDeletePlayed => 'Borrar descargas escuchadas';
+
+  @override
+  String get settingsDeletePlayedSub => 'Dos días después de escuchar un episodio; los favoritos se quedan';
+
+  @override
+  String get settingsDownloadsFolder => 'Carpeta de descargas';
+
+  @override
+  String get settingsDownloadsFolderSub => 'Los episodios descargados en la app Archivos, en AntPod';
+
+  @override
+  String get settingsDownloadsFolderFailed => 'No se pudo abrir la app Archivos';
+
+  @override
+  String get settingsImportExport => 'Importar y exportar';
+
+  @override
+  String get exportBackup => 'Exportar copia de seguridad';
+
+  @override
+  String get exportBackupSub => 'Suscripciones, progreso, favoritos y ajustes, para un móvil nuevo';
+
+  @override
+  String get importBackup => 'Importar copia de seguridad';
+
+  @override
+  String get importBackupSub => 'Se suma a lo que hay; gana el progreso más reciente';
+
+  @override
+  String get exportOpml => 'Exportar suscripciones (OPML)';
+
+  @override
+  String get exportOpmlSub => 'Para otras apps de podcasts';
+
+  @override
+  String get importOpml => 'Importar suscripciones (OPML)';
+
+  @override
+  String get importOpmlSub => 'Desde otra app de podcasts';
+
+  @override
+  String importProgress(int done, int total) {
+    return 'Cargando feeds: $done de $total';
+  }
+
+  @override
+  String importSubscribed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count podcasts añadidos',
+      one: '1 podcast añadido',
+      zero: 'Ningún podcast nuevo',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importEpisodes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count episodios actualizados',
+      one: '1 episodio actualizado',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importFailed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count feeds no cargaron, lo harán en la próxima actualización',
+      one: '1 feed no cargó, lo hará en la próxima actualización',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get importNotBackup => 'Este archivo no es una copia de seguridad de AntPod';
+
+  @override
+  String get importNewerBackup => 'Esta copia es de un AntPod más reciente, actualiza la app primero';
+
+  @override
+  String get importNotOpml => 'Este archivo no es un archivo OPML';
+
+  @override
+  String get importUnreadable => 'No se pudo leer el archivo';
+
+  @override
+  String get exportSaved => 'Guardado';
+
+  @override
+  String get exportFailed => 'No se pudo guardar el archivo';
 }

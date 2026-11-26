@@ -10,8 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'l10n/app_localizations.dart';
 
-/// AntPod's about bubble, under the logo.
-void showAboutBubble(BuildContext context) {
+/// AntPod's about bubble, under the logo; its Settings button closes it
+/// and calls [onSettings].
+void showAboutBubble(BuildContext context, {required VoidCallback onSettings}) {
   final topPad = MediaQuery.of(context).padding.top;
 
   showGeneralDialog(
@@ -79,7 +80,40 @@ void showAboutBubble(BuildContext context) {
                                 height: 1.6,
                               ),
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 16),
+                            // Settings: the bubble's main button.
+                            Material(
+                              color: cs.primary,
+                              shape: const StadiumBorder(),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  onSettings();
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 10),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.settings_rounded,
+                                          size: 18, color: cs.onPrimary),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        AppLocalizations.of(ctx)!.settings,
+                                        style: TextStyle(
+                                          color: cs.onPrimary,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
                             // GitHub button
                             GestureDetector(
                               onTap: () => launchUrl(

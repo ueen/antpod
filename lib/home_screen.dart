@@ -31,6 +31,7 @@ import 'podcast_feed.dart';
 import 'podcast_grid.dart';
 import 'podcast_header.dart';
 import 'podcast_service.dart';
+import 'settings_sheet.dart';
 import 'share_utils.dart';
 import 'network.dart';
 
@@ -695,7 +696,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showAbout(BuildContext context) {
     _antWalkerKey.currentState?.startWalk();
-    showAboutBubble(context);
+    showAboutBubble(context, onSettings: () => showSettingsSheet(context));
   }
 
   void _onSearchChanged(String v) {

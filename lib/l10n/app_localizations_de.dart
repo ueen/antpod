@@ -246,4 +246,127 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get playbackError => 'Episode konnte nicht abgespielt werden';
+
+  @override
+  String get settings => 'Einstellungen';
+
+  @override
+  String get settingsAppearance => 'Darstellung';
+
+  @override
+  String get settingsMaterialYou => 'Material You';
+
+  @override
+  String get settingsMaterialYouSub => 'Farben vom Hintergrundbild statt AntPods Braun (ab Android 12)';
+
+  @override
+  String get settingsPlayback => 'Wiedergabe';
+
+  @override
+  String get settingsMarkPlayedNearEnd => 'In der letzten Minute gehört';
+
+  @override
+  String get settingsMarkPlayedNearEndSub => 'Pausieren in den letzten 60 Sekunden markiert eine Folge als gehört, damit Abspänne sie nicht halb offen lassen';
+
+  @override
+  String get settingsDownloads => 'Downloads';
+
+  @override
+  String get settingsDeletePlayed => 'Gehörte Downloads löschen';
+
+  @override
+  String get settingsDeletePlayedSub => 'Zwei Tage nachdem eine Folge gehört wurde; Favoriten bleiben';
+
+  @override
+  String get settingsDownloadsFolder => 'Download-Ordner';
+
+  @override
+  String get settingsDownloadsFolderSub => 'Die heruntergeladenen Folgen in der Dateien-App, unter AntPod';
+
+  @override
+  String get settingsDownloadsFolderFailed => 'Die Dateien-App ließ sich nicht öffnen';
+
+  @override
+  String get settingsImportExport => 'Import & Export';
+
+  @override
+  String get exportBackup => 'Backup exportieren';
+
+  @override
+  String get exportBackupSub => 'Abos, Wiedergabestand, Favoriten und Einstellungen, für ein neues Handy';
+
+  @override
+  String get importBackup => 'Backup importieren';
+
+  @override
+  String get importBackupSub => 'Ergänzt, was da ist; der neuere Wiedergabestand gewinnt';
+
+  @override
+  String get exportOpml => 'Abos exportieren (OPML)';
+
+  @override
+  String get exportOpmlSub => 'Für andere Podcast-Apps';
+
+  @override
+  String get importOpml => 'Abos importieren (OPML)';
+
+  @override
+  String get importOpmlSub => 'Aus einer anderen Podcast-App';
+
+  @override
+  String importProgress(int done, int total) {
+    return 'Feeds laden: $done von $total';
+  }
+
+  @override
+  String importSubscribed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Podcasts hinzugefügt',
+      one: '1 Podcast hinzugefügt',
+      zero: 'Keine neuen Podcasts',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importEpisodes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Folgen aktualisiert',
+      one: '1 Folge aktualisiert',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importFailed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Feeds haben nicht geladen, sie laden beim nächsten Aktualisieren',
+      one: '1 Feed hat nicht geladen, er lädt beim nächsten Aktualisieren',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get importNotBackup => 'Diese Datei ist kein AntPod-Backup';
+
+  @override
+  String get importNewerBackup => 'Dieses Backup stammt von einem neueren AntPod, bitte zuerst die App aktualisieren';
+
+  @override
+  String get importNotOpml => 'Diese Datei ist keine OPML-Datei';
+
+  @override
+  String get importUnreadable => 'Die Datei ließ sich nicht lesen';
+
+  @override
+  String get exportSaved => 'Gespeichert';
+
+  @override
+  String get exportFailed => 'Die Datei ließ sich nicht speichern';
 }

@@ -512,6 +512,198 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t play this episode'**
   String get playbackError;
+
+  /// No description provided for @settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settings;
+
+  /// No description provided for @settingsAppearance.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsAppearance;
+
+  /// No description provided for @settingsMaterialYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Material You'**
+  String get settingsMaterialYou;
+
+  /// No description provided for @settingsMaterialYouSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Colours from your wallpaper instead of AntPod\'s brown (Android 12 and later)'**
+  String get settingsMaterialYouSub;
+
+  /// No description provided for @settingsPlayback.
+  ///
+  /// In en, this message translates to:
+  /// **'Playback'**
+  String get settingsPlayback;
+
+  /// No description provided for @settingsMarkPlayedNearEnd.
+  ///
+  /// In en, this message translates to:
+  /// **'Played in the last minute'**
+  String get settingsMarkPlayedNearEnd;
+
+  /// No description provided for @settingsMarkPlayedNearEndSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Pausing in an episode\'s last 60 seconds marks it as played, so outros don\'t leave it half done'**
+  String get settingsMarkPlayedNearEndSub;
+
+  /// No description provided for @settingsDownloads.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloads'**
+  String get settingsDownloads;
+
+  /// No description provided for @settingsDeletePlayed.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete played downloads'**
+  String get settingsDeletePlayed;
+
+  /// No description provided for @settingsDeletePlayedSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Two days after an episode is played; favourites are kept'**
+  String get settingsDeletePlayedSub;
+
+  /// No description provided for @settingsDownloadsFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloads folder'**
+  String get settingsDownloadsFolder;
+
+  /// No description provided for @settingsDownloadsFolderSub.
+  ///
+  /// In en, this message translates to:
+  /// **'The downloaded episodes in the Files app, under AntPod'**
+  String get settingsDownloadsFolderSub;
+
+  /// No description provided for @settingsDownloadsFolderFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open the Files app'**
+  String get settingsDownloadsFolderFailed;
+
+  /// No description provided for @settingsImportExport.
+  ///
+  /// In en, this message translates to:
+  /// **'Import & export'**
+  String get settingsImportExport;
+
+  /// No description provided for @exportBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Export backup'**
+  String get exportBackup;
+
+  /// No description provided for @exportBackupSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscriptions, play state, favourites and settings, for a new phone'**
+  String get exportBackupSub;
+
+  /// No description provided for @importBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Import backup'**
+  String get importBackup;
+
+  /// No description provided for @importBackupSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Adds to what\'s here; the newer play state wins'**
+  String get importBackupSub;
+
+  /// No description provided for @exportOpml.
+  ///
+  /// In en, this message translates to:
+  /// **'Export subscriptions (OPML)'**
+  String get exportOpml;
+
+  /// No description provided for @exportOpmlSub.
+  ///
+  /// In en, this message translates to:
+  /// **'For other podcast apps'**
+  String get exportOpmlSub;
+
+  /// No description provided for @importOpml.
+  ///
+  /// In en, this message translates to:
+  /// **'Import subscriptions (OPML)'**
+  String get importOpml;
+
+  /// No description provided for @importOpmlSub.
+  ///
+  /// In en, this message translates to:
+  /// **'From another podcast app'**
+  String get importOpmlSub;
+
+  /// No description provided for @importProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading feeds: {done} of {total}'**
+  String importProgress(int done, int total);
+
+  /// No description provided for @importSubscribed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No new podcasts} =1{1 podcast added} other{{count} podcasts added}}'**
+  String importSubscribed(int count);
+
+  /// No description provided for @importEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 episode updated} other{{count} episodes updated}}'**
+  String importEpisodes(int count);
+
+  /// No description provided for @importFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 feed didn\'t load, it will on the next refresh} other{{count} feeds didn\'t load, they will on the next refresh}}'**
+  String importFailed(int count);
+
+  /// No description provided for @importNotBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'This file isn\'t an AntPod backup'**
+  String get importNotBackup;
+
+  /// No description provided for @importNewerBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'This backup is from a newer AntPod, update the app first'**
+  String get importNewerBackup;
+
+  /// No description provided for @importNotOpml.
+  ///
+  /// In en, this message translates to:
+  /// **'This file isn\'t an OPML file'**
+  String get importNotOpml;
+
+  /// No description provided for @importUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read this file'**
+  String get importUnreadable;
+
+  /// No description provided for @exportSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get exportSaved;
+
+  /// No description provided for @exportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save the file'**
+  String get exportFailed;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
