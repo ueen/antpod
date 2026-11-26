@@ -653,6 +653,12 @@ class _EpisodeMetadata extends StatelessWidget {
     required this.cs, required this.formatDuration,
   });
 
+  Widget _statusIcon(String key, IconData icon, Color color) => Padding(
+        key: ValueKey(key),
+        padding: const EdgeInsets.only(right: 4),
+        child: Icon(icon, size: 12, color: color),
+      );
+
   @override
   Widget build(BuildContext context) {
     // The current episode's bar runs on the player's duration (see
@@ -676,19 +682,24 @@ class _EpisodeMetadata extends StatelessWidget {
         const SizedBox(height: 3),
         Row(
           children: [
-            if (episode.isFinished)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.check_circle_rounded, size: 12,
-                    color: cs.onSurfaceVariant))
-            else if (episode.isDownloaded)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.download_done_rounded, size: 12, color: cs.primary))
-            else if (episode.markedForDownload)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.download_rounded, size: 12, color: cs.primary)),
+            // Fades between states; the date slides aside when one appears.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: episode.isFinished
+                    ? _statusIcon('played', Icons.check_circle_rounded,
+                        cs.onSurfaceVariant)
+                    : episode.isDownloaded
+                        ? _statusIcon('downloaded', Icons.download_done_rounded,
+                            cs.primary)
+                        : episode.markedForDownload
+                            ? _statusIcon('marked', Icons.download_rounded,
+                                cs.primary)
+                            : const SizedBox.shrink(key: ValueKey('none')),
+              ),
+            ),
             Text(
               DateFormat('d. MMM yyyy',
                       Localizations.localeOf(context).toString())
@@ -976,20 +987,36 @@ class _ActionAreaState extends State<_ActionArea>
                       ),
                     ),
                   ),
-                  if (widget.isLoading)
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: widget.cs.primary))
-                  else if (widget.isOffline && !widget.episode.isDownloaded)
-                    Icon(Icons.wifi_off_rounded, size: 18,
-                        color: widget.cs.onSurfaceVariant.withValues(alpha: 0.5))
-                  else
-                    Icon(
-                      widget.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      size: 22,
-                      color: widget.cs.primary,
+                  // Play, pause and loading cross-fade, as in the player.
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 160),
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      child: ScaleTransition(
+                          scale: Tween(begin: 0.7, end: 1.0).animate(anim),
+                          child: child),
                     ),
+                    child: widget.isLoading
+                        ? Padding(
+                            key: const ValueKey('loading'),
+                            padding: const EdgeInsets.all(12),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: widget.cs.primary))
+                        : widget.isOffline && !widget.episode.isDownloaded
+                            ? Icon(Icons.wifi_off_rounded,
+                                key: const ValueKey('offline'),
+                                size: 18,
+                                color: widget.cs.onSurfaceVariant
+                                    .withValues(alpha: 0.5))
+                            : Icon(
+                                widget.isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                key: ValueKey(widget.isPlaying),
+                                size: 22,
+                                color: widget.cs.primary,
+                              ),
+                  ),
                 ],
               ),
             ),
