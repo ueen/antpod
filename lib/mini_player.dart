@@ -17,65 +17,39 @@ class MiniPlayer extends StatefulWidget {
 }
 
 class _MiniPlayerState extends State<MiniPlayer> {
-  double _dragProgress = 0.0;
-  bool _sheetOpen = false;
+  /// The open (or opening) player sheet pushed from here.
+  PlayerSheetRoute? _route;
 
+  /// Pushes the sheet; [tracking]: the finger moves it, from closed.
+  PlayerSheetRoute? _push({required bool tracking}) {
+    if (_route != null) return null;
+    final route = _playerRoute(context,
+        onPodcastTap: widget.onPodcastTap, tracking: tracking);
+    _route = route;
+    Navigator.of(context).push(route).whenComplete(() {
+      if (identical(_route, route)) _route = null;
+    });
+    return route;
+  }
+
+  /// The sheet's open height: the finger moves the sheet as far as it moves.
+  double get _sheetHeight =>
+      MediaQuery.sizeOf(context).height * _PlayerSheet.initialSize;
+
+  // An upward drag pushes the sheet at once and it follows the finger; one
+  // that starts downward does nothing.
   void _onDragUpdate(DragUpdateDetails d) {
-    final screenH = MediaQuery.of(context).size.height;
-    if (d.delta.dy < 0) {
-      setState(() {
-        _dragProgress =
-            (_dragProgress - d.delta.dy / (screenH * 0.35)).clamp(0.0, 1.0);
-      });
-    } else if (_dragProgress > 0) {
-      setState(() {
-        _dragProgress = (_dragProgress - d.delta.dy / 100.0).clamp(0.0, 1.0);
-      });
+    var r = _route;
+    if (r == null) {
+      if (d.delta.dy >= 0) return;
+      r = _push(tracking: true);
+      if (r == null) return;
     }
+    r.drag(-d.delta.dy / _sheetHeight);
   }
 
-  Future<void> _onDragEnd(DragEndDetails d) async {
-    if (_dragProgress > 0.25 || (d.primaryVelocity ?? 0) < -500) {
-      await _openSheet(context);
-    } else {
-      if (mounted) setState(() => _dragProgress = 0);
-    }
-  }
-
-  Future<void> _openSheet(BuildContext context) async {
-    if (_sheetOpen) return;
-    _sheetOpen = true;
-    if (mounted) setState(() => _dragProgress = 0);
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Stack(
-        children: [
-          // Tapping the dark area above the sheet dismisses it
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(ctx).pop(),
-            child: const SizedBox.expand(),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: GestureDetector(
-              onTap: () {}, // absorb taps on the sheet itself
-              child: ChangeNotifierProvider.value(
-                value: context.read<PlayerProvider>(),
-                child: _PlayerSheet(onPodcastTap: widget.onPodcastTap),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (mounted) setState(() => _sheetOpen = false);
-  }
+  void _onDragEnd(DragEndDetails d) =>
+      _route?.release(-(d.primaryVelocity ?? 0) / _sheetHeight);
 
   @override
   Widget build(BuildContext context) {
@@ -109,28 +83,21 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final cs = Theme.of(context).colorScheme;
     final canPlay = !isOffline || isDownloaded;
 
-    return Transform.translate(
-      offset: Offset(0, -_dragProgress * 50),
-      child: GestureDetector(
-      onTap: () => _openSheet(context),
+    return GestureDetector(
+      onTap: () => _push(tracking: false),
       onVerticalDragUpdate: _onDragUpdate,
       onVerticalDragEnd: _onDragEnd,
+      onVerticalDragCancel: () => _route?.release(0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Drag handle
-          Hero(
-            tag: 'player_handle',
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 4),
-                width: 32, height: 3,
-                decoration: BoxDecoration(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
-              ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 4),
+            width: 32, height: 3,
+            decoration: BoxDecoration(
+              color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(1.5),
             ),
           ),
           Container(
@@ -198,11 +165,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     _iconBtn(cs, _skipRewindIcon(rewindSec),
                         () => context.read<PlayerProvider>().skipBackward()),
                     SizedBox(
-                      width: 36, height: 36,
+                      width: 44, height: 44,
                       child: _playSwitch(isLoading
                           ? Padding(
                               key: const ValueKey('loading'),
-                              padding: const EdgeInsets.all(8),
+                              padding: const EdgeInsets.all(10),
                               child: CircularProgressIndicator(
                                   strokeWidth: 3, strokeCap: StrokeCap.round,
                                   color: cs.inversePrimary),
@@ -210,13 +177,13 @@ class _MiniPlayerState extends State<MiniPlayer> {
                           : !canPlay
                               ? Icon(Icons.wifi_off_rounded,
                                   key: const ValueKey('offline'),
-                                  color: cs.inversePrimary.withValues(alpha: 0.5), size: 22)
+                                  color: cs.inversePrimary.withValues(alpha: 0.5), size: 26)
                               : IconButton(
                                   key: ValueKey(isPlaying),
                                   onPressed: () => context.read<PlayerProvider>().togglePlayPause(),
                                   icon: Icon(
                                     isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                    color: cs.inversePrimary, size: 28),
+                                    color: cs.inversePrimary, size: 34),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 )),
@@ -234,19 +201,18 @@ class _MiniPlayerState extends State<MiniPlayer> {
           ), // Container (mini player card)
         ],   // Column children
       ),     // Column
-      ),     // GestureDetector
-    );       // Transform.translate
+    );       // GestureDetector
   }
 
   Widget _iconBtn(ColorScheme cs, IconData icon, VoidCallback onTap,
-      {double size = 22, bool flipX = false}) {
+      {double size = 26, bool flipX = false}) {
     Widget ico = Icon(icon, color: cs.inversePrimary, size: size);
     if (flipX) ico = Transform.flip(flipX: true, child: ico);
     return IconButton(
       onPressed: onTap,
       icon: ico,
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      constraints: const BoxConstraints(minWidth: 42, minHeight: 42),
     );
   }
 }
@@ -379,32 +345,149 @@ IconData? _skipForwardIconDirect(int s) {
 
 
 Future<void> showPlayerSheet(BuildContext context,
-    {VoidCallback? onPodcastTap}) async {
-  await showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    isDismissible: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Stack(
-      children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(ctx).pop(),
-          child: const SizedBox.expand(),
-        ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: GestureDetector(
-            onTap: () {},
-            child: ChangeNotifierProvider.value(
-              value: context.read<PlayerProvider>(),
-              child: _PlayerSheet(onPodcastTap: onPodcastTap),
-            ),
-          ),
-        ),
-      ],
-    ),
+        {VoidCallback? onPodcastTap}) =>
+    Navigator.of(context).push(
+        _playerRoute(context, onPodcastTap: onPodcastTap, tracking: false));
+
+PlayerSheetRoute _playerRoute(BuildContext context,
+    {VoidCallback? onPodcastTap, required bool tracking}) {
+  final player = context.read<PlayerProvider>();
+  final themes = InheritedTheme.capture(
+      from: context, to: Navigator.of(context).context);
+  return PlayerSheetRoute(
+    tracking: tracking,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    builder: (_) => themes.wrap(ChangeNotifierProvider.value(
+      value: player,
+      child: _PlayerSheet(onPodcastTap: onPodcastTap),
+    )),
   );
+}
+
+/// The player sheet over a dark barrier. It rises from the bottom and fades
+/// in. A tap opens it on its own; a drag on the mini player moves it with the
+/// finger, and on release it goes on at the finger's speed: a flick goes its
+/// way, a slow release opens past half way and closes before. Dragged down
+/// to its smallest size, or tapped above, it closes.
+class PlayerSheetRoute extends PopupRoute<void> {
+  PlayerSheetRoute({
+    super.settings,
+    required this.builder,
+    required this.barrierLabel,
+    required bool tracking,
+  }) : _tracking = tracking;
+
+  final WidgetBuilder builder;
+
+  /// The controller's value is the sheet's position as it is (the finger
+  /// or a release moves it); otherwise it's eased.
+  bool _tracking;
+
+  @override
+  final String? barrierLabel;
+  @override
+  Color get barrierColor => Colors.black54;
+  @override
+  bool get barrierDismissible => true;
+  @override
+  Curve get barrierCurve => Curves.linear;
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 300);
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 250);
+
+  static const _curve = Curves.easeOutCubic;
+
+  /// Sheet heights per second: faster is a flick.
+  static const _flick = 1.0;
+
+  @override
+  TickerFuture didPush() {
+    final pushed = super.didPush();
+    if (_tracking) controller!.stop(); // the finger moves it
+    return pushed;
+  }
+
+  @override
+  bool didPop(void result) {
+    // From fully open, closing leaves at full speed rather than easing in;
+    // the same position either way, so no jump.
+    if (controller!.isCompleted) _tracking = true;
+    return super.didPop(result);
+  }
+
+  /// The finger moved [delta] sheet heights, up positive.
+  void drag(double delta) {
+    if (!isActive || !_tracking || controller!.isAnimating) return;
+    controller!.value += delta;
+  }
+
+  /// The finger let go at [velocity] sheet heights per second, up positive.
+  void release(double velocity) {
+    if (!isActive || !_tracking || controller!.isAnimating) return;
+    final c = controller!;
+    final open =
+        velocity.abs() > _flick ? velocity > 0 : c.value > 0.5;
+    final distance = open ? 1 - c.value : c.value;
+    final speed = open ? velocity : -velocity;
+    // The curve starts at 3× its average speed: this long, the sheet leaves
+    // at the finger's speed. Slow or backward: a plain settle.
+    final ms = speed > 0.05 ? 3000 * distance / speed : 350 * distance;
+    final duration = Duration(milliseconds: ms.clamp(120, 360).round());
+    if (open) {
+      c.animateTo(1, duration: duration, curve: _curve).whenCompleteOrCancel(() {
+        if (c.isCompleted) _tracking = false;
+      });
+    } else {
+      navigator?.pop();
+      // Popping already ran out when the sheet was all the way down.
+      if (c.isAnimating) c.animateBack(0, duration: duration, curve: _curve);
+    }
+  }
+
+  bool _onExtent(DraggableScrollableNotification n) {
+    if (n.extent <= n.minExtent + 1e-6 && isCurrent) navigator?.pop();
+    return false;
+  }
+
+  @override
+  Widget buildPage(BuildContext context, Animation<double> animation,
+      Animation<double> secondaryAnimation) {
+    // As wide as the screen, up to a bottom sheet's 640.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 640),
+      child: SizedBox(
+        width: double.infinity,
+        child: NotificationListener<DraggableScrollableNotification>(
+          onNotification: _onExtent,
+          child: Material(
+              type: MaterialType.transparency, child: builder(context)),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget buildTransitions(BuildContext context, Animation<double> animation,
+      Animation<double> secondaryAnimation, Widget child) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        final t = _tracking ? animation.value : _curve.transform(animation.value);
+        // Opaque by half way.
+        final opacity = Curves.easeOut.transform((t * 2).clamp(0.0, 1.0));
+        return Align(
+          alignment: Alignment.bottomCenter,
+          // By the sheet's own height: fully out at 0, whatever its size.
+          child: FractionalTranslation(
+            translation: Offset(0, 1 - t),
+            child: Opacity(opacity: opacity, child: child),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // ── Player bottom sheet ───────────────────────────────────────────────────────
@@ -469,6 +552,9 @@ class _FavoriteButtonState extends State<_FavoriteButton> {
 class _PlayerSheet extends StatelessWidget {
   final VoidCallback? onPodcastTap;
   const _PlayerSheet({this.onPodcastTap});
+
+  /// The sheet's height when it opens, of the screen's.
+  static const initialSize = 0.6;
 
   String _fmtDur(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -547,7 +633,7 @@ class _PlayerSheet extends StatelessWidget {
     // expand: false keeps the widget sized to its rendered height so the
     // transparent area above it passes taps through to the modal barrier.
     return DraggableScrollableSheet(
-      initialChildSize: 0.6,
+      initialChildSize: initialSize,
       minChildSize: 0.3,
       maxChildSize: 0.95,
       expand: false,
