@@ -27,13 +27,17 @@ const trendsCountries = {
   'za': 'South Africa',
 };
 
-/// The trends country when none was picked: the app locale's country, else
-/// the country its language is mostly spoken in.
-String defaultTrendsCountry(Locale locale) {
-  final country = locale.countryCode?.toLowerCase();
-  if (country != null && country.length == 2) return country;
-  return const {'en': 'us', 'de': 'de', 'fr': 'fr', 'es': 'es'}[locale.languageCode] ??
-      'us';
+/// The device's country/region, from its locale settings (the app's own
+/// locale has the language only); without one, the country its language is
+/// mostly spoken in. The trends default to it, and episode search uses it.
+String deviceCountry([List<Locale>? locales]) {
+  locales ??= WidgetsBinding.instance.platformDispatcher.locales;
+  for (final locale in locales) {
+    final country = locale.countryCode?.toLowerCase();
+    if (country != null && country.length == 2) return country;
+  }
+  final language = locales.isEmpty ? null : locales.first.languageCode;
+  return const {'en': 'us', 'de': 'de', 'fr': 'fr', 'es': 'es'}[language] ?? 'us';
 }
 
 /// The country's flag: its code in regional indicator letters.

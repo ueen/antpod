@@ -737,16 +737,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Country for Apple's charts: the one picked on the Discover page, else
-  /// the app locale's.
+  /// the device's.
   String get _trendsCountry =>
-      context.read<AppSettings>().trendsCountry ??
-      defaultTrendsCountry(Localizations.localeOf(context));
+      context.read<AppSettings>().trendsCountry ?? deviceCountry();
 
-  /// Country for episode search, from the app locale.
-  String get _searchCountry {
-    final locale = Localizations.localeOf(context);
-    return (locale.countryCode ?? locale.languageCode).toLowerCase();
-  }
+  /// Country for episode search: the device's.
+  String get _searchCountry => deviceCountry();
 
   Future<void> _debouncedPISearch(String q) async {
     final trimmed = q.trim();

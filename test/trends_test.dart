@@ -43,10 +43,11 @@ void main() {
       expect(hits('  '), hasLength(trendsCountries.length));
     });
 
-    test('the default country follows the app locale', () {
-      expect(defaultTrendsCountry(const Locale('de', 'CH')), 'ch');
-      expect(defaultTrendsCountry(const Locale('fr')), 'fr');
-      expect(defaultTrendsCountry(const Locale('it')), 'us');
+    test('the default is the device region, not the app language', () {
+      expect(deviceCountry(const [Locale('de', 'CH')]), 'ch');
+      expect(deviceCountry(const [Locale('en'), Locale('fr', 'BE')]), 'be');
+      expect(deviceCountry(const [Locale('fr')]), 'fr');
+      expect(deviceCountry(const [Locale('it')]), 'us');
     });
   });
 
