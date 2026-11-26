@@ -204,7 +204,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               key: const ValueKey('loading'),
                               padding: const EdgeInsets.all(8),
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: cs.inversePrimary),
+                                  strokeWidth: 3, strokeCap: StrokeCap.round,
+                                  color: cs.inversePrimary),
                             )
                           : !canPlay
                               ? Icon(Icons.wifi_off_rounded,
@@ -669,7 +670,8 @@ class _PlayerSheet extends StatelessWidget {
                           key: const ValueKey('loading'),
                           padding: const EdgeInsets.all(16),
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: cs.onPrimary),
+                              strokeWidth: 3, strokeCap: StrokeCap.round,
+                              color: cs.onPrimary),
                         )
                       : (player.isOffline && ep.localPath == null)
                           ? Icon(Icons.wifi_off_rounded,

@@ -362,7 +362,7 @@ class _DiscoverListState extends State<DiscoverList> {
             color: cs.primary.withValues(alpha: 0.12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
-              side: BorderSide(color: cs.primary, width: 1.5),
+              side: BorderSide(color: cs.primary, width: 2),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(

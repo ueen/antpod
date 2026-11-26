@@ -1001,7 +1001,8 @@ class _ActionAreaState extends State<_ActionArea>
                             key: const ValueKey('loading'),
                             padding: const EdgeInsets.all(12),
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: widget.cs.primary))
+                                strokeWidth: 3, strokeCap: StrokeCap.round,
+                                color: widget.cs.primary))
                         : widget.isOffline && !widget.episode.isDownloaded
                             ? Icon(Icons.wifi_off_rounded,
                                 key: const ValueKey('offline'),
@@ -1189,11 +1190,11 @@ class _RingDotsPainter extends CustomPainter {
   final List<(double sweep, double opacity)> dots;
   const _RingDotsPainter({required this.color, required this.dots});
 
-  // StrokeCap.round caps extend each pill by cap ≈ strokeWidth/(2r) ≈ 0.061 rad per end.
+  // StrokeCap.round caps extend each pill by cap ≈ strokeWidth/(2r) ≈ 0.073 rad per end.
   // Target: visual pill:gap = 6:5, arc stops slightly before 3 o'clock (~82° visual).
   // With V = visual pill, visual gap = 5V/6, total visual = 14V/3 → V ≈ 0.318 rad.
-  // drawn_pill = V − 2·cap ≈ 0.196 rad (~11°), drawn_gap = 5V/6 + 2·cap ≈ 0.387 rad.
-  static const _maxSweep = 0.196; // ~11° drawn pill → ~18° visual (pill slightly larger)
+  // drawn_pill = V − 2·cap ≈ 0.172 rad (~10°), drawn_gap = 5V/6 + 2·cap ≈ 0.411 rad.
+  static const _maxSweep = 0.172; // ~10° drawn pill → ~18° visual (pill slightly larger)
   static const _spacing  = 0.583; // ~33° start-to-start (drawn_pill + drawn_gap)
 
   @override
@@ -1202,7 +1203,7 @@ class _RingDotsPainter extends CustomPainter {
     final rect = Rect.fromCircle(center: Offset(size.width / 2, size.height / 2), radius: r);
     final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
+      ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
     for (int i = 0; i < dots.length; i++) {
       final (sweepFraction, opacity) = dots[i];
@@ -1232,13 +1233,13 @@ class _RingPainter extends CustomPainter {
     final cx = size.width / 2, cy = size.height / 2;
     final r = (size.width - 3) / 2;
     canvas.drawCircle(Offset(cx, cy), r,
-        Paint()..color = trackColor..style = PaintingStyle.stroke..strokeWidth = 1.5);
+        Paint()..color = trackColor..style = PaintingStyle.stroke..strokeWidth = 2);
     if (progress == null) return;
     canvas.drawArc(
       Rect.fromCircle(center: Offset(cx, cy), radius: r),
       -math.pi / 2, 2 * math.pi * progress!.clamp(0.0, 1.0), false,
       Paint()..color = color..style = PaintingStyle.stroke
-            ..strokeWidth = 2.5..strokeCap = StrokeCap.round,
+            ..strokeWidth = 3..strokeCap = StrokeCap.round,
     );
   }
 

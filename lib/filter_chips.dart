@@ -112,7 +112,7 @@ class _FeedChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
             color: active ? cs.primary : cs.outlineVariant,
-            width: 1.5),
+            width: 2),
       ),
       child: InkWell(
         onTap: onTap,
