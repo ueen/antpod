@@ -337,7 +337,7 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   // Scroll-to-top FAB, positioned inside a Stack above the feed.
   Widget _scrollTopFab(ColorScheme cs) {
     final hasMiniPlayer = context.select<PlayerProvider, bool>((p) => p.hasEpisode);
-    final fabBottom = hasMiniPlayer ? 76.0 : 16.0;
+    final fabBottom = hasMiniPlayer ? 88.0 : 16.0; // mini player top (64 + 8) + 16
     return AnimatedPositioned(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,

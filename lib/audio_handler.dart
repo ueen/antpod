@@ -83,9 +83,12 @@ class AntPodAudioHandler extends BaseAudioHandler
     String? localPath, required String audioUrl,
     required Duration position, required bool andPlay,
   }) async {
-    // Skip stop() when the player is already idle — saves a round-trip on
-    // first play after launch.
-    if (_player.processingState != ProcessingState.idle) await _player.stop();
+    // No stop() before the new source: stop() releases the native player, so
+    // every switch rebuilt ExoPlayer (~0.5 s) and dropped `playing` for a
+    // moment (play icon flicker). A loaded player takes the new source in
+    // place and keeps its playing flag — so pause first when this load
+    // mustn't start playback.
+    if (!andPlay && _player.playing) await _player.pause();
     try {
       // initialPosition: just_audio seeks during load instead of after,
       // saving a separate seek() round-trip.

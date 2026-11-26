@@ -58,7 +58,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// True while a new source loads (episode switch, source pivot): the
   /// player's position/duration events then still belong to the old source
-  /// (or are the 0 from stop()), so they're neither shown nor saved.
+  /// (or are a transient 0), so they're neither shown nor saved.
   bool _settling = false;
   /// Bumped per source load, so only the latest one ends [_settling].
   int _sourceGen = 0;
@@ -85,8 +85,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     audioHandler.playbackState.listen((state) {
       var playing = state.playing;
       var loading = _isLoading;
-      // Skip idle — fired transiently by _player.stop() before setUrl(), which
-      // would clear _isLoading and cause the spinner to flash off and back on.
+      // Skip idle — fired transiently while a source loads or the platform
+      // player is rebuilt, which would clear _isLoading and cause the
+      // spinner to flash off and back on.
       if (state.processingState != AudioProcessingState.idle) {
         final isLocal = _currentEpisode?.localPath != null;
         loading = !isLocal &&
