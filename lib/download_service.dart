@@ -86,13 +86,13 @@ class DownloadService {
   static Future<void> cancelAndCleanup(String taskId) async {
     try {
       await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: true);
-    } catch (_) {}
+    } catch (e) { debugPrint('[download] download remove error: $e'); }
   }
 
   /// Drop a finished task's record but keep its file.
   static Future<void> forget(String taskId) async {
     try {
       await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: false);
-    } catch (_) {}
+    } catch (e) { debugPrint('[download] download forget error: $e'); }
   }
 }

@@ -87,7 +87,8 @@ class DownloadProvider extends ChangeNotifier {
       active = await FlutterDownloader.loadTasksWithRawQuery(
         query: 'SELECT * FROM task WHERE status IN (1, 2)',
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[download] download poll error: $e');
       return;
     }
 
@@ -121,10 +122,13 @@ class DownloadProvider extends ChangeNotifier {
   Future<void> _markComplete(String taskId, {String? episodeId}) async {
     List<DownloadTask>? completedTasks;
     try {
+      // The raw query takes no bound parameters: quote the id as an SQL
+      // string literal (task ids are UUIDs, but don't rely on it).
+      final id = taskId.replaceAll("'", "''");
       completedTasks = await FlutterDownloader.loadTasksWithRawQuery(
-        query: "SELECT * FROM task WHERE task_id='$taskId' AND status=3",
+        query: "SELECT * FROM task WHERE task_id='$id' AND status=3",
       );
-    } catch (_) {}
+    } catch (e) { debugPrint('[download] download lookup error: $e'); }
 
     final episode = await _findEpisode(episodeId: episodeId, taskId: taskId);
 
@@ -191,7 +195,7 @@ class DownloadProvider extends ChangeNotifier {
     List<DownloadTask> tasks = [];
     try {
       tasks = await FlutterDownloader.loadTasks() ?? [];
-    } catch (_) {}
+    } catch (e) { debugPrint('[download] download restore error: $e'); }
     final byId = {for (final t in tasks) t.taskId: t};
 
     for (final ep in await _db.getPendingDownloads()) {

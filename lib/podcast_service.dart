@@ -15,6 +15,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -162,7 +163,8 @@ class PodcastService {
       return feeds
           .map((f) => PodcastResult.fromJson(f as Map<String, dynamic>))
           .toList();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[podcast] search error: $e');
       return [];
     }
   }
@@ -187,7 +189,7 @@ class PodcastService {
           final items = (jsonDecode(res.body) as Map<String, dynamic>)['items'] as List? ?? [];
           piByFeed[feedUrl] = items.cast();
         }
-      } catch (_) {}
+      } catch (e) { debugPrint('[podcast] PI episodes error: $e'); }
     }));
 
     // For each Apple episode, swap in the PI GUID + enclosureUrl if matched.
@@ -251,7 +253,8 @@ class PodcastService {
         ));
       }
       return episodes;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[podcast] episode search error: $e');
       return [];
     }
   }
@@ -288,7 +291,8 @@ class PodcastService {
           .map(PodcastResult.fromAppleJson)
           .where((p) => p.feedUrl.isNotEmpty)
           .toList();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[podcast] Apple charts error: $e');
       return [];
     }
   }
@@ -378,7 +382,8 @@ class PodcastService {
         }).toList();
         return (podcast: podcast, episodes: episodes);
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[podcast] feed load error: $e');
       return null;
     }
   }
