@@ -112,17 +112,28 @@ class HomeToolbar extends StatelessWidget {
                   key: const ValueKey('brand'),
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(width: 10),
+                    // Logo and wordmark are one tap target, the bar's full
+                    // height, from the margin to the wordmark's end.
                     GestureDetector(
+                      key: const ValueKey('brand-tap'),
+                      behavior: HitTestBehavior.opaque,
                       onTap: onLogoTap,
-                      child: ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: onLogoTap,
-                      child: Text('AntPod', style: TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 20,
-                        color: cs.onSurface, letterSpacing: -0.5)),
+                      child: SizedBox(
+                        height: double.infinity,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 10),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ClipOval(child: SvgPicture.asset('antpodlogo.svg', width: 28, height: 28)),
+                              const SizedBox(width: 8),
+                              Text('AntPod', style: TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 20,
+                                color: cs.onSurface, letterSpacing: -0.5)),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                     // The glyph's circle fills 20/24 of the icon: size 22
                     // draws it ~18 px, 2/3 of the 28 px logo. The button's
