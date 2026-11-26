@@ -135,9 +135,10 @@ class _DiscoverListState extends State<DiscoverList> {
       itemCount: itemCount,
       itemBuilder: (_, i) {
         if (i >= results.length) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+                child: AntSpinner(color: widget.cs.primary, size: 36)),
           );
         }
         final r = results[i];
@@ -202,7 +203,9 @@ class _DiscoverListState extends State<DiscoverList> {
       return AnimatedSwitcher(
         duration: const Duration(milliseconds: 220),
         child: widget.searchingPI
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(
+                key: const ValueKey('searching'),
+                child: AntSpinner(color: cs.primary, size: 36))
             : widget.unifiedSearchResults.isEmpty
                 ? Center(
                     child: widget.isOffline

@@ -354,8 +354,9 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   Widget build(BuildContext context) => AnimatedSwitcher(
         duration: const Duration(milliseconds: 200),
         child: _initialLoad
-            ? const Center(
-                key: ValueKey('loading'), child: CircularProgressIndicator())
+            ? Center(
+                key: const ValueKey('loading'),
+                child: AntSpinner(color: widget.cs.primary, size: 36))
             : KeyedSubtree(key: const ValueKey('feed'), child: _feed(context)),
       );
 
@@ -404,7 +405,9 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
                   child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   child: widget.isLoading
-                      ? const CircularProgressIndicator(key: ValueKey('loading'))
+                      ? AntSpinner(
+                          key: const ValueKey('loading'),
+                          color: widget.cs.primary, size: 36)
                       : Column(
                     key: const ValueKey('empty'),
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -498,10 +501,11 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
               ),
             ),
           if (widget.isLoading && _displayed.isNotEmpty)
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                    child: AntSpinner(color: widget.cs.primary, size: 36)),
               ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 88)),
