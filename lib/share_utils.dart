@@ -66,7 +66,7 @@ class ShareUtils {
   static String podcastUrl(String feedUrl) => '$_base?p=${_enc(_stripProto(feedUrl))}';
 
   static String episodeUrl(Episode episode) =>
-      '$_base?p=${_enc(_stripProto(episode.podcastId))}&e=${guidHash(episode.id)}';
+      '$_base?p=${_enc(_stripProto(episode.podcastId))}&e=${guidHash(AppDatabase.guidOf(episode.id))}';
 
   static void sharePodcast(String title, String feedUrl) => SharePlus.instance.share(
       ShareParams(text: '$title\n${podcastUrl(feedUrl)}', subject: title));

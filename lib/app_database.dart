@@ -258,6 +258,145 @@ class AppDatabase extends _$AppDatabase {
       .replaceFirst(RegExp(r'^www\.'), '')
       .replaceFirst(RegExp(r'/+$'), '');
 
+  /// Between a podcast id and a guid in a [scopedId]: XML 1.0 can't carry
+  /// it, so no guid or feed URL has it.
+  static const _scope = '\u001f';
+
+  /// The id of [podcastId]'s episode [guid] when another podcast's feed
+  /// had that guid first (see [_ownIds]).
+  static String scopedId(String podcastId, String guid) =>
+      '$podcastId$_scope$guid';
+
+  /// The feed's own guid of the episode stored as [id].
+  static String guidOf(String id) {
+    final i = id.indexOf(_scope);
+    return i < 0 ? id : id.substring(i + 1);
+  }
+
+  /// [eps] under the ids they're stored as. An episode's id is its feed's
+  /// guid, unless another podcast has a row under it already (a network's
+  /// feeds sharing a trailer or a promo, a feed copied from another): then
+  /// it's scoped to its own podcast ([scopedId]) and both are kept. The feed
+  /// that had it first keeps the bare guid; a scoped one stays scoped. A
+  /// preview of a subscribed feed (another id, the same URL) is that feed.
+  Future<List<EpisodesCompanion>> _ownIds(List<EpisodesCompanion> eps) async {
+    if (eps.isEmpty) return eps;
+    final keys = {
+      for (final e in eps) ...[
+        guidOf(e.id.value),
+        scopedId(e.podcastId.value, guidOf(e.id.value)),
+      ],
+    }.toList();
+    final owner = <String, String>{};
+    for (var i = 0; i < keys.length; i += 500) {
+      final q = selectOnly(episodes)
+        ..addColumns([episodes.id, episodes.podcastId])
+        ..where(episodes.id.isIn(keys.skip(i).take(500)));
+      for (final r in await q.get()) {
+        owner[r.read(episodes.id)!] = r.read(episodes.podcastId)!;
+      }
+    }
+    Map<String, String>? feedOf;
+    Future<bool> same(String a, String b) async {
+      if (a == b) return true;
+      final feeds = feedOf ??= {
+        for (final p in await select(podcasts).get()) p.id: normFeed(p.feedUrl),
+      };
+      return (feeds[a] ?? normFeed(a)) == (feeds[b] ?? normFeed(b));
+    }
+
+    final claimed = <String, String>{};
+    final out = <EpisodesCompanion>[];
+    for (final e in eps) {
+      final pod = e.podcastId.value;
+      final guid = guidOf(e.id.value);
+      final own = scopedId(pod, guid);
+      final holder = owner[guid] ?? claimed[guid];
+      final scoped = owner.containsKey(own) ||
+          (holder != null && !await same(holder, pod));
+      if (!scoped) claimed[guid] = pod;
+      final id = scoped ? own : guid;
+      out.add(id == e.id.value ? e : e.copyWith(id: Value(id)));
+    }
+    return out;
+  }
+
+  /// [podcastId]'s episode with the feed guid [guid] (or its stored id): its
+  /// own [scopedId] row, else the bare one if it's that feed's.
+  Future<Episode?> episodeOf(String podcastId, String guid) async {
+    final g = guidOf(guid);
+    final rows = await (select(episodes)
+          ..where((e) => e.id.isIn([g, scopedId(podcastId, g)])))
+        .get();
+    final scoped = rows.where((r) => r.id != g).firstOrNull;
+    if (scoped != null) return scoped;
+    final bare = rows.firstOrNull;
+    if (bare == null || bare.podcastId == podcastId) return bare;
+    final a = await getPodcast(bare.podcastId);
+    final b = await getPodcast(podcastId);
+    return normFeed(a?.feedUrl ?? bare.podcastId) ==
+            normFeed(b?.feedUrl ?? podcastId)
+        ? bare
+        : null;
+  }
+
+  /// Downloads the feed's audio isn't anymore: the same guid, other audio
+  /// (a re-cut, a fixed upload, new ads) at another URL and of another
+  /// length (not [sameAudio]). Never started, the file goes and the episode
+  /// is marked to download again, on WiFi. A started one keeps its file, to
+  /// be finished on the audio its position is in; the one in the player
+  /// keeps its file and its old URL and length, so a later refresh looks
+  /// again. A new URL alone (a tracking prefix) changes nothing.
+  Future<List<EpisodesCompanion>> _dropReplacedAudio(
+      List<EpisodesCompanion> eps) async {
+    final byId = {for (final e in eps) e.id.value: e};
+    final ids = byId.keys.toList();
+    final rows = <Episode>[];
+    for (var i = 0; i < ids.length; i += 500) {
+      rows.addAll(await (select(episodes)
+            ..where((e) =>
+                e.id.isIn(ids.skip(i).take(500)) & e.isDownloaded.equals(true)))
+          .get());
+    }
+    final stale = <String>[];
+    for (final old in rows) {
+      final now = byId[old.id]!;
+      final url = now.audioUrl.present ? now.audioUrl.value : '';
+      final length = now.durationSeconds.present ? now.durationSeconds.value : 0;
+      if (old.lastPlayed != null || old.lastPositionMs > 0 || old.isFinished) {
+        continue;
+      }
+      if (url.isEmpty || url == old.audioUrl) continue;
+      if (old.durationSeconds <= 0 ||
+          length <= 0 ||
+          sameAudio(old.durationSeconds, length)) {
+        continue;
+      }
+      if (old.id == livePositionEpisodeId) {
+        byId[old.id] = now.copyWith(
+            audioUrl: Value(old.audioUrl),
+            durationSeconds: Value(old.durationSeconds));
+        continue;
+      }
+      if (old.localPath != null) {
+        final f = File(old.localPath!);
+        if (f.existsSync()) f.deleteSync();
+      }
+      stale.add(old.id);
+    }
+    if (stale.isNotEmpty) {
+      await (update(episodes)..where((e) => e.id.isIn(stale))).write(
+        const EpisodesCompanion(
+          isDownloaded: Value(false),
+          localPath: Value(null),
+          downloadTaskId: Value(null),
+          markedForDownload: Value(true),
+        ),
+      );
+    }
+    return [for (final e in eps) byId[e.id.value]!];
+  }
+
   Future<void> insertPodcast(PodcastsCompanion pod) =>
       into(podcasts).insertOnConflictUpdate(pod);
 
@@ -370,9 +509,13 @@ class AppDatabase extends _$AppDatabase {
   /// Upsert feed episodes: a row that's already there takes the feed's
   /// columns, except its duration once it was played. updatePlaybackPosition
   /// wrote the audio's own duration then, and RSS durations are often
-  /// rounded, wrong or 0.
-  Future<void> insertEpisodes(List<EpisodesCompanion> eps) =>
-      batch((b) => _upsertEpisodes(b, eps));
+  /// rounded, wrong or 0. Ids as [_ownIds] keeps them; returns them, in order.
+  Future<List<String>> insertEpisodes(List<EpisodesCompanion> eps) =>
+      transaction(() async {
+        final own = await _ownIds(eps);
+        await batch((b) => _upsertEpisodes(b, own));
+        return [for (final e in own) e.id.value];
+      });
 
   void _upsertEpisodes(Batch b, Iterable<EpisodesCompanion> eps) {
     for (final e in eps) {
@@ -414,11 +557,13 @@ class AppDatabase extends _$AppDatabase {
     if (episodes.isEmpty && updates.isEmpty) return;
     await transaction(() async {
       final live = {for (final p in await getAllPodcasts()) p.id};
+      final own = await _dropReplacedAudio(await _ownIds([
+        for (final e in episodes)
+          if (live.contains(e.podcastId.value)) e,
+      ]));
       final feeds = <String, List<EpisodesCompanion>>{};
-      for (final e in episodes) {
-        if (live.contains(e.podcastId.value)) {
-          feeds.putIfAbsent(e.podcastId.value, () => []).add(e);
-        }
+      for (final e in own) {
+        feeds.putIfAbsent(e.podcastId.value, () => []).add(e);
       }
       await batch((b) {
         _upsertEpisodes(b, feeds.values.expand((f) => f));
@@ -590,15 +735,21 @@ class AppDatabase extends _$AppDatabase {
 
   /// A row that's already there (subscribed, played, downloaded) is kept,
   /// except for its chapters link: a fresh one from the feed wins, and none
-  /// (search results carry none) leaves the old one.
-  Future<void> insertTempEpisodes(List<EpisodesCompanion> eps) =>
-      batch((b) => b.insertAll(
-        episodes,
-        eps.map((e) => e.copyWith(isSubscribed: const Value(false))).toList(),
-        onConflict: DoUpdate<$EpisodesTable, Episode>.withExcluded((old, excluded) =>
-            EpisodesCompanion.custom(
-                chaptersUrl: coalesce([excluded.chaptersUrl, old.chaptersUrl]))),
-      ));
+  /// (search results carry none) leaves the old one. Ids as [_ownIds] keeps
+  /// them; returns them, in order.
+  Future<List<String>> insertTempEpisodes(List<EpisodesCompanion> eps) =>
+      transaction(() async {
+        final own = await _ownIds(eps);
+        await batch((b) => b.insertAll(
+              episodes,
+              own.map((e) => e.copyWith(isSubscribed: const Value(false))).toList(),
+              onConflict: DoUpdate<$EpisodesTable, Episode>.withExcluded(
+                  (old, excluded) => EpisodesCompanion.custom(
+                      chaptersUrl:
+                          coalesce([excluded.chaptersUrl, old.chaptersUrl]))),
+            ));
+        return [for (final e in own) e.id.value];
+      });
 
   /// Only promotes temp episodes that were played, finished or downloaded to
   /// subscribed. Other temp episodes (Apple search results, preview inserts)
@@ -677,9 +828,10 @@ class AppDatabase extends _$AppDatabase {
             .write(const EpisodesCompanion(isSubscribed: Value(true)));
         return const <String, String>{};
       }
-      await insertEpisodes(rssEpisodes);
+      final own = await _dropReplacedAudio(await _ownIds(rssEpisodes));
+      await batch((b) => _upsertEpisodes(b, own));
       final migrated = await migrateAppleEpisodeStubs(id);
-      final inFeed = {for (final e in rssEpisodes) e.id.value};
+      final inFeed = {for (final e in own) e.id.value};
       final leftovers = await (select(episodes)
             ..where((e) =>
                 e.podcastId.equals(id) &

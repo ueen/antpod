@@ -442,6 +442,106 @@ void main() {
     });
   });
 
+  group('a guid in two feeds', () {
+    const other = 'https://other.example/feed.xml';
+    EpisodesCompanion theirs(String id, {String? title}) =>
+        _rss(id, title: title).copyWith(podcastId: const Value(other));
+    setUp(() => db.insertPodcast(PodcastsCompanion.insert(
+          id: other, title: 'Other', description: '', imageUrl: '',
+          feedUrl: other, author: '',
+        )));
+
+    test('each feed keeps its own row, refresh after refresh', () async {
+      await db.saveFeedRefresh([_rss('trailer', title: 'Ours')], const {});
+      await db.saveFeedRefresh([theirs('trailer', title: 'Theirs')], const {});
+      final scoped = AppDatabase.scopedId(other, 'trailer');
+      expect((await ep('trailer')).title, 'Ours');
+      expect((await ep(scoped)).title, 'Theirs');
+      expect((await ep(scoped)).podcastId, other);
+
+      await db.saveFeedRefresh(
+          [_rss('trailer', title: 'Ours 2'), theirs('trailer', title: 'Theirs 2')],
+          const {});
+      expect((await ep('trailer')).title, 'Ours 2');
+      expect((await ep(scoped)).title, 'Theirs 2');
+      expect(await db.select(db.episodes).get(), hasLength(2));
+    });
+
+    test('in one refresh, the first feed takes the bare guid', () async {
+      await db.saveFeedRefresh([_rss('x'), theirs('x')], const {});
+      expect((await ep('x')).podcastId, _feed);
+      expect((await ep(AppDatabase.scopedId(other, 'x'))).podcastId, other);
+    });
+
+    test('a preview of a subscribed feed is that feed', () async {
+      await db.insertEpisodes([_rss('a')]);
+      // The preview's podcast id is the search's, its URL the same feed's.
+      final ids = await db.insertTempEpisodes([
+        _rss('a').copyWith(
+            podcastId: const Value('https://www.example.com/feed.xml/')),
+      ]);
+      expect(ids, ['a']);
+      expect(await db.select(db.episodes).get(), hasLength(1));
+    });
+
+    test('episodeOf finds each feed\'s row; guidOf its guid', () async {
+      await db.saveFeedRefresh([_rss('x'), theirs('x')], const {});
+      expect((await db.episodeOf(_feed, 'x'))!.podcastId, _feed);
+      expect((await db.episodeOf(other, 'x'))!.podcastId, other);
+      expect(await db.episodeOf('https://third.example/f', 'x'), isNull);
+      final scoped = AppDatabase.scopedId(other, 'x');
+      expect(AppDatabase.guidOf(scoped), 'x');
+      expect(AppDatabase.guidOf('x'), 'x');
+      expect((await db.episodeOf(other, scoped))!.id, scoped);
+    });
+  });
+
+  group('audio replaced under the same guid', () {
+    late File file;
+    setUp(() async {
+      file = File('${(await Directory.systemTemp.createTemp()).path}/a.mp3')
+        ..writeAsStringSync('old');
+      await db.saveFeedRefresh([_rss('a', durationSeconds: 1800)], const {});
+      await db.updateEpisodeDownload('a', true, file.path, 'task');
+    });
+    EpisodesCompanion recut({int seconds = 1500}) =>
+        _rss('a', durationSeconds: seconds)
+            .copyWith(audioUrl: const Value('https://cdn.example.com/a-v2.mp3'));
+
+    test('an unstarted download goes, marked to load again', () async {
+      await db.saveFeedRefresh([recut()], const {});
+      final a = await ep('a');
+      expect(a.isDownloaded, isFalse);
+      expect(a.localPath, isNull);
+      expect(a.markedForDownload, isTrue);
+      expect(a.audioUrl, 'https://cdn.example.com/a-v2.mp3');
+      expect(file.existsSync(), isFalse);
+    });
+
+    test('a new URL alone keeps it', () async {
+      await db.saveFeedRefresh([recut(seconds: 1801)], const {});
+      expect((await ep('a')).isDownloaded, isTrue);
+      expect(file.existsSync(), isTrue);
+    });
+
+    test('a started one keeps its file', () async {
+      await db.updatePlaybackPosition('a', positionMs: 60000, durationMs: 1800000);
+      await db.saveFeedRefresh([recut()], const {});
+      expect((await ep('a')).isDownloaded, isTrue);
+      expect(file.existsSync(), isTrue);
+    });
+
+    test('the one in the player keeps its file and old audio', () async {
+      db.livePositionEpisodeId = 'a';
+      await db.saveFeedRefresh([recut()], const {});
+      final a = await ep('a');
+      expect(a.isDownloaded, isTrue);
+      expect(a.audioUrl, 'https://example.com/a.mp3');
+      expect(a.durationSeconds, 1800);
+      db.livePositionEpisodeId = null;
+    });
+  });
+
   test('the failing note shows after three failed refreshes', () async {
     final failing = <bool>[];
     final sub = db.watchFeedFailing(_feed).listen(failing.add);

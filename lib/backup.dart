@@ -74,7 +74,7 @@ class Backup {
       'episodes': [
         for (final e in episodes)
           {
-            'id': e.id,
+            'id': AppDatabase.guidOf(e.id),
             'feedUrl': podcasts[e.podcastId]?.feedUrl ?? e.podcastId,
             'audioUrl': e.audioUrl,
             'title': e.title,
@@ -177,7 +177,7 @@ class Backup {
     final pod = await db.findSubscribed(feedUrl) ?? await db.getPodcast(feedUrl);
     final podcastId = pod?.id ?? feedUrl;
 
-    var match = await db.getEpisode(id);
+    var match = await db.episodeOf(podcastId, id);
     if (match == null && audioUrl.isNotEmpty) {
       match = await db.findEpisodeByAudio(podcastId, audioUrl);
     }
@@ -193,12 +193,10 @@ class Backup {
         durationSeconds: Value(_int(e['durationSeconds'])),
         publishDate: Value(_date(e['publishDate']) ?? DateTime.now()),
       );
-      if (pod?.isSubscribed ?? false) {
-        await db.insertEpisodes([row.copyWith(isSubscribed: const Value(true))]);
-      } else {
-        await db.insertTempEpisodes([row]);
-      }
-      match = await db.getEpisode(id);
+      final ids = pod?.isSubscribed ?? false
+          ? await db.insertEpisodes([row.copyWith(isSubscribed: const Value(true))])
+          : await db.insertTempEpisodes([row]);
+      match = await db.getEpisode(ids.single);
       if (match == null) return false;
     }
 

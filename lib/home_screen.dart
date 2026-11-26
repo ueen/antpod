@@ -220,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ..where((e) => e.podcastId.equals(podcastId)))
         .get();
     for (final ep in eps) {
-      if (ShareUtils.guidHash(ep.id) == hash) return ep;
+      if (ShareUtils.guidHash(AppDatabase.guidOf(ep.id)) == hash) return ep;
     }
     return null;
   }
@@ -285,8 +285,8 @@ class _HomeScreenState extends State<HomeScreen> {
           .firstOrNull;
       // Episode no longer in the feed: the preview still shows the podcast.
       if (match == null || !mounted) return;
-      // Inserted by the preview (insert-or-ignore, so an existing row wins).
-      episode = await db.getEpisode(match.id.value);
+      // Inserted by the preview (an existing row wins), maybe scoped.
+      episode = await db.episodeOf(match.podcastId.value, match.id.value);
     }
     // Not awaited: the sheet stays open until dismissed, and startup work
     // waiting on this handler shouldn't wait on that.
