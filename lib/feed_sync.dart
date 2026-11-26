@@ -180,12 +180,14 @@ class FeedSync {
       hash: pod.feedHash,
     ));
     if (fetch == null) return null;
-    final (:data, validators: v) = fetch;
+    final (:data, validators: v, :url) = fetch;
     final image = data?.image ?? '';
     // Only what changed, so an unchanged feed usually writes nothing.
     Value<T> changed<T>(T now, T before) =>
         now != before ? Value(now) : const Value.absent();
     final podcast = PodcastsCompanion(
+      // Moved for good: asked for at its new home from now on.
+      feedUrl: changed(url, pod.feedUrl),
       imageUrl: image.isNotEmpty ? changed(image, pod.imageUrl) : const Value.absent(),
       feedEtag: changed(v.etag, pod.feedEtag),
       feedLastModified: changed(v.lastModified, pod.feedLastModified),

@@ -7,10 +7,10 @@ import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-String _rss(List<String> guids) => '''<?xml version="1.0" encoding="UTF-8"?>
+String _rss(List<String> guids, {String head = ''}) => '''<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
 <channel>
-<title>Test</title>
+<title>Test</title>$head
 <description>About</description>
 <itunes:image href="https://example.com/cover.jpg"/>
 ${[for (final g in guids) '<item><title>Episode $g</title><guid>$g</guid>'
@@ -27,7 +27,10 @@ class _Feed {
   bool conditional;
   int requests = 0;
   int notModified = 0;
-  _Feed(this.body, {this.status = 200, this.conditional = true});
+  /// Redirects with [status] to this path instead.
+  final String? to;
+  _Feed(this.body, {this.status = 200, this.conditional = true, this.to});
+  _Feed.redirect(this.to, this.status) : body = '', conditional = false;
   String get etag => '"${body.hashCode}"';
 }
 
@@ -46,7 +49,10 @@ void main() {
         res.statusCode = 404;
       } else {
         feed.requests++;
-        if (feed.conditional &&
+        if (feed.to case final to?) {
+          res.statusCode = feed.status;
+          res.headers.set('location', '/$to');
+        } else if (feed.conditional &&
             req.headers.value('if-none-match') == feed.etag) {
           feed.notModified++;
           res.statusCode = 304;
@@ -105,6 +111,79 @@ void main() {
       feeds['a'] = _Feed('', status: 500);
       expect(await PodcastService.fetchFeed(url('a')), isNull);
     });
+
+    test('permanent redirects move it; a temporary one on the way stops there',
+        () async {
+      feeds['new'] = _Feed(_rss(['1']));
+      feeds['a'] = _Feed.redirect('b', 301);
+      feeds['b'] = _Feed.redirect('new', 308);
+      var f = (await PodcastService.fetchFeed(url('a')))!;
+      expect(f.data!.episodes.single.id.value, '1');
+      expect(f.url, url('new'));
+
+      feeds['b'] = _Feed.redirect('new', 302);
+      f = (await PodcastService.fetchFeed(url('a')))!;
+      expect(f.data!.episodes, hasLength(1));
+      expect(f.url, url('b'), reason: 'b may send it elsewhere tomorrow');
+
+      feeds['a'] = _Feed.redirect('new', 307);
+      expect((await PodcastService.fetchFeed(url('a')))!.url, url('a'));
+    });
+
+    test('a redirect loop is a failed load', () async {
+      feeds['a'] = _Feed.redirect('b', 301);
+      feeds['b'] = _Feed.redirect('a', 301);
+      expect(await PodcastService.fetchFeed(url('a')), isNull);
+    });
+
+    test('a feed naming a new home is loaded from there', () async {
+      feeds['old'] = _Feed(_rss(['1'],
+          head: '<itunes:new-feed-url>${url('new')}</itunes:new-feed-url>'));
+      feeds['new'] = _Feed(_rss(['1', '2']));
+      final f = (await PodcastService.fetchFeed(url('old')))!;
+      expect(f.data!.episodes, hasLength(2));
+      expect(f.url, url('new'));
+      expect(f.validators.etag, feeds['new']!.etag);
+    });
+
+    test('a new home that points back or doesn\'t load: stays', () async {
+      feeds['old'] = _Feed(_rss(['1'],
+          head: '<itunes:new-feed-url>${url('new')}</itunes:new-feed-url>'));
+      feeds['new'] = _Feed(_rss(['1', '2'],
+          head: '<itunes:new-feed-url>${url('old')}</itunes:new-feed-url>'));
+      var f = (await PodcastService.fetchFeed(url('old')))!;
+      expect(f.data!.episodes, hasLength(1));
+      expect(f.url, url('old'));
+
+      feeds['new'] = _Feed('', status: 404);
+      f = (await PodcastService.fetchFeed(url('old')))!;
+      expect(f.data!.episodes, hasLength(1));
+      expect(f.url, url('old'));
+    });
+  });
+
+  group('newFeedUrl', () {
+    test('reads the channel\'s tag, CDATA or escaped', () {
+      expect(PodcastService.newFeedUrl(
+              '<channel><itunes:new-feed-url> https://a.example/f?x=1&amp;y=2 '
+              '</itunes:new-feed-url><item></item>'),
+          'https://a.example/f?x=1&y=2');
+      expect(PodcastService.newFeedUrl(
+              '<itunes:new-feed-url><![CDATA[http://b.example/rss]]></itunes:new-feed-url>'),
+          'http://b.example/rss');
+    });
+
+    test('not an item\'s, nor a URL that isn\'t http(s)', () {
+      expect(PodcastService.newFeedUrl(
+              '<channel><item><itunes:new-feed-url>https://a.example/f'
+              '</itunes:new-feed-url></item>'),
+          isNull);
+      expect(PodcastService.newFeedUrl(
+              '<itunes:new-feed-url>javascript:x</itunes:new-feed-url>'),
+          isNull);
+      expect(PodcastService.newFeedUrl('<itunes:new-feed-url></itunes:new-feed-url>'),
+          isNull);
+    });
   });
 
   group('refreshAll', () {
@@ -160,6 +239,27 @@ void main() {
       feeds['bad'] = _Feed(_rss(['2']));
       await FeedSync.refreshAll(db);
       expect((await pod('bad')).feedFailures, 0);
+    });
+
+    test('a feed that moved is refreshed at its new home, its episodes kept',
+        () async {
+      feeds['a'] = _Feed(_rss(['1', '2']));
+      await subscribe('a');
+      await FeedSync.refreshAll(db);
+      expect(await episodeCount(), 2);
+
+      feeds['new'] = _Feed(_rss(['1', '2', '3']));
+      feeds['a'] = _Feed.redirect('new', 301);
+      await FeedSync.refreshAll(db);
+      final p = await pod('a');
+      expect(p.feedUrl, url('new'));
+      expect(await episodeCount(), 3);
+
+      await FeedSync.refreshAll(db);
+      expect(feeds['a']!.requests, 1, reason: 'the redirect, not asked again');
+      expect(feeds['new']!.notModified, 1);
+      final eps = await db.select(db.episodes).get();
+      expect(eps.map((e) => e.podcastId).toSet(), {url('a')});
     });
 
     test('a paused feed is not refreshed', () async {

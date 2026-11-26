@@ -155,8 +155,10 @@ typedef FeedData = ({ps.Podcast podcast, List<EpisodesCompanion> episodes});
 typedef FeedValidators = ({String? etag, String? lastModified, String? hash});
 
 /// A fetched feed: [data] is null when it hasn't changed since [validators]
-/// were stored; [validators] are the ones to store now.
-typedef FeedFetch = ({FeedData? data, FeedValidators validators});
+/// were stored; [validators] are the ones to store now. [url] is where the
+/// feed lives now: the one asked for, unless it moved for good (a permanent
+/// redirect, or its itunes:new-feed-url).
+typedef FeedFetch = ({FeedData? data, FeedValidators validators, String url});
 
 class PodcastService {
   static const _apiTimeout = Duration(seconds: 15);
@@ -352,7 +354,7 @@ class PodcastService {
 
   /// Bump when parsing changes (fields read, chapters, ids): stored hashes
   /// stop matching, so every feed is parsed again on its next refresh.
-  static const _parseVersion = 2;
+  static const _parseVersion = 3;
 
   /// The feed at [feedUrl], parsed by podcast_search, which leaves out
   /// Podlove Simple Chapters: so the XML is fetched here and those read from
@@ -361,6 +363,10 @@ class PodcastService {
   /// With the [known] validators of the last parse it's a refresh: the server
   /// is asked for the feed only if it changed, and a body that hashes the
   /// same isn't parsed either. Both come back with null data.
+  ///
+  /// A feed that names a new home (itunes:new-feed-url) is loaded from there,
+  /// unless that doesn't load or points back. Guid-less items keep ids made
+  /// from [feedUrl], the URL asked for.
   static Future<FeedFetch?> fetchFeed(String feedUrl,
       {FeedValidators known = (etag: null, lastModified: null, hash: null)}) async {
     try {
@@ -371,16 +377,29 @@ class PodcastService {
       return await Isolate.run(() async {
         // Validators from another parse version describe a different result.
         final current = known.hash?.startsWith('$_parseVersion:') ?? false;
-        final res = await _fetchFeed(feedUrl, current ? known : null);
+        var res = await _fetchFeed(feedUrl, current ? known : null);
         if (res == null) return null;
-        final body = res.body;
+        var body = res.body;
         if (body == null) {
           // 304: the stored parse still holds. A server may renew its tags.
           return (data: null, validators: (
             etag: res.etag ?? known.etag,
             lastModified: res.lastModified ?? known.lastModified,
             hash: known.hash,
-          ));
+          ), url: res.url);
+        }
+        // Moved: the old feed often stays up, frozen, with the new URL in it.
+        final here = {AppDatabase.normFeed(feedUrl), AppDatabase.normFeed(res.url)};
+        final next = newFeedUrl(_head(body));
+        if (next != null && !here.contains(AppDatabase.normFeed(next))) {
+          final there = await _fetchFeed(next, null).catchError((_) => null);
+          final back = there?.body == null ? null : newFeedUrl(_head(there!.body!));
+          if (there?.body != null &&
+              !here.contains(AppDatabase.normFeed(there!.url)) &&
+              (back == null || !here.contains(AppDatabase.normFeed(back)))) {
+            res = there;
+            body = there.body!;
+          }
         }
         final validators = (
           etag: res.etag,
@@ -388,7 +407,7 @@ class PodcastService {
           hash: '$_parseVersion:${sha256.convert(body)}',
         );
         if (current && validators.hash == known.hash) {
-          return (data: null, validators: validators);
+          return (data: null, validators: validators, url: res.url);
         }
         final xml = normalizePubDates(utf8.decode(body, allowMalformed: true));
         // podcast_search parses from a string only via a file.
@@ -434,6 +453,7 @@ class PodcastService {
         return (
           data: (podcast: podcast, episodes: distinctItems(episodes)),
           validators: validators,
+          url: res.url,
         );
       });
     } catch (e) {
@@ -444,34 +464,77 @@ class PodcastService {
 
   static final _item = RegExp(r'<item[\s>][\s\S]*?</item>');
 
+  /// The start of a feed's body, where its channel's tags are.
+  static String _head(Uint8List body) => utf8.decode(
+      body.length > 65536 ? Uint8List.sublistView(body, 0, 65536) : body,
+      allowMalformed: true);
+
+  static final _newFeedUrl = RegExp(
+      r'<itunes:new-feed-url\s*>\s*(?:<!\[CDATA\[)?\s*([^<\s\]]+)\s*(?:\]\]>)?\s*</itunes:new-feed-url\s*>',
+      caseSensitive: false);
+
+  /// The URL a feed says it moved to: its channel's itunes:new-feed-url
+  /// (before the first item, as an item's can't be), if http(s).
+  static String? newFeedUrl(String xml) {
+    final first = xml.indexOf(RegExp(r'<item[\s>]'));
+    final channel = first < 0 ? xml : xml.substring(0, first);
+    final m = _newFeedUrl.firstMatch(channel);
+    if (m == null) return null;
+    final url = m[1]!.replaceAll('&amp;', '&');
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasAuthority) return null;
+    return uri.scheme == 'http' || uri.scheme == 'https' ? url : null;
+  }
+
   /// The feed's body with its validator headers, a null body when the
   /// [conditional] request found it not modified, or null if the server
-  /// didn't send it.
-  static Future<({Uint8List? body, String? etag, String? lastModified})?>
+  /// didn't send it. Redirects are followed, up to 5; [url] comes back as
+  /// where they led if each one was permanent (301, 308), so a feed that
+  /// moved is asked for at its new home from then on.
+  static Future<({Uint8List? body, String? etag, String? lastModified, String url})?>
       _fetchFeed(String url, FeedValidators? conditional) async {
     const timeout = Duration(seconds: 20);
     final client = http.Client();
     try {
-      final req = http.Request('GET', Uri.parse(url))
-        ..headers['User-Agent'] = _userAgent;
-      if (conditional?.etag case final etag?) {
-        req.headers['If-None-Match'] = etag;
+      var uri = Uri.parse(url);
+      var moved = url;
+      var permanent = true;
+      for (var hops = 0;; hops++) {
+        final req = http.Request('GET', uri)
+          ..followRedirects = false
+          ..headers['User-Agent'] = _userAgent;
+        if (conditional?.etag case final etag?) {
+          req.headers['If-None-Match'] = etag;
+        }
+        if (conditional?.lastModified case final modified?) {
+          req.headers['If-Modified-Since'] = modified;
+        }
+        final res = await client.send(req).timeout(timeout);
+        final location = res.headers['location'];
+        if (const {301, 302, 303, 307, 308}.contains(res.statusCode) &&
+            location != null) {
+          res.stream.listen(null).cancel().ignore();
+          final to = uri.resolve(location);
+          if (hops == 5 || !to.isScheme('http') && !to.isScheme('https')) {
+            return null;
+          }
+          uri = to;
+          permanent &= res.statusCode == 301 || res.statusCode == 308;
+          if (permanent) moved = '$uri';
+          continue;
+        }
+        final etag = res.headers['etag'];
+        final lastModified = res.headers['last-modified'];
+        final notModified = res.statusCode == 304 && conditional != null;
+        if (notModified || res.statusCode < 200 || res.statusCode >= 300) {
+          res.stream.listen(null).cancel().ignore();
+          return notModified
+              ? (body: null, etag: etag, lastModified: lastModified, url: moved)
+              : null;
+        }
+        final body = await http.ByteStream(res.stream.timeout(timeout)).toBytes();
+        return (body: body, etag: etag, lastModified: lastModified, url: moved);
       }
-      if (conditional?.lastModified case final modified?) {
-        req.headers['If-Modified-Since'] = modified;
-      }
-      final res = await client.send(req).timeout(timeout);
-      final etag = res.headers['etag'];
-      final lastModified = res.headers['last-modified'];
-      final notModified = res.statusCode == 304 && conditional != null;
-      if (notModified || res.statusCode < 200 || res.statusCode >= 300) {
-        res.stream.listen(null).cancel().ignore();
-        return notModified
-            ? (body: null, etag: etag, lastModified: lastModified)
-            : null;
-      }
-      final body = await http.ByteStream(res.stream.timeout(timeout)).toBytes();
-      return (body: body, etag: etag, lastModified: lastModified);
     } finally {
       client.close();
     }
