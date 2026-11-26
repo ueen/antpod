@@ -504,7 +504,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     // tag (another ad variation) has its own times.
     if (chaptersMoved) _loadChapters(updated);
 
-    if (prevLocal == null && newLocal != null) {
+    if (!_audioReady) {
+      // Nothing loaded (restored, or the load failed): no source to swap,
+      // the next play() picks the file or the stream itself.
+      notifyListeners();
+    } else if (prevLocal == null && newLocal != null) {
       // Download finished while streaming — switch to local file seamlessly
       _pivotSource(localPath: newLocal);
     } else if (prevLocal != null && newLocal == null) {
@@ -572,16 +576,36 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// so a quick save can't land the old one). The bar moves at once: the
   /// player reports a seek's target before it gets there.
   Future<void> seekTo(Duration pos) async {
+    if (!_audioReady) return _moveHeld(pos);
     await audioHandler.seek(pos);
     _flushPosition();
   }
 
+  /// Nothing loaded (restored, or the load failed): the player can't seek,
+  /// so the held position moves instead. The next play() starts there, and
+  /// it's saved like any seek.
+  void _moveHeld(Duration t) {
+    final ep = _currentEpisode;
+    if (ep == null) return;
+    if (t < Duration.zero) t = Duration.zero;
+    if (_duration > Duration.zero && t > _duration) t = _duration;
+    _position = t;
+    _db.updatePlaybackPosition(ep.id,
+        positionMs: t.inMilliseconds, durationMs: _duration.inMilliseconds);
+  }
+
   Future<void> skipForward() async {
+    if (!_audioReady) {
+      return _moveHeld(_position + Duration(seconds: forwardSeconds));
+    }
     await audioHandler.fastForward();
     _flushPosition();
   }
 
   Future<void> skipBackward() async {
+    if (!_audioReady) {
+      return _moveHeld(_position - Duration(seconds: rewindSeconds));
+    }
     await audioHandler.rewind();
     _flushPosition();
   }

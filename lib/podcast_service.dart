@@ -150,16 +150,27 @@ class PodcastResult {
 typedef FeedData = ({ps.Podcast podcast, List<EpisodesCompanion> episodes});
 
 class PodcastService {
+  static const _apiTimeout = Duration(seconds: 15);
+
+  /// GET with a timeout: a stalled connection (captive portal, dead mobile
+  /// link) would otherwise hold a spinner until the OS gives up, minutes on.
+  static Future<http.Response> _get(Uri uri, {Map<String, String>? headers}) =>
+      http.get(uri, headers: headers).timeout(_apiTimeout);
+
+  /// The body as a JSON object. JSON is UTF-8 whatever the content type says.
+  static Map<String, dynamic> _json(http.Response res) =>
+      jsonDecode(utf8.decode(res.bodyBytes, allowMalformed: true))
+          as Map<String, dynamic>;
+
   // ── Search ─────────────────────────────────────────────────────────────────
 
   static Future<List<PodcastResult>> search(String query, {int offset = 0}) async {
     try {
       final uri = Uri.parse('$_baseUrl/search/byterm')
           .replace(queryParameters: {'q': query, 'max': '20', 'offset': '$offset'});
-      final res = await http.get(uri, headers: _authHeaders());
+      final res = await _get(uri, headers: _authHeaders());
       if (res.statusCode != 200) return [];
-      final json = jsonDecode(res.body) as Map<String, dynamic>;
-      final feeds = json['feeds'] as List? ?? [];
+      final feeds = _json(res)['feeds'] as List? ?? [];
       return feeds
           .map((f) => PodcastResult.fromJson(f as Map<String, dynamic>))
           .toList();
@@ -184,9 +195,9 @@ class PodcastService {
       try {
         final uri = Uri.parse('$_baseUrl/episodes/byfeedurl')
             .replace(queryParameters: {'url': feedUrl, 'max': '30'});
-        final res = await http.get(uri, headers: _authHeaders());
+        final res = await _get(uri, headers: _authHeaders());
         if (res.statusCode == 200) {
-          final items = (jsonDecode(res.body) as Map<String, dynamic>)['items'] as List? ?? [];
+          final items = _json(res)['items'] as List? ?? [];
           piByFeed[feedUrl] = items.cast();
         }
       } catch (e) { debugPrint('[podcast] PI episodes error: $e'); }
@@ -214,10 +225,9 @@ class PodcastService {
         queryParameters: {'term': query, 'media': 'podcast', 'entity': 'podcastEpisode',
                           'limit': '10', 'country': country},
       );
-      final res = await http.get(uri);
+      final res = await _get(uri);
       if (res.statusCode != 200) return [];
-      final json = jsonDecode(res.body) as Map<String, dynamic>;
-      final results = json['results'] as List? ?? [];
+      final results = _json(res)['results'] as List? ?? [];
       final episodes = <Episode>[];
       for (final r in results) {
         final audioUrl = r['previewUrl'] as String? ?? '';
@@ -266,19 +276,17 @@ class PodcastService {
       final chartsUri = Uri.parse(
         'https://rss.marketingtools.apple.com/api/v2/${country.toLowerCase()}/podcasts/top/$limit/podcasts.json',
       );
-      final chartsRes = await http.get(chartsUri);
+      final chartsRes = await _get(chartsUri);
       if (chartsRes.statusCode != 200) return [];
-      final feed = (jsonDecode(chartsRes.body) as Map<String, dynamic>)['feed']
-          as Map<String, dynamic>?;
+      final feed = _json(chartsRes)['feed'] as Map<String, dynamic>?;
       final results = feed?['results'] as List? ?? [];
       if (results.isEmpty) return [];
       final ids = results.map((r) => r['id'].toString()).join(',');
       final lookupUri = Uri.parse('https://itunes.apple.com/lookup')
           .replace(queryParameters: {'id': ids, 'entity': 'podcast'});
-      final lookupRes = await http.get(lookupUri);
+      final lookupRes = await _get(lookupUri);
       if (lookupRes.statusCode != 200) return [];
-      final lookupResults =
-          (jsonDecode(lookupRes.body) as Map<String, dynamic>)['results'] as List? ?? [];
+      final lookupResults = _json(lookupRes)['results'] as List? ?? [];
       // Preserve chart order: build a map from id → lookup result, then re-order.
       final byId = <String, Map<String, dynamic>>{};
       for (final r in lookupResults) {
@@ -315,12 +323,11 @@ class PodcastService {
 
     final uri =
         Uri.parse('$_baseUrl/podcasts/trending').replace(queryParameters: params);
-    final res = await http.get(uri, headers: _authHeaders());
+    final res = await _get(uri, headers: _authHeaders());
     if (res.statusCode != 200) {
       throw Exception('API ${res.statusCode}: ${res.reasonPhrase}');
     }
-    final feeds =
-        (jsonDecode(res.body) as Map<String, dynamic>)['feeds'] as List? ?? [];
+    final feeds = _json(res)['feeds'] as List? ?? [];
     return feeds
         .take(max)
         .map((f) => PodcastResult.fromJson(f as Map<String, dynamic>))
