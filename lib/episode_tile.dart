@@ -267,6 +267,10 @@ class EpisodeTile extends StatelessWidget {
         onCancelWifiQueue: isMarked
             ? () { Navigator.pop(context); db.clearMarkedForDownload(episode.id); }
             : null,
+        onToggleFavorite: () {
+          Navigator.pop(context);
+          db.setFavorite(episode.id, !episode.isFavorite);
+        },
         onShare: () {
           Navigator.pop(context);
           ShareUtils.shareEpisode(episode);
@@ -1037,6 +1041,7 @@ class _EpisodeContextMenu extends StatelessWidget {
   final VoidCallback? onMarkUnplayed;
   final VoidCallback? onDownload;
   final VoidCallback? onCancelWifiQueue;
+  final VoidCallback onToggleFavorite;
   final VoidCallback onShare;
   final VoidCallback? onExportFile;
   final VoidCallback? onDeleteDownload;
@@ -1044,7 +1049,7 @@ class _EpisodeContextMenu extends StatelessWidget {
 
   const _EpisodeContextMenu({
     required this.episode, required this.cs, required this.l10n,
-    required this.onShare,
+    required this.onToggleFavorite, required this.onShare,
     this.onMarkPlayed, this.onMarkUnplayed, this.onDownload,
     this.onCancelWifiQueue,
     this.onExportFile, this.onDeleteDownload, this.onRemoveEpisode,
@@ -1086,6 +1091,11 @@ class _EpisodeContextMenu extends StatelessWidget {
             _MenuItem(icon: Icons.download_rounded, label: l10n.downloading, cs: cs, onTap: onDownload!),
           if (onCancelWifiQueue != null)
             _MenuItem(icon: Icons.wifi_off_rounded, label: l10n.cancelWifiQueue, cs: cs, color: cs.error, onTap: onCancelWifiQueue!),
+          _MenuItem(
+              icon: episode.isFavorite
+                  ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              label: episode.isFavorite ? l10n.removeFavorite : l10n.addFavorite,
+              cs: cs, onTap: onToggleFavorite),
           _MenuItem(icon: Icons.share_rounded, label: l10n.shareEpisode, cs: cs, onTap: onShare),
           if (onExportFile != null)
             _MenuItem(icon: Icons.save_alt_outlined, label: l10n.exportFile, cs: cs, onTap: onExportFile!),

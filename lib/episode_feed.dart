@@ -172,6 +172,9 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     if (widget.filter.downloaded) {
       eps = eps.where((e) => e.isDownloaded || e.markedForDownload).toList();
     }
+    if (widget.filter.favorites) {
+      eps = eps.where((e) => e.isFavorite).toList();
+    }
 
     // When showing downloaded + marked: downloaded group first, marked group second.
     if (_showMarked && widget.filter.downloaded) {
@@ -365,6 +368,10 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
 
     final cs = widget.cs;
     final isSearching = widget.searchQuery.isNotEmpty;
+    // Favourites filter on and none at all (not just none matching a search).
+    // (The downloads list holds only downloads: favourites may be elsewhere.)
+    final noFavorites = widget.filter.favorites && !isSearching &&
+        !widget.filter.downloaded && !_raw.any((e) => e.isFavorite);
     final hasSearchFooter = isSearching && widget.onSearchOnline != null;
     final hasDownloadFooter = !isSearching &&
         widget.filter.downloaded &&
@@ -445,11 +452,22 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
                           color: cs.onSurfaceVariant),
                       const SizedBox(height: 16),
                       Text(
-                        isSearching || widget.filter.hasAny || widget.podcastIdFilter != null
-                            ? widget.l10n.emptySearchTitle
-                            : widget.l10n.emptyFeedTitle,
+                        noFavorites
+                            ? widget.l10n.emptyFavoritesTitle
+                            : isSearching || widget.filter.hasAny || widget.podcastIdFilter != null
+                                ? widget.l10n.emptySearchTitle
+                                : widget.l10n.emptyFeedTitle,
                         style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
                       ),
+                      if (noFavorites) ...[
+                        const SizedBox(height: 6),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(widget.l10n.emptyFavoritesSub,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                        ),
+                      ],
                       if (!isSearching && !widget.filter.hasAny && widget.podcastIdFilter == null) ...[
                         const SizedBox(height: 6),
                         Text(widget.l10n.emptyFeedSub,

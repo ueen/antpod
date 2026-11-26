@@ -182,6 +182,90 @@ void main() {
     });
   });
 
+  group('favourites', () {
+    test('set and watched, and listed in the home feed even when temp', () async {
+      await db.insertEpisodes([
+        _rss('a').copyWith(isSubscribed: const Value(false)),
+      ]);
+      final seen = db.watchFavorite('a').take(2).toList();
+      await Future<void>.delayed(Duration.zero);
+      await db.setFavorite('a', true);
+      expect(await seen, [false, true]);
+      expect([for (final e in await db.watchAllFeedEpisodes().first) e.id], ['a']);
+    });
+
+    test('a temp favourite outlasts the stale cleanup', () async {
+      final old = DateTime.now().subtract(const Duration(days: 30));
+      await db.insertEpisodes([
+        for (final id in ['fav', 'plain'])
+          _rss(id).copyWith(
+            isSubscribed: const Value(false),
+            isFinished: const Value(true),
+            lastPlayed: Value(old),
+            publishDate: Value(old),
+          ),
+      ]);
+      await (db.update(db.podcasts)..where((p) => p.id.equals(_feed)))
+          .write(const PodcastsCompanion(isSubscribed: Value(false)));
+      await db.setFavorite('fav', true);
+
+      await db.cleanupStaleTempEpisodes();
+      final left = await db.select(db.episodes).get();
+      expect([for (final e in left) e.id], ['fav']);
+      expect(await db.select(db.podcasts).get(), hasLength(1),
+          reason: 'the feed stays for its favourite');
+    });
+
+    test('unsubscribe & delete keeps favourites, as a temp feed', () async {
+      await db.insertEpisodes([
+        for (final id in ['fav', 'plain'])
+          _rss(id).copyWith(isSubscribed: const Value(true)),
+      ]);
+      await db.setFavorite('fav', true);
+
+      await db.deletePodcast(_feed);
+      final left = await db.select(db.episodes).get();
+      expect([for (final e in left) e.id], ['fav']);
+      expect(left.single.isSubscribed, isFalse);
+      final pod = await db.select(db.podcasts).getSingle();
+      expect(pod.isSubscribed, isFalse);
+    });
+
+    test('without favourites the podcast goes whole', () async {
+      await db.insertEpisodes([_rss('a').copyWith(isSubscribed: const Value(true))]);
+      await db.deletePodcast(_feed);
+      expect(await db.select(db.episodes).get(), isEmpty);
+      expect(await db.select(db.podcasts).get(), isEmpty);
+    });
+
+    test("a favourite's played download isn't deleted", () async {
+      final old = DateTime.now().subtract(const Duration(days: 5));
+      await db.insertEpisodes([
+        for (final id in ['fav', 'plain'])
+          _rss(id).copyWith(
+            isSubscribed: const Value(true),
+            isFinished: const Value(true),
+            isDownloaded: const Value(true),
+            lastPlayed: Value(old),
+          ),
+      ]);
+      await db.setFavorite('fav', true);
+
+      await db.deleteFinishedDownloads();
+      expect((await ep('fav')).isDownloaded, isTrue);
+      expect((await ep('plain')).isDownloaded, isFalse);
+    });
+
+    test('a removed temp episode is no favourite any more', () async {
+      await db.insertEpisodes([
+        _rss('a').copyWith(isSubscribed: const Value(false)),
+      ]);
+      await db.setFavorite('a', true);
+      await db.resetTempEpisode('a');
+      expect((await ep('a')).isFavorite, isFalse);
+    });
+  });
+
   group('saveFeedRefresh', () {
     test('writes episodes and podcast columns together', () async {
       await db.saveFeedRefresh([_rss('a')], {
@@ -245,7 +329,7 @@ void main() {
     expect(p.feedFailures, 0);
   });
 
-  test('a v8 database gets the feed columns and episode indexes', () async {
+  test('a v8 database gets the feed columns, episode indexes and favourites', () async {
     final dir = Directory.systemTemp.createTempSync('antpod-migration');
     addTearDown(() => dir.deleteSync(recursive: true));
     final file = File('${dir.path}/v8.db');
@@ -257,6 +341,7 @@ void main() {
     for (final col in ['feed_etag', 'feed_last_modified', 'feed_hash', 'feed_failures']) {
       await old.customStatement('ALTER TABLE podcasts DROP COLUMN $col');
     }
+    await old.customStatement('ALTER TABLE episodes DROP COLUMN is_favorite');
     await old.customStatement(
         "INSERT INTO podcasts (id, title, description, image_url, feed_url, author) "
         "VALUES ('$_feed', 'Podcast', '', '', '$_feed', '')");
@@ -274,5 +359,8 @@ void main() {
         .map((r) => r.read<String>('name'))
         .get();
     expect(indexes.toSet(), {'episodes_podcast_date', 'episodes_publish_date'});
+    await migrated.insertEpisodes([_rss('a')]);
+    expect((await migrated.getEpisode('a'))!.isFavorite, isFalse,
+        reason: 'v10 added is_favorite');
   });
 }

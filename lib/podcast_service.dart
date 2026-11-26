@@ -268,6 +268,7 @@ class PodcastService {
           chaptersUrl:           null,
           lastPlayed:            null,
           markedForDownload:     false,
+          isFavorite:            false,
         ));
       }
       return episodes;

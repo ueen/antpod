@@ -27,6 +27,12 @@ class AppLocalizationsDe extends AppLocalizations {
   String get emptySearchTitle => 'Keine Ergebnisse';
 
   @override
+  String get emptyFavoritesTitle => 'Noch keine Favoriten';
+
+  @override
+  String get emptyFavoritesSub => 'Episode lange drücken oder im Player aufs Herz tippen';
+
+  @override
   String get emptyPodcastsTitle => 'Noch keine Abonnements';
 
   @override
@@ -52,6 +58,9 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get filterDownloaded => 'Offline';
+
+  @override
+  String get filterFavorites => 'Favoriten';
 
   @override
   String get filterAlphabetical => 'A–Z';
@@ -91,6 +100,12 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get shareEpisode => 'Episode teilen';
+
+  @override
+  String get addFavorite => 'Zu Favoriten hinzufügen';
+
+  @override
+  String get removeFavorite => 'Aus Favoriten entfernen';
 
   @override
   String get sharePodcast => 'Podcast teilen';
@@ -164,6 +179,17 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get foundStartedAndDownloaded => 'Angefangene und heruntergeladene Folgen gefunden';
+
+  @override
+  String favoritesKept(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Favoriten bleiben so oder so',
+      one: '1 Favorit bleibt so oder so',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get unsubscribeDeleteAll => 'Abo beenden & löschen';

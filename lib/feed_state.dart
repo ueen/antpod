@@ -44,6 +44,7 @@ class FilterState {
   final bool downloaded;
   final SortMode sort;
   final bool inProgress;
+  final bool favorites;
   /// True when the user is viewing a specific podcast feed. The chip shows as
   /// active ("Podcasts" is selected); tapping it exits back to the main feed.
   final bool podcasts;
@@ -54,18 +55,20 @@ class FilterState {
     this.downloaded = false,
     this.sort = SortMode.none,
     this.inProgress = false,
+    this.favorites = false,
     this.podcasts = false,
   });
 
   // Dot appears whenever any chip is visually active.
   bool get hasAny =>
-      newOnly || history || downloaded || sort != SortMode.none || inProgress || podcasts;
+      newOnly || history || downloaded || sort != SortMode.none || inProgress ||
+      favorites || podcasts;
 
   bool get isOldestFirst => sort == SortMode.oldest;
 
   FilterState copyWith({
     bool? newOnly, bool? history, bool? downloaded,
-    SortMode? sort, bool? inProgress, bool? podcasts,
+    SortMode? sort, bool? inProgress, bool? favorites, bool? podcasts,
   }) =>
       FilterState(
         newOnly: newOnly ?? this.newOnly,
@@ -73,6 +76,7 @@ class FilterState {
         downloaded: downloaded ?? this.downloaded,
         sort: sort ?? this.sort,
         inProgress: inProgress ?? this.inProgress,
+        favorites: favorites ?? this.favorites,
         podcasts: podcasts ?? this.podcasts,
       );
 
@@ -81,7 +85,8 @@ class FilterState {
       : const FilterState(podcasts: true, newOnly: false);
 
   /// Toggles the chip [key]. "New" and "History" exclude each other; History
-  /// also clears Downloaded and In progress. Sort chips toggle one sort mode.
+  /// also clears Downloaded and In progress. Favourites clears New: most
+  /// favourites have been heard. Sort chips toggle one sort mode.
   FilterState toggle(String key) {
     SortMode sortTo(SortMode m) => sort == m ? SortMode.none : m;
     return switch (key) {
@@ -89,6 +94,9 @@ class FilterState {
       'history' => copyWith(
           history: !history, newOnly: false, downloaded: false, inProgress: false),
       'dl' => copyWith(downloaded: !downloaded),
+      'fav' => favorites
+          ? copyWith(favorites: false)
+          : copyWith(favorites: true, newOnly: false),
       'az' => copyWith(sort: sortTo(SortMode.alphabetical)),
       'oldest' => copyWith(sort: sortTo(SortMode.oldest)),
       'random' => copyWith(sort: sortTo(SortMode.random)),

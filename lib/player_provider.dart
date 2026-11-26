@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_database.dart';
+import 'app_settings.dart';
 import 'audio_handler.dart';
 import 'chapters.dart';
 import 'file_chapters.dart';
@@ -67,7 +68,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   AudioPlayer get _player => audioHandler.player;
 
-  PlayerProvider(this._db) {
+  /// The settings sheet's switches: [markPlayedNearEnd] is read here.
+  final AppSettings _settings;
+
+  PlayerProvider(this._db, this._settings) {
     WidgetsBinding.instance.addObserver(this);
     // Track connectivity for offline indicators in UI.
     Connectivity().checkConnectivity().then((results) => _isOffline = results.isOffline);
@@ -566,8 +570,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// A pause in the last minute counts as played (outros, trailers).
+  /// A pause in the last minute counts as played (outros, trailers), unless
+  /// it's switched off in the settings.
   void _maybeComplete() {
+    if (!_settings.markPlayedNearEnd) return;
     if (_currentEpisode == null) return;
     if (_duration.inSeconds <= 0) return;
     if (_exactPosition.inSeconds < _duration.inSeconds - 60) return;
@@ -633,6 +639,17 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const _prefSpeed = 'player_speed';
   static const _prefForward = 'player_forward_seconds';
   static const _prefRewind = 'player_rewind_seconds';
+
+  /// The player's keys, for the backup: speed, skip intervals and the
+  /// episode it was last on.
+  static const prefKeys = [_prefSpeed, _prefForward, _prefRewind, _prefLastEpisodeId];
+
+  /// After a backup import wrote [prefKeys]: speed and skips take them on,
+  /// and an empty player opens the imported last episode.
+  Future<void> reloadSettings() async {
+    await _restoreSettings();
+    if (_currentEpisode == null) await restoreLastEpisode();
+  }
 
   /// Speed and skip intervals as the user last set them.
   Future<void> _restoreSettings() async {

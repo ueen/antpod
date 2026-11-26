@@ -850,6 +850,16 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("marked_for_download" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _isFavoriteMeta =
+      const VerificationMeta('isFavorite');
+  @override
+  late final GeneratedColumn<bool> isFavorite = GeneratedColumn<bool>(
+      'is_favorite', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_favorite" IN (0, 1))'),
+      defaultValue: const Constant(false));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -870,7 +880,8 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
         isSubscribed,
         chaptersUrl,
         lastPlayed,
-        markedForDownload
+        markedForDownload,
+        isFavorite
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1002,6 +1013,12 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
           markedForDownload.isAcceptableOrUnknown(
               data['marked_for_download']!, _markedForDownloadMeta));
     }
+    if (data.containsKey('is_favorite')) {
+      context.handle(
+          _isFavoriteMeta,
+          isFavorite.isAcceptableOrUnknown(
+              data['is_favorite']!, _isFavoriteMeta));
+    }
     return context;
   }
 
@@ -1050,6 +1067,8 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
           .read(DriftSqlType.dateTime, data['${effectivePrefix}last_played']),
       markedForDownload: attachedDatabase.typeMapping.read(
           DriftSqlType.bool, data['${effectivePrefix}marked_for_download'])!,
+      isFavorite: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_favorite'])!,
     );
   }
 
@@ -1099,6 +1118,10 @@ class Episode extends DataClass implements Insertable<Episode> {
 
   /// true = queued to download the next time WiFi is available.
   final bool markedForDownload;
+
+  /// Marked as a favourite: kept, temp or not, until unmarked; its download
+  /// isn't deleted once played.
+  final bool isFavorite;
   const Episode(
       {required this.id,
       required this.podcastId,
@@ -1118,7 +1141,8 @@ class Episode extends DataClass implements Insertable<Episode> {
       required this.isSubscribed,
       this.chaptersUrl,
       this.lastPlayed,
-      required this.markedForDownload});
+      required this.markedForDownload,
+      required this.isFavorite});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1149,6 +1173,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       map['last_played'] = Variable<DateTime>(lastPlayed);
     }
     map['marked_for_download'] = Variable<bool>(markedForDownload);
+    map['is_favorite'] = Variable<bool>(isFavorite);
     return map;
   }
 
@@ -1181,6 +1206,7 @@ class Episode extends DataClass implements Insertable<Episode> {
           ? const Value.absent()
           : Value(lastPlayed),
       markedForDownload: Value(markedForDownload),
+      isFavorite: Value(isFavorite),
     );
   }
 
@@ -1208,6 +1234,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       chaptersUrl: serializer.fromJson<String?>(json['chaptersUrl']),
       lastPlayed: serializer.fromJson<DateTime?>(json['lastPlayed']),
       markedForDownload: serializer.fromJson<bool>(json['markedForDownload']),
+      isFavorite: serializer.fromJson<bool>(json['isFavorite']),
     );
   }
   @override
@@ -1234,6 +1261,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       'chaptersUrl': serializer.toJson<String?>(chaptersUrl),
       'lastPlayed': serializer.toJson<DateTime?>(lastPlayed),
       'markedForDownload': serializer.toJson<bool>(markedForDownload),
+      'isFavorite': serializer.toJson<bool>(isFavorite),
     };
   }
 
@@ -1256,7 +1284,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           bool? isSubscribed,
           Value<String?> chaptersUrl = const Value.absent(),
           Value<DateTime?> lastPlayed = const Value.absent(),
-          bool? markedForDownload}) =>
+          bool? markedForDownload,
+          bool? isFavorite}) =>
       Episode(
         id: id ?? this.id,
         podcastId: podcastId ?? this.podcastId,
@@ -1279,6 +1308,7 @@ class Episode extends DataClass implements Insertable<Episode> {
         chaptersUrl: chaptersUrl.present ? chaptersUrl.value : this.chaptersUrl,
         lastPlayed: lastPlayed.present ? lastPlayed.value : this.lastPlayed,
         markedForDownload: markedForDownload ?? this.markedForDownload,
+        isFavorite: isFavorite ?? this.isFavorite,
       );
   Episode copyWithCompanion(EpisodesCompanion data) {
     return Episode(
@@ -1324,6 +1354,8 @@ class Episode extends DataClass implements Insertable<Episode> {
       markedForDownload: data.markedForDownload.present
           ? data.markedForDownload.value
           : this.markedForDownload,
+      isFavorite:
+          data.isFavorite.present ? data.isFavorite.value : this.isFavorite,
     );
   }
 
@@ -1348,7 +1380,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           ..write('isSubscribed: $isSubscribed, ')
           ..write('chaptersUrl: $chaptersUrl, ')
           ..write('lastPlayed: $lastPlayed, ')
-          ..write('markedForDownload: $markedForDownload')
+          ..write('markedForDownload: $markedForDownload, ')
+          ..write('isFavorite: $isFavorite')
           ..write(')'))
         .toString();
   }
@@ -1373,7 +1406,8 @@ class Episode extends DataClass implements Insertable<Episode> {
       isSubscribed,
       chaptersUrl,
       lastPlayed,
-      markedForDownload);
+      markedForDownload,
+      isFavorite);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1396,7 +1430,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           other.isSubscribed == this.isSubscribed &&
           other.chaptersUrl == this.chaptersUrl &&
           other.lastPlayed == this.lastPlayed &&
-          other.markedForDownload == this.markedForDownload);
+          other.markedForDownload == this.markedForDownload &&
+          other.isFavorite == this.isFavorite);
 }
 
 class EpisodesCompanion extends UpdateCompanion<Episode> {
@@ -1419,6 +1454,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
   final Value<String?> chaptersUrl;
   final Value<DateTime?> lastPlayed;
   final Value<bool> markedForDownload;
+  final Value<bool> isFavorite;
   final Value<int> rowid;
   const EpisodesCompanion({
     this.id = const Value.absent(),
@@ -1440,6 +1476,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.chaptersUrl = const Value.absent(),
     this.lastPlayed = const Value.absent(),
     this.markedForDownload = const Value.absent(),
+    this.isFavorite = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   EpisodesCompanion.insert({
@@ -1462,6 +1499,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.chaptersUrl = const Value.absent(),
     this.lastPlayed = const Value.absent(),
     this.markedForDownload = const Value.absent(),
+    this.isFavorite = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         podcastId = Value(podcastId),
@@ -1491,6 +1529,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     Expression<String>? chaptersUrl,
     Expression<DateTime>? lastPlayed,
     Expression<bool>? markedForDownload,
+    Expression<bool>? isFavorite,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1514,6 +1553,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       if (chaptersUrl != null) 'chapters_url': chaptersUrl,
       if (lastPlayed != null) 'last_played': lastPlayed,
       if (markedForDownload != null) 'marked_for_download': markedForDownload,
+      if (isFavorite != null) 'is_favorite': isFavorite,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1538,6 +1578,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       Value<String?>? chaptersUrl,
       Value<DateTime?>? lastPlayed,
       Value<bool>? markedForDownload,
+      Value<bool>? isFavorite,
       Value<int>? rowid}) {
     return EpisodesCompanion(
       id: id ?? this.id,
@@ -1560,6 +1601,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       chaptersUrl: chaptersUrl ?? this.chaptersUrl,
       lastPlayed: lastPlayed ?? this.lastPlayed,
       markedForDownload: markedForDownload ?? this.markedForDownload,
+      isFavorite: isFavorite ?? this.isFavorite,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1625,6 +1667,9 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     if (markedForDownload.present) {
       map['marked_for_download'] = Variable<bool>(markedForDownload.value);
     }
+    if (isFavorite.present) {
+      map['is_favorite'] = Variable<bool>(isFavorite.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1653,6 +1698,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
           ..write('chaptersUrl: $chaptersUrl, ')
           ..write('lastPlayed: $lastPlayed, ')
           ..write('markedForDownload: $markedForDownload, ')
+          ..write('isFavorite: $isFavorite, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2001,6 +2047,7 @@ typedef $$EpisodesTableCreateCompanionBuilder = EpisodesCompanion Function({
   Value<String?> chaptersUrl,
   Value<DateTime?> lastPlayed,
   Value<bool> markedForDownload,
+  Value<bool> isFavorite,
   Value<int> rowid,
 });
 typedef $$EpisodesTableUpdateCompanionBuilder = EpisodesCompanion Function({
@@ -2023,6 +2070,7 @@ typedef $$EpisodesTableUpdateCompanionBuilder = EpisodesCompanion Function({
   Value<String?> chaptersUrl,
   Value<DateTime?> lastPlayed,
   Value<bool> markedForDownload,
+  Value<bool> isFavorite,
   Value<int> rowid,
 });
 
@@ -2097,6 +2145,9 @@ class $$EpisodesTableFilterComposer
   ColumnFilters<bool> get markedForDownload => $composableBuilder(
       column: $table.markedForDownload,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isFavorite => $composableBuilder(
+      column: $table.isFavorite, builder: (column) => ColumnFilters(column));
 }
 
 class $$EpisodesTableOrderingComposer
@@ -2173,6 +2224,9 @@ class $$EpisodesTableOrderingComposer
   ColumnOrderings<bool> get markedForDownload => $composableBuilder(
       column: $table.markedForDownload,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isFavorite => $composableBuilder(
+      column: $table.isFavorite, builder: (column) => ColumnOrderings(column));
 }
 
 class $$EpisodesTableAnnotationComposer
@@ -2240,6 +2294,9 @@ class $$EpisodesTableAnnotationComposer
 
   GeneratedColumn<bool> get markedForDownload => $composableBuilder(
       column: $table.markedForDownload, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFavorite => $composableBuilder(
+      column: $table.isFavorite, builder: (column) => column);
 }
 
 class $$EpisodesTableTableManager extends RootTableManager<
@@ -2284,6 +2341,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             Value<String?> chaptersUrl = const Value.absent(),
             Value<DateTime?> lastPlayed = const Value.absent(),
             Value<bool> markedForDownload = const Value.absent(),
+            Value<bool> isFavorite = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               EpisodesCompanion(
@@ -2306,6 +2364,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             chaptersUrl: chaptersUrl,
             lastPlayed: lastPlayed,
             markedForDownload: markedForDownload,
+            isFavorite: isFavorite,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -2328,6 +2387,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             Value<String?> chaptersUrl = const Value.absent(),
             Value<DateTime?> lastPlayed = const Value.absent(),
             Value<bool> markedForDownload = const Value.absent(),
+            Value<bool> isFavorite = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               EpisodesCompanion.insert(
@@ -2350,6 +2410,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             chaptersUrl: chaptersUrl,
             lastPlayed: lastPlayed,
             markedForDownload: markedForDownload,
+            isFavorite: isFavorite,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

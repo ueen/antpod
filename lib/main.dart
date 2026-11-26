@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_database.dart';
+import 'app_settings.dart';
 import 'audio_handler.dart';
 import 'download_provider.dart';
 import 'download_service.dart';
@@ -36,17 +37,19 @@ Future<void> main() async {
       androidNotificationOngoing: true,
     ),
   );
-  await spFuture;
+  final prefs = await spFuture;
   await dlFuture;
   audioHandler = await audioFuture;
   final initialLink = await linkFuture;
 
   final db = AppDatabase();
+  final settings = AppSettings(prefs);
   runApp(
     MultiProvider(
       providers: [
         Provider<AppDatabase>.value(value: db),
-        ChangeNotifierProvider(create: (_) => PlayerProvider(db)),
+        ChangeNotifierProvider.value(value: settings),
+        ChangeNotifierProvider(create: (_) => PlayerProvider(db, settings)),
         ChangeNotifierProvider(create: (_) => DownloadProvider(db)),
       ],
       child: AntPodApp(initialLink: initialLink),
@@ -62,11 +65,14 @@ class AntPodApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final materialYou = context.select<AppSettings, bool>((s) => s.materialYou);
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
-        final lightScheme =
-            lightDynamic ?? ColorScheme.fromSeed(seedColor: _seed);
-        final darkScheme = darkDynamic ??
+        // Material You: the wallpaper's colors where the system has them
+        // (Android 12+), otherwise AntPod's brown.
+        final lightScheme = (materialYou ? lightDynamic : null) ??
+            ColorScheme.fromSeed(seedColor: _seed);
+        final darkScheme = (materialYou ? darkDynamic : null) ??
             ColorScheme.fromSeed(
                 seedColor: _seed, brightness: Brightness.dark);
 

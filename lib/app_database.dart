@@ -101,6 +101,10 @@ class Episodes extends Table {
   BoolColumn get markedForDownload =>
       boolean().withDefault(const Constant(false))();
 
+  /// Marked as a favourite: kept, temp or not, until unmarked; its download
+  /// isn't deleted once played.
+  BoolColumn get isFavorite => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -119,6 +123,7 @@ bool _episodeListEqual(List<Episode> a, List<Episode> b, String? liveId) {
         x.isFinished != y.isFinished ||
         x.isDownloaded != y.isDownloaded ||
         x.markedForDownload != y.markedForDownload ||
+        x.isFavorite != y.isFavorite ||
         x.durationSeconds != y.durationSeconds ||
         x.localPath != y.localPath ||
         (x.lastPositionMs != y.lastPositionMs && x.id != liveId)) {
@@ -160,7 +165,7 @@ class AppDatabase extends _$AppDatabase {
       _episodeListEqual(a, b, livePositionEpisodeId);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -201,6 +206,10 @@ class AppDatabase extends _$AppDatabase {
             'ALTER TABLE podcasts ADD COLUMN feed_failures INTEGER NOT NULL DEFAULT 0');
         await m.createIndex(episodesPodcastDate);
         await m.createIndex(episodesPublishDate);
+      }
+      if (from < 10) {
+        await m.database.customStatement(
+            'ALTER TABLE episodes ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0');
       }
     },
   );
@@ -247,14 +256,18 @@ class AppDatabase extends _$AppDatabase {
         mode: InsertMode.insertOrIgnore,
       );
 
+  /// Unsubscribe & delete: the podcast, its episodes and their downloads go.
+  /// Favourites stay, as a temp feed without downloads, until unmarked.
   Future<void> deletePodcast(String id) async {
     // Fetch the podcast first so we can delete episodes by feedUrl (the canonical
     // podcastId used in episodes) even if id was historically an iTunes ID.
     final pod = await (select(podcasts)..where((p) => p.id.equals(id))).getSingleOrNull();
     final feedUrl = pod?.feedUrl ?? id;
+    Expression<bool> ofPodcast($EpisodesTable e) =>
+        e.podcastId.equals(feedUrl) | e.podcastId.equals(id);
 
     final eps = await (select(episodes)
-          ..where((e) => e.podcastId.equals(feedUrl) | e.podcastId.equals(id))
+          ..where((e) => ofPodcast(e))
           ..where((e) => e.isDownloaded.equals(true)))
         .get();
     for (final ep in eps) {
@@ -263,10 +276,36 @@ class AppDatabase extends _$AppDatabase {
         try { if (f.existsSync()) f.deleteSync(); } catch (_) {}
       }
     }
-    await (delete(episodes)
-          ..where((e) => e.podcastId.equals(feedUrl) | e.podcastId.equals(id)))
-        .go();
-    await (delete(podcasts)..where((p) => p.id.equals(id))).go();
+    final keepFavorites = pod != null &&
+        await (select(episodes)
+                  ..where((e) => ofPodcast(e) & e.isFavorite.equals(true))
+                  ..limit(1))
+                .getSingleOrNull() !=
+            null;
+    await transaction(() async {
+      await (delete(episodes)
+            ..where((e) => ofPodcast(e) & e.isFavorite.equals(false)))
+          .go();
+      if (keepFavorites) {
+        await (update(episodes)..where((e) => ofPodcast(e))).write(
+            EpisodesCompanion(
+                podcastId: Value(feedUrl),
+                isSubscribed: const Value(false),
+                isDownloaded: const Value(false),
+                localPath: const Value(null),
+                downloadTaskId: const Value(null),
+                markedForDownload: const Value(false)));
+        await (delete(podcasts)..where((p) => p.id.equals(id))).go();
+        await into(podcasts).insertOnConflictUpdate(pod.toCompanion(true).copyWith(
+              id: Value(feedUrl),
+              isSubscribed: const Value(false),
+              syncPaused: const Value(false),
+            ));
+      } else {
+        await (delete(episodes)..where((e) => ofPodcast(e))).go();
+        await (delete(podcasts)..where((p) => p.id.equals(id))).go();
+      }
+    });
   }
 
   // ── Episodes ──────────────────────────────────────────────────────────────
@@ -287,6 +326,7 @@ class AppDatabase extends _$AppDatabase {
   Expression<bool> get _inFeed =>
       episodes.isSubscribed.equals(true) |
       episodes.isDownloaded.equals(true) |
+      episodes.isFavorite.equals(true) |
       episodes.lastPositionMs.isBiggerThanValue(0);
 
   /// Every column but the show notes: kilobytes of HTML per episode that no
@@ -442,6 +482,7 @@ class AppDatabase extends _$AppDatabase {
               durationMs: stub.durationSeconds * 1000);
         }
         if (stub.isFinished && !match.isFinished) await markFinished(match.id);
+        if (stub.isFavorite && !match.isFavorite) await setFavorite(match.id, true);
         migrated[stub.id] = match.id;
       }
       await (delete(episodes)..where((e) => e.id.equals(stub.id))).go();
@@ -533,6 +574,22 @@ class AppDatabase extends _$AppDatabase {
           markedForDownload: const Value(false),
         ),
       );
+
+  /// Whether [id] is a favourite, as it changes; false once it's gone.
+  Stream<bool> watchFavorite(String id) {
+    final q = selectOnly(episodes)
+      ..addColumns([episodes.isFavorite])
+      ..where(episodes.id.equals(id));
+    return q
+        .map((r) => r.read(episodes.isFavorite) ?? false)
+        .watchSingleOrNull()
+        .map((v) => v ?? false)
+        .distinct();
+  }
+
+  Future<void> setFavorite(String id, bool favorite) =>
+      (update(episodes)..where((e) => e.id.equals(id)))
+          .write(EpisodesCompanion(isFavorite: Value(favorite)));
 
   /// Explicitly mark episode as unfinished (reset).
   Future<void> markUnfinished(String id) =>
@@ -634,13 +691,14 @@ class AppDatabase extends _$AppDatabase {
 
   /// Delete local files of episodes finished more than 2 days ago, temp ones
   /// included (those stay in history until their feed's week is up, see
-  /// cleanupStaleTempEpisodes).
+  /// cleanupStaleTempEpisodes). Favourites keep theirs.
   Future<void> deleteFinishedDownloads() async {
     final cutoff = DateTime.now().subtract(const Duration(days: 2));
     final finished = await (select(episodes)
           ..where((e) =>
               e.isFinished.equals(true) &
               e.isDownloaded.equals(true) &
+              e.isFavorite.equals(false) &
               e.lastPlayed.isSmallerThanValue(cutoff)))
         .get();
     if (finished.isEmpty) return;
@@ -666,9 +724,13 @@ class AppDatabase extends _$AppDatabase {
   /// (see [_tempFeedInUse]): a week after its last play.
   /// Played episodes: removed 7 days after last playback.
   /// Never-started episodes: removed if publish date is >7 days old.
-  /// In-progress episodes (started but not finished) are always kept, and so
-  /// is [keepId] (the loaded episode, e.g. an old one just opened from a link).
-  Future<void> cleanupStaleTempEpisodes({String? keepId}) async {
+  /// In-progress episodes (started but not finished) and favourites are
+  /// always kept, and so is [keepId] (the loaded episode, e.g. an old one just
+  /// opened from a link).
+  /// With [keepPlayedDownloads] (auto-delete switched off in the settings) a
+  /// played episode stays as long as it's downloaded.
+  Future<void> cleanupStaleTempEpisodes(
+      {String? keepId, bool keepPlayedDownloads = false}) async {
     final cutoff = DateTime.now().subtract(_tempWeek);
 
     // Feeds first, while their played episodes still say when they were
@@ -692,10 +754,14 @@ class AppDatabase extends _$AppDatabase {
     final stale = await (select(episodes)
           ..where((e) =>
               e.isSubscribed.equals(false) &
+              e.isFavorite.equals(false) &
               (keepId == null ? const Constant(true) : e.id.equals(keepId).not()) &
               (
                 // Played: wait 7 days from last playback before removing
                 (e.isFinished.equals(true) &
+                    (keepPlayedDownloads
+                        ? e.isDownloaded.equals(false)
+                        : const Constant(true)) &
                     e.lastPlayed.isSmallerThanValue(cutoff)) |
                 // Never started: no play mark and old content. Downloaded
                 // ones stay — the user fetched them to listen later.
@@ -736,12 +802,13 @@ class AppDatabase extends _$AppDatabase {
   final openFeeds = <String>[];
 
   /// Whether something in a temp feed is still in use: an episode loaded in
-  /// the player ([keepId]), downloaded or on its way, in progress, or played
-  /// within the past week.
+  /// the player ([keepId]), a favourite, downloaded or on its way, in
+  /// progress, or played within the past week.
   static bool _tempFeedInUse(List<Episode> eps, {String? keepId}) {
     final cutoff = DateTime.now().subtract(_tempWeek);
     return eps.any((e) =>
         e.id == keepId ||
+        e.isFavorite ||
         e.isDownloaded ||
         e.markedForDownload ||
         e.downloadTaskId != null ||
@@ -765,11 +832,11 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Mark as played from the menu. A temp episode is deleted instead, and
-  /// its feed with it when nothing else in it is in use.
+  /// its feed with it when nothing else in it is in use; a favourite stays.
   Future<void> markPlayedByUser(String id) async {
     final ep = await getEpisode(id);
     if (ep == null) return;
-    if (ep.isSubscribed) return markFinished(id);
+    if (ep.isSubscribed || ep.isFavorite) return markFinished(id);
     await cleanupTempEpisode(id);
   }
 
@@ -787,10 +854,11 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  /// Remove a temp episode (swipe or menu): its play state and download go,
-  /// as if it had never been played. The row stays, so its preview feed still
-  /// lists it; the home feed, which shows temp episodes only while they're in
-  /// use, drops it. The startup cleanup deletes the row once it's stale.
+  /// Remove a temp episode (swipe or menu): its play state, download and
+  /// favourite mark go, as if it had never been played. The row stays, so its
+  /// preview feed still lists it; the home feed, which shows temp episodes
+  /// only while they're in use, drops it. The startup cleanup deletes the row
+  /// once it's stale.
   Future<void> resetTempEpisode(String id) async {
     final ep = await (select(episodes)..where((e) => e.id.equals(id)))
         .getSingleOrNull();
@@ -809,6 +877,7 @@ class AppDatabase extends _$AppDatabase {
         localPath: Value(null),
         downloadTaskId: Value(null),
         markedForDownload: Value(false),
+        isFavorite: Value(false),
       ),
     );
   }

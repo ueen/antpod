@@ -15,6 +15,7 @@ import 'package:app_links/app_links.dart';
 
 import 'about.dart';
 import 'app_database.dart';
+import 'app_settings.dart';
 import 'download_provider.dart';
 import 'discover_list.dart';
 import 'download_service.dart';
@@ -285,6 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
         downloaded: prefs.getBool('filter_downloaded') ?? false,
         sort: SortMode.values[sortIndex.clamp(0, SortMode.values.length - 1)],
         inProgress: prefs.getBool('filter_inProgress') ?? false,
+        favorites: prefs.getBool('filter_favorites') ?? false,
         podcasts: prefs.getBool('filter_podcasts') ?? false,
       );
       _filterChipsVisible = prefs.getBool('filter_chipsVisible') ?? true;
@@ -298,6 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setBool('filter_downloaded', _filter.downloaded);
     await prefs.setInt('filter_sort', _filter.sort.index);
     await prefs.setBool('filter_inProgress', _filter.inProgress);
+    await prefs.setBool('filter_favorites', _filter.favorites);
     await prefs.setBool('filter_podcasts', _filter.podcasts);
     await prefs.setBool('filter_chipsVisible', _filterChipsVisible);
   }
@@ -494,6 +497,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final started = eps
         .where((e) => !e.isDownloaded && AppDatabase.isKeepWorthy(e))
         .length;
+    // Kept whichever way: as a temp feed's episodes, without downloads, even
+    // after unsubscribe & delete.
+    final favorites = eps.where((e) => e.isFavorite).length;
     if (!mounted) return;
 
     final action = await showModalBottomSheet<String>(
@@ -534,6 +540,22 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(found,
+                            style: TextStyle(
+                                fontSize: 13, color: cs.onSurfaceVariant)),
+                      ),
+                    ],
+                  ),
+                ],
+                if (favorites > 0) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.favorite_rounded,
+                          size: 16, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(l10n.favoritesKept(favorites),
                             style: TextStyle(
                                 fontSize: 13, color: cs.onSurfaceVariant)),
                       ),
@@ -889,14 +911,18 @@ class _HomeScreenState extends State<HomeScreen> {
     final playingId = mounted
         ? context.read<PlayerProvider>().currentEpisode?.id
         : null;
+    // Played downloads go 2 days on, unless switched off in the settings.
+    final deletePlayed =
+        !mounted || context.read<AppSettings>().deletePlayedDownloads;
     if (startup && mounted) {
       setState(() => _startupRefreshing = true);
       // Settle downloads from the last run early so progress shows right away.
       context.read<DownloadProvider>().restore();
     }
     try {
-      await db.cleanupStaleTempEpisodes(keepId: playingId);
-      await db.deleteFinishedDownloads();
+      await db.cleanupStaleTempEpisodes(
+          keepId: playingId, keepPlayedDownloads: !deletePlayed);
+      if (deletePlayed) await db.deleteFinishedDownloads();
       await FeedSync.refreshAll(db);
     } finally {
       // Never leave the refresh header stuck, even if a step above throws.

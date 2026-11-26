@@ -2,6 +2,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'app_database.dart';
 import 'html_utils.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
@@ -386,6 +387,63 @@ Future<void> showPlayerSheet(BuildContext context,
 
 // ── Player bottom sheet ───────────────────────────────────────────────────────
 
+/// Marks the playing episode as a favourite, or not.
+class _FavoriteButton extends StatefulWidget {
+  final String episodeId;
+  const _FavoriteButton({required this.episodeId});
+
+  @override
+  State<_FavoriteButton> createState() => _FavoriteButtonState();
+}
+
+class _FavoriteButtonState extends State<_FavoriteButton> {
+  // Kept across rebuilds: the sheet rebuilds with every player change.
+  late Stream<bool> _favorite;
+
+  @override
+  void initState() {
+    super.initState();
+    _favorite = context.read<AppDatabase>().watchFavorite(widget.episodeId);
+  }
+
+  @override
+  void didUpdateWidget(_FavoriteButton old) {
+    super.didUpdateWidget(old);
+    if (old.episodeId != widget.episodeId) {
+      _favorite = context.read<AppDatabase>().watchFavorite(widget.episodeId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    return StreamBuilder<bool>(
+      stream: _favorite,
+      builder: (context, snap) {
+        final fav = snap.data ?? false;
+        return IconButton(
+          onPressed: () => context
+              .read<AppDatabase>()
+              .setFavorite(widget.episodeId, !fav),
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            transitionBuilder: (child, a) =>
+                ScaleTransition(scale: a, child: child),
+            child: Icon(
+              fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              key: ValueKey(fav),
+              size: 24, color: cs.primary),
+          ),
+          tooltip: fav ? l10n.removeFavorite : l10n.addFavorite,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        );
+      },
+    );
+  }
+}
+
 class _PlayerSheet extends StatelessWidget {
   final VoidCallback? onPodcastTap;
   const _PlayerSheet({this.onPodcastTap});
@@ -513,15 +571,30 @@ class _PlayerSheet extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            Text(ep.title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontWeight: FontWeight.w700, fontSize: 18,
-                    color: cs.onSurface)),
-            const SizedBox(height: 4),
-            Text(ep.podcastTitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+            // The heart beside the titles; the space on the left keeps them
+            // centred.
+            Row(
+              children: [
+                const SizedBox(width: 44),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Text(ep.title,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 18,
+                              color: cs.onSurface)),
+                      const SizedBox(height: 4),
+                      Text(ep.podcastTitle,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+                _FavoriteButton(episodeId: ep.id),
+              ],
+            ),
             SizedBox(height: player.chapters.isNotEmpty ? 4 : 24),
 
             // Chapter navigation — only shown when the episode has chapters

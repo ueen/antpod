@@ -6,6 +6,8 @@
   "emptyFeedTitle": "No podcasts yet",
   "emptyFeedSub": "Tap + to search and subscribe",
   "emptySearchTitle": "No results",
+  "emptyFavoritesTitle": "No favourites yet",
+  "emptyFavoritesSub": "Long-press an episode, or tap the heart in the player",
   "emptyPodcastsTitle": "No subscriptions yet",
   "downloaded": "Downloaded",
   "downloading": "Download",
@@ -15,6 +17,7 @@
   "filterListened": "Listened",
   "filterPodcasts": "Podcasts",
   "filterDownloaded": "Downloaded",
+  "filterFavorites": "Favourites",
   "filterAlphabetical": "A–Z",
   "filterOldest": "Oldest first",
   "filterPlaying": "Playing",
@@ -28,6 +31,8 @@
   "markPlayed": "Mark as played",
   "cancel": "Cancel",
   "shareEpisode": "Share episode",
+  "addFavorite": "Add to favourites",
+  "removeFavorite": "Remove from favourites",
   "sharePodcast": "Share podcast",
   "subscribe": "Subscribe",
   "unsubscribe": "Unsubscribe",
@@ -61,6 +66,14 @@
     }
   },
   "foundStartedAndDownloaded": "Started and downloaded episodes found",
+  "favoritesKept": "{count, plural, =1{1 favourite stays either way} other{{count} favourites stay either way}}",
+  "@favoritesKept": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "unsubscribeDeleteAll": "Unsubscribe & delete",
   "unsubscribeFinishEpisodes": "Finish episodes",
   "stopNewEpisodes": "Don't load new episodes",

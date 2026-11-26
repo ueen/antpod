@@ -135,6 +135,18 @@ abstract class AppLocalizations {
   /// **'No results'**
   String get emptySearchTitle;
 
+  /// No description provided for @emptyFavoritesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No favourites yet'**
+  String get emptyFavoritesTitle;
+
+  /// No description provided for @emptyFavoritesSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Long-press an episode, or tap the heart in the player'**
+  String get emptyFavoritesSub;
+
   /// No description provided for @emptyPodcastsTitle.
   ///
   /// In en, this message translates to:
@@ -188,6 +200,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Downloaded'**
   String get filterDownloaded;
+
+  /// No description provided for @filterFavorites.
+  ///
+  /// In en, this message translates to:
+  /// **'Favourites'**
+  String get filterFavorites;
 
   /// No description provided for @filterAlphabetical.
   ///
@@ -266,6 +284,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Share episode'**
   String get shareEpisode;
+
+  /// No description provided for @addFavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to favourites'**
+  String get addFavorite;
+
+  /// No description provided for @removeFavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from favourites'**
+  String get removeFavorite;
 
   /// No description provided for @sharePodcast.
   ///
@@ -380,6 +410,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Started and downloaded episodes found'**
   String get foundStartedAndDownloaded;
+
+  /// No description provided for @favoritesKept.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 favourite stays either way} other{{count} favourites stay either way}}'**
+  String favoritesKept(int count);
 
   /// No description provided for @unsubscribeDeleteAll.
   ///
