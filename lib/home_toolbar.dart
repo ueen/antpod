@@ -151,24 +151,21 @@ class HomeToolbar extends StatelessWidget {
                     // draws it ~18 px, 2/3 of the 28 px logo. The button's
                     // ripple circles the icon; the padding around it still
                     // takes taps, for a 65×56 tap area (the bar's height).
-                    // Shifted left so the glyph sits 8 px from the wordmark,
-                    // the same gap as between logo and wordmark.
-                    Transform.translate(
-                      offset: const Offset(-4, 0),
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: onInfoPressed,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(1, 8, 24, 8),
-                          child: IconButton(
-                            onPressed: onInfoPressed,
-                            tooltip: l10n.tooltipGuide,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-                            style: IconButton.styleFrom(
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                            icon: Icon(Icons.info_rounded, size: 22, color: cs.primary),
-                          ),
+                    // The glyph sits 12 px from the wordmark, a bit more than
+                    // between logo and wordmark: beside the brand, not of it.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onInfoPressed,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(1, 8, 24, 8),
+                        child: IconButton(
+                          onPressed: onInfoPressed,
+                          tooltip: l10n.tooltipGuide,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                          style: IconButton.styleFrom(
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                          icon: Icon(Icons.info_rounded, size: 22, color: cs.primary),
                         ),
                       ),
                     ),
