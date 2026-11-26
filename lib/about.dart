@@ -81,76 +81,44 @@ void showAboutBubble(BuildContext context, {required VoidCallback onSettings}) {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            // Settings: the bubble's main button.
-                            Material(
-                              color: cs.primary,
-                              shape: const StadiumBorder(),
-                              clipBehavior: Clip.antiAlias,
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.pop(ctx);
-                                  onSettings();
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 20, vertical: 10),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.settings_rounded,
-                                          size: 18, color: cs.onPrimary),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        AppLocalizations.of(ctx)!.settings,
-                                        style: TextStyle(
-                                          color: cs.onPrimary,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            // GitHub button
-                            GestureDetector(
-                              onTap: () => launchUrl(
-                                Uri.parse('https://github.com/ueen/antpod'),
-                                mode: LaunchMode.externalApplication,
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: cs.onPrimaryContainer.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                      color: cs.onPrimaryContainer.withValues(alpha: 0.25),
-                                      width: 1),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    SvgPicture.string(
+                            // GitHub and Settings, half the width each;
+                            // Settings, the main one, on the right.
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _BubbleButton(
+                                    icon: SvgPicture.string(
                                       _kGithubSvg,
-                                      width: 15, height: 15,
+                                      width: 16, height: 16,
                                       colorFilter: ColorFilter.mode(
                                           cs.onPrimaryContainer, BlendMode.srcIn),
                                     ),
-                                    const SizedBox(width: 7),
-                                    Text(
-                                      'github.com/ueen/antpod',
-                                      style: TextStyle(
-                                        color: cs.onPrimaryContainer,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                    label: 'GitHub',
+                                    color: cs.onPrimaryContainer,
+                                    fill: cs.onPrimaryContainer.withValues(alpha: 0.1),
+                                    border: BorderSide(
+                                        color: cs.onPrimaryContainer.withValues(alpha: 0.25)),
+                                    onTap: () => launchUrl(
+                                      Uri.parse('https://github.com/ueen/antpod'),
+                                      mode: LaunchMode.externalApplication,
                                     ),
-                                  ],
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _BubbleButton(
+                                    icon: Icon(Icons.settings_rounded,
+                                        size: 18, color: cs.onPrimary),
+                                    label: AppLocalizations.of(ctx)!.settings,
+                                    color: cs.onPrimary,
+                                    fill: cs.primary,
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      onSettings();
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -165,6 +133,54 @@ void showAboutBubble(BuildContext context, {required VoidCallback onSettings}) {
       );
     },
   );
+}
+
+/// A pill button in the about bubble. A long label shrinks to fit rather
+/// than wrapping ("Einstellungen" is long next to a half-width button).
+class _BubbleButton extends StatelessWidget {
+  final Widget icon;
+  final String label;
+  final Color color;
+  final Color fill;
+  final BorderSide border;
+  final VoidCallback onTap;
+
+  const _BubbleButton({
+    required this.icon, required this.label, required this.color,
+    required this.fill, this.border = BorderSide.none, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: fill,
+        shape: StadiumBorder(side: border),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            height: 40,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  icon,
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(label,
+                          maxLines: 1,
+                          style: TextStyle(
+                              color: color, fontSize: 14, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
