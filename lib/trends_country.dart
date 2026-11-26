@@ -158,9 +158,7 @@ class _CountrySheet extends StatefulWidget {
 }
 
 class _CountrySheetState extends State<_CountrySheet> {
-  final _sheetCtrl = DraggableScrollableController();
   final _queryCtrl = TextEditingController();
-  final _focus = FocusNode();
   late final List<String> _codes;
 
   @override
@@ -173,21 +171,11 @@ class _CountrySheetState extends State<_CountrySheet> {
         return byKey != 0 ? byKey : na.compareTo(nb);
       });
     _codes = [widget.current, ...others];
-    // Searching opens the sheet all the way: the matches stay in view above
-    // the keyboard.
-    _focus.addListener(() {
-      if (_focus.hasFocus && _sheetCtrl.isAttached && _sheetCtrl.size < 1) {
-        _sheetCtrl.animateTo(1,
-            duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
-      }
-    });
   }
 
   @override
   void dispose() {
-    _sheetCtrl.dispose();
     _queryCtrl.dispose();
-    _focus.dispose();
     super.dispose();
   }
 
@@ -225,7 +213,6 @@ class _CountrySheetState extends State<_CountrySheet> {
             child: TextField(
               key: const ValueKey('country-search'),
               controller: _queryCtrl,
-              focusNode: _focus,
               textInputAction: TextInputAction.search,
               onChanged: (_) => setState(() {}),
               // Enter takes the first match.
@@ -258,13 +245,15 @@ class _CountrySheetState extends State<_CountrySheet> {
       ),
     );
 
-    return DraggableScrollableSheet(
-      controller: _sheetCtrl,
+    // Half the screen at most; with the keyboard up it rides on it, half the
+    // space above, so it never reaches the top.
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.6,
-      minChildSize: 0.3,
-      snap: true,
-      snapSizes: const [0.6],
+      initialChildSize: 0.5,
+      maxChildSize: 0.5,
+      minChildSize: 0.25,
       builder: (ctx, controller) => CustomScrollView(
         controller: controller,
         slivers: [
@@ -283,14 +272,14 @@ class _CountrySheetState extends State<_CountrySheet> {
             ),
           SliverPadding(
             padding: EdgeInsets.only(
-                bottom: MediaQuery.viewInsetsOf(context).bottom +
-                    MediaQuery.paddingOf(context).bottom + 16),
+                bottom: MediaQuery.paddingOf(context).bottom + 16),
             sliver: SliverList.builder(
               itemCount: matches.length,
               itemBuilder: (_, i) => _tile(cs, matches[i]),
             ),
           ),
         ],
+      ),
       ),
     );
   }
