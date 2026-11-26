@@ -47,7 +47,8 @@ void main() {
       expect(deviceCountry(const [Locale('de', 'CH')]), 'ch');
       expect(deviceCountry(const [Locale('en'), Locale('fr', 'BE')]), 'be');
       expect(deviceCountry(const [Locale('fr')]), 'fr');
-      expect(deviceCountry(const [Locale('it')]), 'us');
+      expect(deviceCountry(const [Locale('it')]), 'it');
+      expect(deviceCountry(const [Locale('ja')]), 'us');
     });
   });
 

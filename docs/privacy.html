@@ -62,6 +62,7 @@
         <option value="de">DE</option>
         <option value="es">ES</option>
         <option value="fr">FR</option>
+        <option value="it">IT</option>
       </select>
     </div>
   </nav>
@@ -222,6 +223,45 @@
     <p>Para cualquier pregunta sobre privacidad, abre una issue en <a href="https://github.com/ueen/antpod/issues" target="_blank" rel="noopener">GitHub</a>.</p>
   </main>
 
+  <!-- ══ Italiano ════════════════════════════════════════════════════════════ -->
+  <main data-lang="it" hidden>
+    <h1>Informativa sulla privacy</h1>
+    <p class="subtitle">Ultimo aggiornamento: novembre 2026</p>
+
+    <p>AntPod si basa su un principio semplice: i tuoi podcast sono tuoi. L’app non raccoglie, non trasmette e non condivide alcun dato personale.</p>
+
+    <div class="chips">
+      <span class="chip">Niente account</span>
+      <span class="chip">Niente statistiche</span>
+      <span class="chip">Niente pubblicità</span>
+      <span class="chip">Niente SDK di terzi</span>
+    </div>
+
+    <h2>Cosa AntPod non raccoglie</h2>
+    <p>AntPod non raccoglie informazioni su di te, sul tuo dispositivo o sulle tue abitudini di ascolto. Niente rapporti sugli arresti anomali, niente statistiche d’uso, niente identificativi pubblicitari. Iscrizioni, cronologia e avanzamento restano solo sul tuo dispositivo e non lo lasciano mai.</p>
+
+    <h2>Richieste di rete dell’app</h2>
+    <p>AntPod comunica direttamente con i servizi che usi — senza alcun server intermedio:</p>
+
+    <h2>PodcastIndex</h2>
+    <p>Ricerca e scoperta usano l’API di <a href="https://podcastindex.org" target="_blank" rel="noopener">PodcastIndex</a>. Le tue ricerche vengono inviate ai loro server. Consulta l’<a href="https://podcastindex.org/privacy" target="_blank" rel="noopener">informativa sulla privacy di PodcastIndex</a> per sapere come vengono trattate.</p>
+
+    <h2>Apple Podcasts</h2>
+    <p>Le ricerche vengono inviate anche alla ricerca pubblica di podcast di Apple, e <strong>Apple Trends</strong> carica le classifiche di Apple Podcasts del tuo paese, o di quello che scegli. Queste richieste includono un codice paese (l’impostazione paese/regione del tuo dispositivo, o la tua scelta per le tendenze) per risultati pertinenti. Apple può registrarle; vedi l’<a href="https://www.apple.com/it/legal/privacy/" target="_blank" rel="noopener">informativa sulla privacy di Apple</a>. Disattiva <strong>Apple Podcasts</strong> nelle impostazioni e niente di tutto questo viene inviato: niente tendenze, e la ricerca usa solo PodcastIndex.</p>
+
+    <h2>Hosting dei podcast</h2>
+    <p>Quando ti iscrivi a un podcast o ascolti/scarichi un episodio, il tuo dispositivo si collega direttamente al server dell’hosting per ottenere il feed RSS o il file audio. L’hosting vede il tuo indirizzo IP e le tue richieste e può registrarli — come qualsiasi sito web. AntPod non controlla cosa raccolgono né come lo usano.</p>
+
+    <h2>Questo sito e i link condivisi</h2>
+    <p>antpod.eu è ospitato su GitHub Pages, che può registrare le visite come qualsiasi hosting web. Un link condiviso apre <code>antpod.eu/open</code>, che riproduce l’episodio nel tuo browser: la pagina carica il feed tramite un piccolo proxy su Cloudflare (che tiene i feed in cache per 30 minuti e nient’altro), ricorre a PodcastIndex se serve e riproduce l’audio direttamente dall’hosting. Se non hai scelto una lingua, chiede a geojs.io il tuo paese, in base al tuo indirizzo IP, per sceglierne una. La lingua che scegli viene salvata in un cookie <code>lang</code>, l’unico cookie di antpod.eu.</p>
+
+    <h2>Open source</h2>
+    <p>AntPod è completamente open source. Puoi controllare ogni riga di codice su <a href="https://github.com/ueen/antpod" target="_blank" rel="noopener">github.com/ueen/antpod</a>. Domande o dubbi? Apri una issue.</p>
+
+    <h2>Contatti</h2>
+    <p>Per qualsiasi domanda sulla privacy, apri una issue su <a href="https://github.com/ueen/antpod/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+  </main>
+
   <footer>
     <p>
       <a href="/">AntPod</a>
@@ -242,6 +282,8 @@
             guide: 'Guide', license: 'Licence', issues: 'Issues' },
       es: { title: 'Privacidad — AntPod', metaDesc: 'AntPod no recopila datos personales. Tus podcasts se quedan en tu dispositivo.',
             guide: 'Guía', license: 'Licencia', issues: 'Issues' },
+      it: { title: 'Privacy — AntPod', metaDesc: 'AntPod non raccoglie dati personali. I tuoi podcast restano sul tuo dispositivo.',
+            guide: 'Guida', license: 'Licenza', issues: 'Issues' },
     };
     AntpodI18n.apply();
   </script>

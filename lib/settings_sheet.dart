@@ -383,6 +383,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
   /// Languages in their own names, so each can be found from any other.
   static const _languages = {
     'en': 'English', 'de': 'Deutsch', 'fr': 'Français', 'es': 'Español',
+    'it': 'Italiano',
   };
 
   /// One of the app's languages, a menu from the tile. Until one is picked,

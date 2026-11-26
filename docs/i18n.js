@@ -7,11 +7,11 @@
 //     such as the guide). Give the non-English ones `hidden`, so the page
 //     still reads right without JavaScript.
 //   • data-i18n="key" (innerHTML), data-i18n-src / -title / -content="key"
-//     (attributes), looked up in window.I18N = { de: {…}, fr: {…}, es: {…} },
+//     (attributes), looked up in window.I18N = { de: {…}, fr: {…}, es: {…}, it: {…} },
 //     applied by AntpodI18n.apply() at the end of <body>.
 // <select id="lang-select" onchange="setLang(this.value)"> switches.
 (function () {
-  var SUPPORTED = ['en', 'de', 'es', 'fr'];
+  var SUPPORTED = ['en', 'de', 'es', 'fr', 'it'];
   var ATTRS = ['src', 'title', 'content'];
   var originals = new Map();
 
