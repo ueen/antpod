@@ -88,11 +88,13 @@ void main() {
     late List<String> countries;
     late int refreshes;
     late Completer<void> refresh;
+    late int appleOn;
 
-    Future<void> pump(WidgetTester tester) async {
+    Future<void> pump(WidgetTester tester, {bool appleApi = true}) async {
       tallScreen(tester);
       countries = [];
       refreshes = 0;
+      appleOn = 0;
       refresh = Completer<void>();
       await tester.pumpWidget(app((context) => DiscoverList(
             searchQuery: '', trending: const [], unifiedSearchResults: const [],
@@ -107,6 +109,8 @@ void main() {
             },
             trendsCountry: 'de',
             onTrendsCountry: countries.add,
+            appleApi: appleApi,
+            onAppleApiOn: () => appleOn++,
             onLoadMore: () async {},
           )));
       await tester.pump();
@@ -140,6 +144,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(refreshes, 1);
       refresh.complete();
+    });
+
+    testWidgets('with Apple off, a note takes the trends\' place and turns it back on',
+        (tester) async {
+      await pump(tester, appleApi: false);
+      expect(find.byKey(const ValueKey('trends-title')), findsNothing);
+      expect(find.text('Apple Podcasts is off'), findsOneWidget);
+      await tester.tap(find.text('Turn on'));
+      expect(appleOn, 1);
     });
   });
 }

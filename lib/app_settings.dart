@@ -15,11 +15,12 @@ class AppSettings extends ChangeNotifier {
   static const keyTheme = 'settings_theme';
   static const keyRewindOnResume = 'settings_rewind_on_resume';
   static const keyTrendsCountry = 'settings_trends_country';
+  static const keyAppleApi = 'settings_apple_api';
 
   /// Every key, for the backup.
   static const keys = [
     keyMaterialYou, keyMarkPlayedNearEnd, keyDeletePlayedDownloads,
-    keyTheme, keyRewindOnResume, keyTrendsCountry,
+    keyTheme, keyRewindOnResume, keyTrendsCountry, keyAppleApi,
   ];
 
   /// System, light or dark; stored by name ('system', 'light', 'dark').
@@ -64,6 +65,11 @@ class AppSettings extends ChangeNotifier {
     v == null ? _prefs.remove(keyTrendsCountry) : _prefs.setString(keyTrendsCountry, v);
     notifyListeners();
   }
+
+  /// Apple Podcasts for the Discover page's trends and episode search. Off,
+  /// no trends and search asks PodcastIndex only (podcasts, no episodes).
+  bool get appleApi => _prefs.getBool(keyAppleApi) ?? true;
+  set appleApi(bool v) => _set(keyAppleApi, v);
 
   void _set(String key, bool v) {
     // The in-memory value changes at once; the write to disk follows.

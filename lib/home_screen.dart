@@ -112,9 +112,14 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _downloadingMarked = false;
   bool _isOffline = false;
 
+  late final AppSettings _settings = context.read<AppSettings>();
+  /// Apple Podcasts on (trends, episode search), as last seen.
+  late bool _appleApi = _settings.appleApi;
+
   @override
   void initState() {
     super.initState();
+    _settings.addListener(_onSettingsChanged);
 
     // app_links ≥6 emits the initial link on uriLinkStream too, so this single
     // listener covers cold start and warm links. Links that arrive before the
@@ -315,8 +320,18 @@ class _HomeScreenState extends State<HomeScreen> {
     _linkSub?.cancel();
     _connectivitySub?.cancel();
     _playerErrorSub?.cancel();
+    _settings.removeListener(_onSettingsChanged);
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  /// Apple turned on or off, on the Discover page or in the settings: the
+  /// page swaps its trends for a note (or back), and loads them if needed.
+  void _onSettingsChanged() {
+    final on = _settings.appleApi;
+    if (on == _appleApi || !mounted) return;
+    setState(() => _appleApi = on);
+    if (on && _mode == _FeedMode.discover) _loadDiscover();
   }
 
   // ── WiFi queue auto-download ──────────────────────────────────────────────
@@ -758,9 +773,12 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() { _searchingPI = true; _searchOffset = 0; _searchHasMore = true; });
     final country = _searchCountry;
     final db = context.read<AppDatabase>();
+    // Episodes come from Apple's search; without it, PodcastIndex's podcasts.
     final fetched = await Future.wait([
       PodcastService.search(trimmed),
-      PodcastService.searchEpisodes(trimmed, country: country),
+      _settings.appleApi
+          ? PodcastService.searchEpisodes(trimmed, country: country)
+          : Future.value(<Episode>[]),
     ]);
     if (!mounted || _searchQuery != q) return;
     final podcasts = fetched[0] as List<PodcastResult>;
@@ -812,6 +830,8 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _kTrendingCacheCountryKey = 'trending_cache_country_v1';
 
   Future<void> _loadDiscover({bool forceRefresh = false}) async {
+    // The trends are Apple's: off, the page says so instead.
+    if (!_settings.appleApi) return;
     final country = _trendsCountry;
     // Return cached data if it's less than 1 day old and we have results.
     if (!forceRefresh && _trending.isNotEmpty && _trendingFetchedAt != null &&
@@ -1202,6 +1222,9 @@ class _HomeScreenState extends State<HomeScreen> {
             context.read<AppSettings>().trendsCountry = code;
             _loadDiscover(forceRefresh: true);
           },
+          appleApi: _appleApi,
+          // The settings listener loads the trends.
+          onAppleApiOn: () => _settings.appleApi = true,
           onLoadMore: _loadMorePISearch,
         );
 

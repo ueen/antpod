@@ -251,6 +251,21 @@ class AppLocalizationsDe extends AppLocalizations {
   String get trendsCountrySearch => 'Land suchen…';
 
   @override
+  String get settingsNetwork => 'Netzwerk';
+
+  @override
+  String get settingsAppleApiSub => 'Trends und die Suche nach Folgen kommen von Apple. Aus, findet die Suche Podcasts nur über PodcastIndex';
+
+  @override
+  String get trendsAppleOff => 'Apple Podcasts ist aus';
+
+  @override
+  String get trendsAppleOffSub => 'Die Trends kommen von Apple Podcasts. Solange es aus ist, findet die Suche Podcasts nur über PodcastIndex.';
+
+  @override
+  String get trendsAppleOn => 'Einschalten';
+
+  @override
   String get playbackError => 'Episode konnte nicht abgespielt werden';
 
   @override

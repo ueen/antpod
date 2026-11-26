@@ -519,6 +519,36 @@ abstract class AppLocalizations {
   /// **'Search countries…'**
   String get trendsCountrySearch;
 
+  /// No description provided for @settingsNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get settingsNetwork;
+
+  /// No description provided for @settingsAppleApiSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Trends and episode search come from Apple. Off, search finds podcasts through PodcastIndex only'**
+  String get settingsAppleApiSub;
+
+  /// No description provided for @trendsAppleOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple Podcasts is off'**
+  String get trendsAppleOff;
+
+  /// No description provided for @trendsAppleOffSub.
+  ///
+  /// In en, this message translates to:
+  /// **'The trends come from Apple Podcasts. Meanwhile, search finds podcasts through PodcastIndex only.'**
+  String get trendsAppleOffSub;
+
+  /// No description provided for @trendsAppleOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get trendsAppleOn;
+
   /// No description provided for @playbackError.
   ///
   /// In en, this message translates to:

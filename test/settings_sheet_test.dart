@@ -103,6 +103,7 @@ void main() {
     expect(settings.rewindOnResume, isTrue);
     expect(settings.markPlayedNearEnd, isTrue);
     expect(settings.deletePlayedDownloads, isTrue);
+    expect(settings.appleApi, isTrue);
 
     await tester.tap(find.text('Rewind on resume'));
     await tester.pumpAndSettle();
@@ -118,6 +119,11 @@ void main() {
     expect(settings.deletePlayedDownloads, isFalse);
     expect(prefs.getBool(AppSettings.keyMarkPlayedNearEnd), isFalse);
     expect(prefs.getBool(AppSettings.keyDeletePlayedDownloads), isFalse);
+
+    await tester.tap(find.text('Apple Podcasts'));
+    await tester.pumpAndSettle();
+    expect(settings.appleApi, isFalse);
+    expect(prefs.getBool(AppSettings.keyAppleApi), isFalse);
   });
 
   testWidgets('import & export come last; Android-only tiles stay hidden here',
@@ -127,7 +133,8 @@ void main() {
 
     final order = [
       'Appearance', 'Theme', 'Playback', 'Rewind on resume', 'Played in the last minute',
-      'Downloads', 'Delete played downloads', 'Import & export', 'Export backup',
+      'Downloads', 'Delete played downloads', 'Network', 'Apple Podcasts',
+      'Import & export', 'Export backup',
       'Import backup', 'Export subscriptions (OPML)', 'Import subscriptions (OPML)',
     ].map((t) => tester.getTopLeft(find.text(t)).dy).toList();
     expect(order, orderedEquals([...order]..sort()));

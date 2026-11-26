@@ -38,6 +38,10 @@ class DiscoverList extends StatefulWidget {
   final String trendsCountry;
   /// Another country picked in the title's sheet.
   final ValueChanged<String> onTrendsCountry;
+  /// Apple Podcasts on; off, a note with [onAppleApiOn] takes the trends'
+  /// place.
+  final bool appleApi;
+  final VoidCallback onAppleApiOn;
   final Future<void> Function() onLoadMore;
 
   const DiscoverList({
@@ -51,6 +55,7 @@ class DiscoverList extends StatefulWidget {
     required this.cs, required this.l10n,
     required this.onOpen, required this.onRefresh,
     required this.trendsCountry, required this.onTrendsCountry,
+    required this.appleApi, required this.onAppleApiOn,
     required this.onLoadMore,
   });
 
@@ -240,63 +245,104 @@ class _DiscoverListState extends State<DiscoverList> {
         ),
         Divider(height: 1, color: cs.outlineVariant),
         Expanded(
-          // The pull only triggers the refresh; the spinner in the middle
-          // shows it loading.
-          child: PullToRefresh(
-            controller: _trendsScrollCtrl,
-            onRefresh: widget.onRefresh,
-            holdWhileRefreshing: false,
-            // One scroll view in every state: the title scrolls away with the
-            // list, and pull-to-refresh also works while loading/empty/error.
-            builder: (banner) => CustomScrollView(
-              controller: _trendsScrollCtrl,
-              physics: const SmoothScrollPhysics(),
-              slivers: [
-                banner,
-                SliverToBoxAdapter(child: _trendsTitle(cs)),
-                if (widget.loadingTrending)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(child: AntSpinner(color: cs.primary, size: 36)),
-                  )
-                else if (widget.trendingFailed)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(children: [
-                        Icon(Icons.wifi_off_rounded,
-                            size: 40, color: cs.onSurfaceVariant),
-                        const SizedBox(height: 12),
-                        Text(l10n.trendingError,
-                            style: TextStyle(color: cs.onSurfaceVariant)),
-                      ]),
-                    ),
-                  )
-                else if (widget.trending.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(child: Text(l10n.trendingEmpty,
-                        style: TextStyle(color: cs.onSurfaceVariant))),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.only(bottom: 88),
-                    sliver: SliverList.builder(
-                      itemCount: widget.trending.length,
-                      itemBuilder: (_, i) => _DiscoverPodcastTile(
-                        result: widget.trending[i], rank: i + 1,
-                        cs: widget.cs, l10n: widget.l10n,
-                        onPreview: widget.onOpen,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: widget.appleApi ? _trends(cs, l10n) : _appleOff(cs, l10n),
           ),
         ),
       ],
     );
   }
+
+  /// In place of the trends while Apple is off: why, and a way back.
+  Widget _appleOff(ColorScheme cs, AppLocalizations l10n) => CustomScrollView(
+        key: const ValueKey('apple-off'),
+        slivers: [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(32, 32, 32, 88),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.travel_explore_rounded, size: 44, color: cs.primary),
+                    const SizedBox(height: 14),
+                    Text(l10n.trendsAppleOff,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontWeight: FontWeight.w600,
+                            fontSize: 16, color: cs.onSurface)),
+                    const SizedBox(height: 6),
+                    Text(l10n.trendsAppleOffSub,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                    const SizedBox(height: 22),
+                    FilledButton(
+                      onPressed: widget.onAppleApiOn,
+                      child: Text(l10n.trendsAppleOn),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+
+  // The pull only triggers the refresh; the spinner in the middle shows it
+  // loading.
+  Widget _trends(ColorScheme cs, AppLocalizations l10n) => PullToRefresh(
+        key: const ValueKey('trends'),
+        controller: _trendsScrollCtrl,
+        onRefresh: widget.onRefresh,
+        holdWhileRefreshing: false,
+        // One scroll view in every state: the title scrolls away with the
+        // list, and pull-to-refresh also works while loading/empty/error.
+        builder: (banner) => CustomScrollView(
+          controller: _trendsScrollCtrl,
+          physics: const SmoothScrollPhysics(),
+          slivers: [
+            banner,
+            SliverToBoxAdapter(child: _trendsTitle(cs)),
+            if (widget.loadingTrending)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: AntSpinner(color: cs.primary, size: 36)),
+              )
+            else if (widget.trendingFailed)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(children: [
+                    Icon(Icons.wifi_off_rounded,
+                        size: 40, color: cs.onSurfaceVariant),
+                    const SizedBox(height: 12),
+                    Text(l10n.trendingError,
+                        style: TextStyle(color: cs.onSurfaceVariant)),
+                  ]),
+                ),
+              )
+            else if (widget.trending.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: Text(l10n.trendingEmpty,
+                    style: TextStyle(color: cs.onSurfaceVariant))),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.only(bottom: 88),
+                sliver: SliverList.builder(
+                  itemCount: widget.trending.length,
+                  itemBuilder: (_, i) => _DiscoverPodcastTile(
+                    result: widget.trending[i], rank: i + 1,
+                    cs: widget.cs, l10n: widget.l10n,
+                    onPreview: widget.onOpen,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
 
   Future<void> _pickCountry() async {
     final code = await showTrendsCountrySheet(context, widget.trendsCountry);
