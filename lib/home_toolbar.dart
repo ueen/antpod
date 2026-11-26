@@ -17,7 +17,6 @@ class HomeToolbar extends StatelessWidget {
   final bool searchOpen;
   final TextEditingController searchCtrl;
   final FilterState filter;
-  final bool filterChipsVisible;
   final AppLocalizations l10n;
   final ColorScheme cs;
   final VoidCallback onBack;
@@ -33,7 +32,7 @@ class HomeToolbar extends StatelessWidget {
     super.key,
     required this.inPodcast, required this.discoverSearch,
     required this.episodeSearch, required this.searchOpen, required this.searchCtrl,
-    required this.filter, required this.filterChipsVisible,
+    required this.filter,
     required this.l10n, required this.cs,
     required this.onBack, required this.onSearchChanged, required this.onClearSearch,
     required this.onSearchOpen, required this.onPlusPressed,
@@ -80,13 +79,8 @@ class HomeToolbar extends StatelessWidget {
   Widget _filterButton() => Stack(
         clipBehavior: Clip.none,
         children: [
-          // Open chips show as a tinted circle behind the icon.
           IconButton(
             icon: Icon(Icons.tune_rounded, color: cs.primary),
-            style: IconButton.styleFrom(
-                backgroundColor: filterChipsVisible
-                    ? cs.primary.withValues(alpha: 0.12)
-                    : Colors.transparent),
             onPressed: onFilterToggle,
             tooltip: l10n.tooltipFilter,
           ),

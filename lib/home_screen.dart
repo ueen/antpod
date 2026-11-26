@@ -1020,7 +1020,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     episodeSearch: _mode == _FeedMode.searchEpisodes,
                     searchOpen: searchOpen,
                     searchCtrl: _searchCtrl, filter: _effectiveFilter,
-                    filterChipsVisible: _effectiveChipsVisible,
                     l10n: l10n, cs: cs,
                     onBack: _mode == _FeedMode.previewPodcast ? _exitPreview : _exitToFeed,
                     onSearchChanged: _onSearchChanged,

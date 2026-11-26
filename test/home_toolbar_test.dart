@@ -20,7 +20,7 @@ void main() {
             child: HomeToolbar(
               inPodcast: false, discoverSearch: false, episodeSearch: false,
               searchOpen: false, searchCtrl: TextEditingController(),
-              filter: const FilterState(), filterChipsVisible: false,
+              filter: const FilterState(),
               l10n: AppLocalizations.of(context)!,
               cs: Theme.of(context).colorScheme,
               onBack: () {}, onSearchChanged: (_) {}, onClearSearch: () {},
