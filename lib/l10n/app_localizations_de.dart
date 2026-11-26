@@ -245,6 +245,12 @@ class AppLocalizationsDe extends AppLocalizations {
   String get trendingEmpty => 'Gerade keine Trends verfügbar.';
 
   @override
+  String get trendsCountry => 'Land für Trends';
+
+  @override
+  String get trendsCountrySearch => 'Land suchen…';
+
+  @override
   String get playbackError => 'Episode konnte nicht abgespielt werden';
 
   @override

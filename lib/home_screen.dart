@@ -34,6 +34,7 @@ import 'podcast_service.dart';
 import 'settings_sheet.dart';
 import 'share_utils.dart';
 import 'network.dart';
+import 'trends_country.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Feed mode
@@ -83,6 +84,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<PodcastResult> _trending = [];
   DateTime? _trendingFetchedAt;
+  /// The country [_trending] is from.
+  String? _trendingCountry;
   List<UnifiedResult> _unifiedSearchResults = [];
   int _searchOffset = 0;
   bool _searchHasMore = true;
@@ -733,7 +736,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return result;
   }
 
-  /// Country for Apple's charts and episode search, from the app locale.
+  /// Country for Apple's charts: the one picked on the Discover page, else
+  /// the app locale's.
+  String get _trendsCountry =>
+      context.read<AppSettings>().trendsCountry ??
+      defaultTrendsCountry(Localizations.localeOf(context));
+
+  /// Country for episode search, from the app locale.
   String get _searchCountry {
     final locale = Localizations.localeOf(context);
     return (locale.countryCode ?? locale.languageCode).toLowerCase();
@@ -804,10 +813,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _kTrendingCacheKey = 'trending_cache_v1';
   static const _kTrendingCacheTsKey = 'trending_cache_ts_v1';
+  static const _kTrendingCacheCountryKey = 'trending_cache_country_v1';
 
   Future<void> _loadDiscover({bool forceRefresh = false}) async {
+    final country = _trendsCountry;
     // Return cached data if it's less than 1 day old and we have results.
     if (!forceRefresh && _trending.isNotEmpty && _trendingFetchedAt != null &&
+        _trendingCountry == country &&
         DateTime.now().difference(_trendingFetchedAt!).inHours < 24) {
       return;
     }
@@ -817,7 +829,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final ts = prefs.getInt(_kTrendingCacheTsKey);
       final raw = prefs.getString(_kTrendingCacheKey);
-      if (ts != null && raw != null) {
+      if (ts != null && raw != null &&
+          prefs.getString(_kTrendingCacheCountryKey) == country) {
         final age = DateTime.now()
             .difference(DateTime.fromMillisecondsSinceEpoch(ts));
         if (age.inHours < 24) {
@@ -830,6 +843,7 @@ class _HomeScreenState extends State<HomeScreen> {
               setState(() {
                 _trending = list;
                 _trendingFetchedAt = DateTime.fromMillisecondsSinceEpoch(ts);
+                _trendingCountry = country;
               });
               return;
             }
@@ -839,7 +853,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (!mounted) return;
-    final country = _searchCountry;
     final language = Localizations.localeOf(context).languageCode;
     final lang = language == 'en' ? 'en' : '$language,en';
     setState(() { _loadingTrending = true; _trendingFailed = false; });
@@ -850,23 +863,27 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       charts = [];
     }
-    if (!mounted) return;
+    // Another country was picked meanwhile: its load takes over.
+    if (!mounted || _trendsCountry != country) return;
 
     if (charts.isEmpty) {
       try {
         charts = await PodcastService.trending(max: 10, lang: lang);
       } catch (_) {
-        if (mounted) setState(() { _trendingFailed = true; _loadingTrending = false; });
+        if (mounted && _trendsCountry == country) {
+          setState(() { _trendingFailed = true; _loadingTrending = false; });
+        }
         return;
       }
     }
-    if (!mounted) return;
+    if (!mounted || _trendsCountry != country) return;
 
     // Persist to cache.
     final now = DateTime.now();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kTrendingCacheTsKey, now.millisecondsSinceEpoch);
+      await prefs.setString(_kTrendingCacheCountryKey, country);
       await prefs.setString(_kTrendingCacheKey,
           jsonEncode(charts.map((c) => c.toJson()).toList()));
     } catch (_) {}
@@ -875,6 +892,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _trending = charts;
         _trendingFetchedAt = now;
+        _trendingCountry = country;
         _loadingTrending = false;
       });
     }
@@ -1183,6 +1201,11 @@ class _HomeScreenState extends State<HomeScreen> {
           cs: cs, l10n: l10n,
           onOpen: _openPodcast,
           onRefresh: () => _loadDiscover(forceRefresh: true),
+          trendsCountry: _trendsCountry,
+          onTrendsCountry: (code) {
+            context.read<AppSettings>().trendsCountry = code;
+            _loadDiscover(forceRefresh: true);
+          },
           onLoadMore: _loadMorePISearch,
         );
 

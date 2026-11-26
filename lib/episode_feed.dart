@@ -1,11 +1,8 @@
 // lib/episode_feed.dart
 import 'dart:async';
-import 'dart:math' show pi, cos, sin;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart'
-    show RenderSliverToBoxAdapter, SliverGeometry;
 import 'package:provider/provider.dart';
 
 import 'app_database.dart';
@@ -14,6 +11,7 @@ import 'feed_state.dart';
 import 'l10n/app_localizations.dart';
 import 'player_provider.dart';
 import 'network.dart';
+import 'pull_refresh.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Episode feed — animated list with diff
@@ -56,14 +54,6 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
   GlobalKey<SliverAnimatedListState> _listKey = GlobalKey<SliverAnimatedListState>();
   List<Episode> _displayed = [];
 
-  // Pull-to-refresh state
-  bool _pullEligible = false;
-  bool _localRefreshing = false;
-  // Drag distance lives in a notifier so pointer moves only rebuild the banner,
-  // not the whole feed (a setState per move made scrolling lag).
-  final _pullDrag = ValueNotifier<double>(0.0);
-  static const double _pullThreshold = 55.0;
-  static const double _pullMax = 70.0;
   Timer? _diffDebounce;
   List<Episode> _raw = [];
   StreamSubscription<List<Episode>>? _sub;
@@ -120,7 +110,6 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
     _markedSub?.cancel();
     _downloadedCountSub?.cancel();
     _scrollCtrl.dispose();
-    _pullDrag.dispose();
     super.dispose();
   }
 
@@ -316,26 +305,11 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
         ),
       );
 
-  // Refresh banner — first sliver, so it scrolls with the list.
-  Widget _refreshBanner() => ValueListenableBuilder<double>(
-        valueListenable: _pullDrag,
-        builder: (_, drag, __) {
-          final active = widget.refreshing || _localRefreshing;
-          final height =
-              active ? 52.0 : (drag / _pullMax * 52.0).clamp(0.0, 52.0);
-          return AnimatedContainer(
-            duration: drag > 0 && !active
-                ? Duration.zero
-                : const Duration(milliseconds: 350),
-            curve: Curves.easeOut,
-            height: height,
-            color: widget.cs.surfaceContainerHighest,
-            child: height > 20
-                ? Center(child: _AntSpinner(color: widget.cs.primary))
-                : null,
-          );
-        },
-      );
+  /// Pull-to-refresh: offline, the banner just folds away again.
+  Future<void> _pullRefresh() async {
+    if ((await Connectivity().checkConnectivity()).isOffline) return;
+    await widget.onRefresh();
+  }
 
   // Scroll-to-top FAB, positioned inside a Stack above the feed.
   Widget _scrollTopFab(ColorScheme cs) {
@@ -384,52 +358,15 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
         !_showMarked &&
         _markedCount > 0;
 
-    final child = Listener(
-      onPointerDown: (e) {
-        _pullEligible = _scrollCtrl.hasClients && _scrollCtrl.offset <= 0;
-        if (_pullEligible) _pullDrag.value = 0;
-      },
-      onPointerMove: (e) {
-        if (!_pullEligible) return;
-        if (!_scrollCtrl.hasClients || _scrollCtrl.offset > 1) {
-          _pullEligible = false;
-          _pullDrag.value = 0;
-          return;
-        }
-        final dy = e.delta.dy;
-        final cur = _pullDrag.value;
-        if (dy == 0 || (dy < 0 && cur == 0)) return;
-        final next = (cur + dy * 0.5).clamp(0.0, _pullMax);
-        if ((next - cur).abs() > 0.5) _pullDrag.value = next;
-      },
-      onPointerUp: (e) {
-        if (!_pullEligible) return;
-        _pullEligible = false;
-        if (_pullDrag.value >= _pullThreshold && !_localRefreshing) {
-          _pullDrag.value = 0;
-          setState(() => _localRefreshing = true);
-          Connectivity().checkConnectivity().then((results) {
-            if (results.isOffline) {
-              if (mounted) setState(() => _localRefreshing = false);
-              return;
-            }
-            widget.onRefresh().whenComplete(() {
-              if (mounted) setState(() => _localRefreshing = false);
-            });
-          });
-        } else {
-          _pullDrag.value = 0;
-        }
-      },
-      onPointerCancel: (e) {
-        _pullEligible = false;
-        _pullDrag.value = 0;
-      },
-      child: CustomScrollView(
+    final child = PullToRefresh(
+      controller: _scrollCtrl,
+      refreshing: widget.refreshing,
+      onRefresh: _pullRefresh,
+      builder: (banner) => CustomScrollView(
         controller: _scrollCtrl,
-        physics: const _SmoothScrollPhysics(),
+        physics: const SmoothScrollPhysics(),
         slivers: [
-          _StableTopSliver(child: _refreshBanner()),
+          banner,
           if (widget.headerSlivers != null)
             for (final w in widget.headerSlivers!)
               SliverToBoxAdapter(child: w),
@@ -556,167 +493,4 @@ class _EpisodeFeedState extends State<EpisodeFeed> {
       ],
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Smooth scroll physics
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Scrolls ~40% further than Android default (friction 0.015 → 0.007) while
-// keeping a clean exponential decay — no spring tail.
-class _SmoothScrollPhysics extends ClampingScrollPhysics {
-  const _SmoothScrollPhysics()
-      : super(parent: const AlwaysScrollableScrollPhysics());
-
-  @override
-  _SmoothScrollPhysics applyTo(ScrollPhysics? ancestor) =>
-      const _SmoothScrollPhysics();
-
-  @override
-  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
-    final tolerance = toleranceFor(position);
-    if (position.outOfRange) {
-      return super.createBallisticSimulation(position, velocity);
-    }
-    if (velocity.abs() < tolerance.velocity) return null;
-    if (velocity > 0 && position.pixels >= position.maxScrollExtent) return null;
-    if (velocity < 0 && position.pixels <= position.minScrollExtent) return null;
-    return ClampingScrollSimulation(
-      position: position.pixels,
-      velocity: velocity,
-      friction: 0.007,
-      tolerance: tolerance,
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Refresh banner sliver — keeps the content still when the banner resizes
-// while it is scrolled out of view
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Like [SliverToBoxAdapter], but when its height changes while it is
-/// completely scrolled past (e.g. a refresh starts or ends while the user is
-/// further down the list) it reports a scroll-offset correction so the
-/// visible content does not jump. While it is visible at the top it grows and
-/// shrinks normally, pushing the list as the pull gesture expects.
-class _StableTopSliver extends SingleChildRenderObjectWidget {
-  const _StableTopSliver({required Widget super.child});
-
-  @override
-  RenderSliverToBoxAdapter createRenderObject(BuildContext context) =>
-      _RenderStableTopSliver();
-}
-
-class _RenderStableTopSliver extends RenderSliverToBoxAdapter {
-  double? _lastExtent;
-
-  @override
-  void performLayout() {
-    final box = child;
-    if (box == null) {
-      super.performLayout();
-      return;
-    }
-    box.layout(constraints.asBoxConstraints(), parentUsesSize: true);
-    final extent = box.size.height;
-    final last = _lastExtent;
-    _lastExtent = extent;
-    if (last != null &&
-        extent != last &&
-        constraints.scrollOffset > 0 &&
-        constraints.scrollOffset >= last) {
-      // Viewport applies the correction and lays out again.
-      geometry = SliverGeometry(scrollOffsetCorrection: extent - last);
-      return;
-    }
-    super.performLayout();
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pull-to-refresh spinner — a ring of 8 dots turning slowly clockwise while
-// the "prominent" highlight hops dot-to-dot counterclockwise, each hop a
-// short crossfade (next dot fades in while the previous one fades out).
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _AntSpinner extends StatefulWidget {
-  final Color color;
-  const _AntSpinner({required this.color});
-
-  @override
-  State<_AntSpinner> createState() => _AntSpinnerState();
-}
-
-class _AntSpinnerState extends State<_AntSpinner>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _ctrl,
-        builder: (_, __) => CustomPaint(
-          size: const Size(22, 22),
-          painter: _AntsPainter(progress: _ctrl.value, color: widget.color),
-        ),
-      );
-}
-
-class _AntsPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-
-  const _AntsPainter({required this.progress, required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final radius = size.width * 0.40;
-    final paint = Paint()..style = PaintingStyle.fill;
-
-    const dotCount = 8;
-    // Ring turns 2 dot-positions clockwise per cycle…
-    final ringPhase = progress * 0.25;
-    // …while the highlight steps 10 dots counterclockwise relative to the
-    // ring, so the cycle loops seamlessly (net: one CCW turn per cycle).
-    final step = progress * 10;
-
-    for (int j = 0; j < dotCount; j++) {
-      final angle = (j / dotCount + ringPhase) * 2 * pi - pi / 2;
-      final p = _prominence((step + j) % dotCount);
-      paint.color = color.withValues(alpha: 0.3 + 0.7 * p);
-      canvas.drawCircle(
-          Offset(cx + cos(angle) * radius, cy + sin(angle) * radius),
-          1.5 + 1.4 * p,
-          paint);
-    }
-  }
-
-  /// Prominence (0–1) of a dot at phase [tau] ∈ [0, 8): quick fade-in just
-  /// before its turn, a short hold, then a slower fade-out that overlaps the
-  /// next dot's fade-in.
-  static double _prominence(double tau) {
-    double smooth(double x) {
-      final t = x.clamp(0.0, 1.0);
-      return t * t * (3 - 2 * t);
-    }
-
-    if (tau >= 7.6) return smooth((tau - 7.6) / 0.4);
-    if (tau < 0.4) return 1;
-    if (tau < 1.4) return 1 - smooth(tau - 0.4);
-    return 0;
-  }
-
-  @override
-  bool shouldRepaint(_AntsPainter old) => old.progress != progress;
 }

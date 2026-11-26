@@ -68,6 +68,8 @@
   "tooltipGuide": "Anleitung",
   "trendingError": "Trends konnten nicht geladen werden",
   "trendingEmpty": "Gerade keine Trends verfügbar.",
+  "trendsCountry": "Land für Trends",
+  "trendsCountrySearch": "Land suchen…",
   "playbackError": "Episode konnte nicht abgespielt werden",
   "settings": "Einstellungen",
   "settingsAppearance": "Darstellung",

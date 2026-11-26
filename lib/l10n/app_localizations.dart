@@ -507,6 +507,18 @@ abstract class AppLocalizations {
   /// **'No trending podcasts available.'**
   String get trendingEmpty;
 
+  /// No description provided for @trendsCountry.
+  ///
+  /// In en, this message translates to:
+  /// **'Trends country'**
+  String get trendsCountry;
+
+  /// No description provided for @trendsCountrySearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search countries…'**
+  String get trendsCountrySearch;
+
   /// No description provided for @playbackError.
   ///
   /// In en, this message translates to:

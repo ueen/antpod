@@ -96,6 +96,8 @@
   "tooltipGuide": "Guide",
   "trendingError": "Could not load trending podcasts",
   "trendingEmpty": "No trending podcasts available.",
+  "trendsCountry": "Trends country",
+  "trendsCountrySearch": "Search countries…",
   "playbackError": "Couldn't play this episode",
   "settings": "Settings",
   "settingsAppearance": "Appearance",

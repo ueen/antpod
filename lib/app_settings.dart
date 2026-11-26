@@ -14,11 +14,12 @@ class AppSettings extends ChangeNotifier {
   static const keyDeletePlayedDownloads = 'settings_delete_played_downloads';
   static const keyTheme = 'settings_theme';
   static const keyRewindOnResume = 'settings_rewind_on_resume';
+  static const keyTrendsCountry = 'settings_trends_country';
 
   /// Every key, for the backup.
   static const keys = [
     keyMaterialYou, keyMarkPlayedNearEnd, keyDeletePlayedDownloads,
-    keyTheme, keyRewindOnResume,
+    keyTheme, keyRewindOnResume, keyTrendsCountry,
   ];
 
   /// System, light or dark; stored by name ('system', 'light', 'dark').
@@ -55,6 +56,14 @@ class AppSettings extends ChangeNotifier {
       rewindOnResume && pausedFor >= resumeRewindAfter
           ? resumeRewindBy
           : Duration.zero;
+
+  /// The country Apple's charts come from (ISO code, lowercase); null until
+  /// one is picked, then the app locale's.
+  String? get trendsCountry => _prefs.getString(keyTrendsCountry);
+  set trendsCountry(String? v) {
+    v == null ? _prefs.remove(keyTrendsCountry) : _prefs.setString(keyTrendsCountry, v);
+    notifyListeners();
+  }
 
   void _set(String key, bool v) {
     // The in-memory value changes at once; the write to disk follows.

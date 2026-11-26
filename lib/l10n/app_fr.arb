@@ -68,6 +68,8 @@
   "tooltipGuide": "Guide",
   "trendingError": "Impossible de charger les tendances",
   "trendingEmpty": "Aucune tendance disponible.",
+  "trendsCountry": "Pays des tendances",
+  "trendsCountrySearch": "Rechercher un pays…",
   "playbackError": "Impossible de lire cet épisode",
   "settings": "Paramètres",
   "settingsAppearance": "Apparence",

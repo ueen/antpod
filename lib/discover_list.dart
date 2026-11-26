@@ -11,6 +11,8 @@ import 'app_database.dart';
 import 'episode_tile.dart';
 import 'l10n/app_localizations.dart';
 import 'podcast_service.dart';
+import 'pull_refresh.dart';
+import 'trends_country.dart';
 
 /// A search hit: a podcast or an episode, interleaved in one list.
 class UnifiedResult {
@@ -32,6 +34,10 @@ class DiscoverList extends StatefulWidget {
   /// Opens a podcast: its page when subscribed, a preview otherwise.
   final void Function(PodcastResult) onOpen;
   final Future<void> Function() onRefresh;
+  /// The country of the trends (ISO code, lowercase), in their title.
+  final String trendsCountry;
+  /// Another country picked in the title's sheet.
+  final ValueChanged<String> onTrendsCountry;
   final Future<void> Function() onLoadMore;
 
   const DiscoverList({
@@ -44,6 +50,7 @@ class DiscoverList extends StatefulWidget {
     this.trendingFailed = false,
     required this.cs, required this.l10n,
     required this.onOpen, required this.onRefresh,
+    required this.trendsCountry, required this.onTrendsCountry,
     required this.onLoadMore,
   });
 
@@ -53,6 +60,7 @@ class DiscoverList extends StatefulWidget {
 
 class _DiscoverListState extends State<DiscoverList> {
   final _searchScrollCtrl = ScrollController();
+  final _trendsScrollCtrl = ScrollController();
 
   @override
   void initState() {
@@ -70,6 +78,7 @@ class _DiscoverListState extends State<DiscoverList> {
   @override
   void dispose() {
     _searchScrollCtrl.dispose();
+    _trendsScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -231,18 +240,24 @@ class _DiscoverListState extends State<DiscoverList> {
         ),
         Divider(height: 1, color: cs.outlineVariant),
         Expanded(
-          child: RefreshIndicator(
+          // The pull only triggers the refresh; the spinner in the middle
+          // shows it loading.
+          child: PullToRefresh(
+            controller: _trendsScrollCtrl,
             onRefresh: widget.onRefresh,
+            holdWhileRefreshing: false,
             // One scroll view in every state: the title scrolls away with the
             // list, and pull-to-refresh also works while loading/empty/error.
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
+            builder: (banner) => CustomScrollView(
+              controller: _trendsScrollCtrl,
+              physics: const SmoothScrollPhysics(),
               slivers: [
+                banner,
                 SliverToBoxAdapter(child: _trendsTitle(cs)),
                 if (widget.loadingTrending)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     hasScrollBody: false,
-                    child: Center(child: CircularProgressIndicator()),
+                    child: Center(child: AntSpinner(color: cs.primary, size: 36)),
                   )
                 else if (widget.trendingFailed)
                   SliverToBoxAdapter(
@@ -283,22 +298,35 @@ class _DiscoverListState extends State<DiscoverList> {
     );
   }
 
+  Future<void> _pickCountry() async {
+    final code = await showTrendsCountrySheet(context, widget.trendsCountry);
+    if (code != null && code != widget.trendsCountry) widget.onTrendsCountry(code);
+  }
+
   // Tab-like pill so the section title reads as a label, not body text.
+  // Tapping it picks the country.
   Widget _trendsTitle(ColorScheme cs) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
         child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              // The active filter chip's color: border and title, over a
-              // light tint of it.
-              color: cs.primary.withValues(alpha: 0.12),
+          child: Material(
+            // The active filter chip's color: border and title, over a
+            // light tint of it.
+            color: cs.primary.withValues(alpha: 0.12),
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: cs.primary, width: 1.5),
+              side: BorderSide(color: cs.primary, width: 1.5),
             ),
-            child: Text('Apple Trends',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
-                    color: cs.primary)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: const ValueKey('trends-title'),
+              onTap: _pickCountry,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                child: Text('Apple Trends (${widget.trendsCountry.toUpperCase()})',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                        color: cs.primary)),
+              ),
+            ),
           ),
         ),
       );
