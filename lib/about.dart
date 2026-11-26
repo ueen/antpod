@@ -292,11 +292,23 @@ class AntWalkerState extends State<AntWalker> with TickerProviderStateMixin {
   }
 
   void _scheduleNext() {
-    // Random gap between 8 and 20 minutes
-    final ms = 480000 + _rng.nextInt(720001);
+    // Random gap between 25 and 50 minutes. Only walks while the app is on
+    // screen; otherwise it waits for the next gap, so coming back to the
+    // app doesn't greet you with an ant.
+    final ms = 1500000 + _rng.nextInt(1500001);
     _timer = Timer(Duration(milliseconds: ms), () {
-      if (mounted) startWalk();
+      if (!mounted) return;
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        startWalk();
+      } else {
+        _scheduleNext();
+      }
     });
+  }
+
+  /// A walk one time in four, for the logo tap.
+  void walkSometimes() {
+    if (_rng.nextInt(4) == 0) startWalk();
   }
 
   void startWalk() {

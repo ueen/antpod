@@ -735,7 +735,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showAbout(BuildContext context) {
-    _antWalkerKey.currentState?.startWalk();
+    _antWalkerKey.currentState?.walkSometimes();
     showAboutBubble(context, onSettings: () => showSettingsSheet(context));
   }
 
