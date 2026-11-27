@@ -137,8 +137,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     // Just as fast as the finger: no jump ahead, no gap behind.
     expect((route.animation!.value - v0) / 0.1, closeTo(2, 0.05));
-    await tester.pump(const Duration(milliseconds: 280));
+    await tester.pump(const Duration(milliseconds: 200));
     final v2 = route.animation!.value;
+    expect(v2, lessThan(1), reason: 'not there yet');
     await tester.pump(const Duration(milliseconds: 16));
     expect((route.animation!.value - v2) / 0.016, lessThan(0.5),
         reason: 'slower near the end');
@@ -180,18 +181,19 @@ void main() {
     expect(route.isActive, isFalse);
   });
 
-  testWidgets('a fast fling keeps its speed, braking only over the last third',
+  testWidgets('a flick keeps its speed, braking only over the last sixth',
       (tester) async {
     final route = await push(tester, tracking: true);
     route.drag(36);
     await tester.pump();
-    route.release(3600); // 10 travels per second
+    route.release(1080); // 3 travels per second, a quick flick
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
+    await tester.pump(const Duration(milliseconds: 230));
     final v1 = route.animation!.value;
+    expect(v1, greaterThan(0.75));
     await tester.pump(const Duration(milliseconds: 16));
-    expect((route.animation!.value - v1) / 0.016, closeTo(10, 0.2),
-        reason: 'still at full speed past half way');
+    expect((route.animation!.value - v1) / 0.016, closeTo(3, 0.05),
+        reason: 'still at full speed three quarters of the way');
     await tester.pumpAndSettle();
     expect(route.animation!.value, 1);
   });
