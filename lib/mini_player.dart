@@ -31,6 +31,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
   /// The finger last down on the mini player.
   int? _pointer;
 
+  /// The finger's way up since it set out, by its events' time stamps.
+  final _trail = <({Duration at, double up})>[];
+
   /// Pushes the sheet; [tracking]: the finger moves it, from closed, and
   /// stays on it through the push.
   PlayerSheetRoute? _push({required bool tracking}) {
@@ -65,6 +68,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
   // An upward drag pushes the sheet at once and it follows the finger; one
   // that starts downward does nothing.
   void _onDragUpdate(DragUpdateDetails d) {
+    final at = d.sourceTimeStamp;
+    if (at != null) {
+      final up = (_trail.isEmpty ? 0.0 : _trail.last.up) - d.delta.dy;
+      _trail.add((at: at, up: up));
+      if (_trail.length > 64) _trail.removeAt(0);
+    }
     var r = _route;
     if (r == null) {
       if (d.delta.dy >= 0) return;
@@ -74,8 +83,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
     r.drag(-d.delta.dy);
   }
 
-  void _onDragEnd(DragEndDetails d) =>
-      _route?.release(-(d.primaryVelocity ?? 0));
+  void _onDragEnd(DragEndDetails d) {
+    final vy = releaseSpeed(-(d.primaryVelocity ?? 0), _trail);
+    _trail.clear();
+    _route?.release(vy);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +125,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     (r) => r
                       ..minFlingDistance = 0
                       ..minFlingVelocity = 0
+                      ..onStart = ((_) {
+                        _trail.clear();
+                      })
                       ..onUpdate = _onDragUpdate
                       ..onEnd = _onDragEnd
                       ..onCancel = () => _route?.release(0),
@@ -124,6 +139,27 @@ class _MiniPlayerState extends State<MiniPlayer> {
       ),
     );
   }
+}
+
+/// The finger's speed at a let-go, pixels a second up: the gesture's own
+/// [tracked] speed, unless it lost it. A stalled frame (the sheet's first,
+/// say) hands the finger's moves on all at once, too few for the tracker,
+/// which then says 0. The [trail] (its way up by time stamp) still knows:
+/// how far it went over its last tenth of a second or so.
+@visibleForTesting
+double releaseSpeed(
+    double tracked, List<({Duration at, double up})> trail) {
+  if (trail.length < 2) return tracked;
+  final last = trail.last;
+  var first = trail.first;
+  for (final s in trail) {
+    if (last.at - s.at < const Duration(milliseconds: 100)) break;
+    first = s;
+  }
+  final dt = (last.at - first.at).inMicroseconds / 1e6;
+  if (dt < 0.016) return tracked;
+  final v = ((last.up - first.up) / dt).clamp(-kMaxFlingVelocity, kMaxFlingVelocity);
+  return tracked.abs() < v.abs() / 2 ? v : tracked;
 }
 
 /// The mini player as it looks: a handle over the card. Its stand-in on
@@ -521,14 +557,6 @@ class PlayerSheetRoute extends PopupRoute<void> {
   /// sending the sheet back.
   static const _wobble = 150.0;
 
-  /// A flick: let go faster than [_flickFrom] pixels per second toward
-  /// where it goes, it speeds on beyond the finger, up to twice as fast
-  /// from [_flickFull].
-  static const _flickFrom = 600.0, _flickFull = 1600.0;
-
-  static double _flick(double toward) =>
-      1 + ((toward - _flickFrom) / (_flickFull - _flickFrom)).clamp(0.0, 1.0);
-
   /// The finger opens it: no motion of its own on push.
   final bool _tracking;
 
@@ -744,9 +772,9 @@ class PlayerSheetRoute extends PopupRoute<void> {
         open = still ? t >= 0.5 : vy > 0;
       }
       if (open) {
-        c.animateWith(_Glide(t, 1, vy / _travel, flick: _flick(vy)));
+        c.animateWith(_Glide(t, 1, vy / _travel));
       } else {
-        _leave = _Glide(t, 0, vy / _travel, flick: _flick(-vy));
+        _leave = _Glide(t, 0, vy / _travel);
         navigator?.pop();
       }
       return;
@@ -758,7 +786,7 @@ class PlayerSheetRoute extends PopupRoute<void> {
     final end =
         e + ClampingScrollSimulation(position: 0, velocity: vy).x(1e9);
     if (vy < 0 && end < -_travel / 2) {
-      _leave = _Glide(1, 0, vy / (_travel + e), flick: _flick(-vy));
+      _leave = _Glide(1, 0, vy / (_travel + e));
       navigator?.pop();
     } else if (end < 0) {
       _drift!.animateWith(_Settle(e, 0, vy, span: _travel));
@@ -927,50 +955,29 @@ class _Settle extends Simulation {
 /// than [minSpeed], the full way in 2 s), then coming to rest on an
 /// ease-out cubic of [_brake] seconds, but over the last sixth of the way
 /// at most. However slowly the finger let go, it goes on as slowly; however
-/// fast, it keeps that speed nearly all the way. A flick speeds up to
-/// [flick] times that over [_ramp] s first, from the finger's speed on, so
-/// it doesn't jump.
+/// fast, it keeps that speed nearly all the way.
 class _Glide extends Simulation {
-  _Glide(this.from, this.to, double velocity, {double flick = 1})
+  _Glide(this.from, this.to, double velocity)
       : _d = (to - from).abs(),
-        _v0 = math.max(velocity * (to - from).sign, minSpeed) {
-    var v = _v0 * flick, b = math.min(_d / 6, v * _brake / 3);
-    var r = flick > 1 ? _ramp : 0.0;
-    if ((_v0 + v) / 2 * r + b > _d) {
-      // Short of room: only as quick as it still has the way for.
-      v = 2 * (_d - _d / 6) / r - _v0;
-      if (v <= _v0) {
-        v = _v0;
-        r = 0;
-      }
-      b = math.min(_d / 6, v * _brake / 3);
-    }
-    _v = v;
-    _b = b;
-    _r = r;
-    _cruise = r + (_d - b - (_v0 + v) / 2 * r) / v;
-    _end = _cruise + 3 * b / v;
+        _v = math.max(velocity * (to - from).sign, minSpeed) {
+    _b = math.min(_d / 6, _v * _brake / 3);
+    _cruise = (_d - _b) / _v;
+    _end = _cruise + 3 * _b / _v;
   }
 
   static const minSpeed = 0.5;
   static const _brake = 0.3;
-  static const _ramp = 0.05;
 
   final double from, to;
-  final double _d, _v0;
-  late final double _v, _b, _r, _cruise, _end;
+  final double _d, _v;
+  late final double _b, _cruise, _end;
 
   double get _sign => (to - from).sign;
 
   @override
   double x(double time) {
     if (time >= _end) return to;
-    if (time < _r) {
-      return from + _sign * (_v0 + (_v - _v0) * time / (2 * _r)) * time;
-    }
-    if (time <= _cruise) {
-      return from + _sign * ((_v0 + _v) / 2 * _r + _v * (time - _r));
-    }
+    if (time <= _cruise) return from + _sign * _v * time;
     final s = 1 - (time - _cruise) / (_end - _cruise);
     return to - _sign * _b * s * s * s;
   }
@@ -978,7 +985,6 @@ class _Glide extends Simulation {
   @override
   double dx(double time) {
     if (time >= _end) return 0;
-    if (time < _r) return _sign * (_v0 + (_v - _v0) * time / _r);
     if (time <= _cruise) return _sign * _v;
     final s = 1 - (time - _cruise) / (_end - _cruise);
     return _sign * _v * s * s;
