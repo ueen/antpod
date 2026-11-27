@@ -1,4 +1,5 @@
 // lib/mini_player.dart
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -28,11 +29,20 @@ class _MiniPlayerState extends State<MiniPlayer> {
   /// mini player hides meanwhile, its stand-in rides the sheet's edge.
   PlayerSheetRoute? _shown;
 
-  /// The finger last down on the mini player.
+  /// The finger down on the mini player, where it came down and the
+  /// furthest it's strayed from there.
   int? _pointer;
+  Offset _down = Offset.zero;
+  double _strayed = 0;
 
-  /// The finger's way up since it set out, by its events' time stamps.
+  /// The finger's way up since it set out, by its events' time stamps, and
+  /// its speed.
   final _trail = <({Duration at, double up})>[];
+  VelocityTracker? _tracker;
+
+  /// The sheet this finger pushed, and whether the card's tap went off.
+  PlayerSheetRoute? _dragged;
+  bool _tapped = false;
 
   /// Pushes the sheet; [tracking]: the finger moves it, from closed, and
   /// stays on it through the push.
@@ -65,28 +75,64 @@ class _MiniPlayerState extends State<MiniPlayer> {
     return box.localToGlobal(Offset.zero, ancestor: nav) & box.size;
   }
 
-  // An upward drag pushes the sheet at once and it follows the finger; one
-  // that starts downward does nothing.
-  void _onDragUpdate(DragUpdateDetails d) {
-    final at = d.sourceTimeStamp;
-    if (at != null) {
-      final up = (_trail.isEmpty ? 0.0 : _trail.last.up) - d.delta.dy;
-      _trail.add((at: at, up: up));
-      if (_trail.length > 64) _trail.removeAt(0);
-    }
-    var r = _route;
-    if (r == null) {
-      if (d.delta.dy >= 0) return;
-      r = _push(tracking: true);
-      if (r == null) return;
-    }
-    r.drag(-d.delta.dy);
+  void _onDown(PointerDownEvent e) {
+    if (_pointer != null) return;
+    _pointer = e.pointer;
+    _down = e.position;
+    _strayed = 0;
+    _tapped = false;
+    _dragged = null;
+    _trail.clear();
+    _tracker = VelocityTracker.withKind(e.kind)
+      ..addPosition(e.timeStamp, e.position);
   }
 
-  void _onDragEnd(DragEndDetails d) {
-    final vy = releaseSpeed(-(d.primaryVelocity ?? 0), _trail);
+  // Straight from the finger's moves, no gesture to win first: the first
+  // pixel up pushes the sheet and it follows from there. One that starts
+  // downward waits.
+  void _onMove(PointerMoveEvent e) {
+    if (e.pointer != _pointer) return;
+    _tracker?.addPosition(e.timeStamp, e.position);
+    _strayed = math.max(_strayed, (e.position - _down).distance);
+    final up = (_trail.isEmpty ? 0.0 : _trail.last.up) - e.delta.dy;
+    _trail.add((at: e.timeStamp, up: up));
+    if (_trail.length > 64) _trail.removeAt(0);
+    var r = _route;
+    if (r == null) {
+      if (e.delta.dy >= 0) return;
+      r = _push(tracking: true);
+      if (r == null) return;
+      _dragged = r;
+    }
+    r.drag(-e.delta.dy);
+  }
+
+  void _onUp(PointerUpEvent e) {
+    if (e.pointer != _pointer) return;
+    _pointer = null;
+    final r = _dragged;
+    _dragged = null;
+    if (r == null) return;
+    final tracked = -(_tracker?.getVelocity().pixelsPerSecond.dy ?? 0);
+    final vy = releaseSpeed(
+        tracked.clamp(-kMaxFlingVelocity, kMaxFlingVelocity), _trail);
     _trail.clear();
-    _route?.release(vy);
+    if (_strayed >= kTouchSlop) {
+      r.release(vy);
+      return;
+    }
+    // Hardly moved: a touch, not a drag. The taps go first (after this
+    // event): on the card it opens, on a button it goes back.
+    scheduleMicrotask(() => r.letGo(open: _tapped));
+  }
+
+  void _onCancel(PointerCancelEvent e) {
+    if (e.pointer != _pointer) return;
+    _pointer = null;
+    final r = _dragged;
+    _dragged = null;
+    _trail.clear();
+    r?.release(0);
   }
 
   @override
@@ -108,33 +154,19 @@ class _MiniPlayerState extends State<MiniPlayer> {
         alignment: Alignment.bottomCenter,
         child: hasEpisode
             ? Listener(
-                onPointerDown: (e) => _pointer = e.pointer,
+                onPointerDown: _onDown,
+                onPointerMove: _onMove,
+                onPointerUp: _onUp,
+                onPointerCancel: _onCancel,
                 child: RawGestureDetector(
                 gestures: {
                   TapGestureRecognizer:
                       GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
                     () => TapGestureRecognizer(debugOwner: this),
-                    (r) => r.onTap = () => _push(tracking: false),
-                  ),
-                  // Every release counts, however slow: the sheet goes on
-                  // at the finger's speed. It moves from where the finger
-                  // came down, with the phone's own touch slop, as a list
-                  // does: none of the way is lost to the slop.
-                  VerticalDragGestureRecognizer:
-                      GestureRecognizerFactoryWithHandlers<
-                          VerticalDragGestureRecognizer>(
-                    () => VerticalDragGestureRecognizer(debugOwner: this),
-                    (r) => r
-                      ..minFlingDistance = 0
-                      ..minFlingVelocity = 0
-                      ..dragStartBehavior = DragStartBehavior.down
-                      ..gestureSettings = MediaQuery.maybeGestureSettingsOf(context)
-                      ..onStart = ((_) {
-                        _trail.clear();
-                      })
-                      ..onUpdate = _onDragUpdate
-                      ..onEnd = _onDragEnd
-                      ..onCancel = () => _route?.release(0),
+                    (r) => r.onTap = () {
+                      _tapped = true;
+                      _push(tracking: false);
+                    },
                   ),
                 },
                 child: const _MiniCard(),
@@ -750,6 +782,21 @@ class PlayerSheetRoute extends PopupRoute<void> {
     }
     _track(t0, c.value);
     return rest;
+  }
+
+  /// A touch that was no drag let go: it opens at a tap's pace, or goes
+  /// back.
+  void letGo({required bool open}) {
+    if (!isCurrent) return;
+    _grab();
+    _origin = _peak = null;
+    final c = controller!;
+    if (open) {
+      c.animateWith(_Settle(c.value, 1, 0));
+    } else {
+      _leave = _Settle(c.value, 0, 0);
+      navigator?.pop();
+    }
   }
 
   /// The finger let go at [vy] pixels per second, up positive. Reaching
