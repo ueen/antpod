@@ -71,26 +71,18 @@ void main() {
     expect(route.animation!.value, closeTo(0.2, 1e-9));
   });
 
-  testWidgets('let go still a quarter of the way up, it opens; before, it closes',
+  testWidgets('let go still on its way up, however little, it opens',
       (tester) async {
-    var route = await push(tester, tracking: true);
-    route.drag(100);
+    final route = await push(tester, tracking: true);
+    route.drag(20);
     route.release(0);
     await tester.pumpAndSettle();
     expect(route.animation!.value, 1);
     expect(route.isCurrent, isTrue);
-
-    nav.pop();
-    await tester.pumpAndSettle();
-    route = await push(tester, tracking: true);
-    route.drag(80);
-    route.release(0);
-    await tester.pumpAndSettle();
-    expect(route.isActive, isFalse);
   });
 
-  testWidgets('from the mini player, twice its height up opens it', (tester) async {
-    // The card's top at 543: 303 px to open, 128 (twice 64) far enough.
+  testWidgets('from the mini player, any way up opens it, unless sent back',
+      (tester) async {
     const mini = Rect.fromLTWH(0, 536, 800, 64);
     Future<PlayerSheetRoute> letGo(double up, double vy) async {
       final route = await push(tester, tracking: true, from: mini);
@@ -108,10 +100,12 @@ void main() {
     expect(route.isCurrent, isTrue, reason: 'the finger lifting is no way back');
     nav.pop();
     await tester.pumpAndSettle();
+    route = await letGo(30, 0);
+    expect(route.isCurrent, isTrue, reason: 'a little way up is enough');
+    nav.pop();
+    await tester.pumpAndSettle();
     route = await letGo(130, -300);
     expect(route.isActive, isFalse, reason: 'sent back');
-    route = await letGo(120, 0);
-    expect(route.isActive, isFalse, reason: 'not far enough');
   });
 
   testWidgets('a slow release goes its way, wherever it lets go', (tester) async {

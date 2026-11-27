@@ -554,13 +554,6 @@ class PlayerSheetRoute extends PopupRoute<void> {
     return math.max(1.0, start - h * (1 - openSize));
   }
 
-  /// How far up a release that isn't sent back opens: twice the mini
-  /// player's height, at most half the way.
-  double get _reach {
-    final f = _from;
-    return f == null ? _travel / 4 : math.min(_travel / 2, 2 * f.height);
-  }
-
   double get _maxExpand => math.max(0.0, _size.height * (maxSize - openSize));
 
   bool get _atTop =>
@@ -734,9 +727,8 @@ class PlayerSheetRoute extends PopupRoute<void> {
     if (t < 1) {
       final bool open;
       if (p > o) {
-        // On its way up: let go anywhere moving up, or still (or lifting)
-        // past [_reach], it opens.
-        open = vy > _still || (t * _travel >= _reach && vy > -_wobble);
+        // On its way up: let go anywhere, unless sent back down, it opens.
+        open = vy > -_wobble;
       } else if (p < o) {
         // On its way down: moving down, or still below half way, it closes.
         open = !(vy < -_still || (t < 0.5 && vy < _wobble));
