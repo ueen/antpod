@@ -1,7 +1,8 @@
 AntPod 1.0 is here! 🐜
 • Favourites: heart the episodes you love, find them under their own filter
-• Swipe up: the mini player rides into the full player at your thumb's speed
+• Swipe up: the player follows your thumb and flies on at your flick's speed
+• Episode art: each episode in its own cover, when the feed has one
 • Make it yours: adaptive, light or dark theme, in five languages
 • Backup & OPML: move phones in one file, or bring your shows along
-• Trends from anywhere: browse the charts of any country
+• Trends: browse the charts of any country
 • Plus a warm new look, smooth animations and many smaller improvements
