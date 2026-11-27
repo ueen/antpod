@@ -126,18 +126,23 @@ void main() {
     expect(route.isActive, isFalse);
   });
 
-  testWidgets('a release goes on at the finger\'s speed, and slows to a stop',
-      (tester) async {
+  testWidgets('a release sets off at the finger\'s speed, picks up a little, '
+      'and slows to a stop', (tester) async {
     final route = await push(tester, tracking: true);
     route.drag(180);
     await tester.pump();
     route.release(720); // 2 travels per second
     await tester.pump();
     final v0 = route.animation!.value;
-    await tester.pump(const Duration(milliseconds: 100));
-    // Just as fast as the finger: no jump ahead, no gap behind.
-    expect((route.animation!.value - v0) / 0.1, closeTo(2, 0.05));
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect((route.animation!.value - v0) / 0.016, closeTo(2, 0.1),
+        reason: 'as fast as the finger: no jump ahead, no gap behind');
+    await tester.pump(const Duration(milliseconds: 116));
+    final v1 = route.animation!.value;
+    await tester.pump(const Duration(milliseconds: 16));
+    expect((route.animation!.value - v1) / 0.016, closeTo(2.4, 0.06),
+        reason: 'a fifth quicker by now');
+    await tester.pump(const Duration(milliseconds: 120));
     final v2 = route.animation!.value;
     expect(v2, lessThan(1), reason: 'not there yet');
     await tester.pump(const Duration(milliseconds: 16));
@@ -147,18 +152,21 @@ void main() {
     expect(route.animation!.value, 1);
   });
 
-  testWidgets('let go slowly, it goes on slowly: up to 2 s to open',
+  testWidgets('let go slowly, it picks up to the slowest glide: 1.5 s to open',
       (tester) async {
     final route = await push(tester, tracking: true);
     route.drag(36); // a tenth of the way
     await tester.pump();
-    route.release(30); // crawling: it goes on at the slowest glide
+    route.release(30); // crawling
     await tester.pump();
     final v0 = route.animation!.value;
-    await tester.pump(const Duration(seconds: 1));
-    expect(route.animation!.value - v0, closeTo(0.5, 0.02),
-        reason: 'half the way a second, steady');
-    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect((route.animation!.value - v0) / 0.016, lessThan(0.25),
+        reason: 'it sets off from the finger\'s speed, no jump');
+    await tester.pump(const Duration(milliseconds: 984));
+    expect(route.animation!.value - v0, closeTo(0.71, 0.02),
+        reason: 'three quarters of the way a second');
+    await tester.pump(const Duration(milliseconds: 300));
     expect(route.animation!.value, lessThan(1), reason: 'still on its way');
     await tester.pumpAndSettle();
     expect(route.animation!.value, 1);
@@ -175,8 +183,8 @@ void main() {
     await tester.pump();
     final v0 = route.animation!.value;
     await tester.pump(const Duration(seconds: 1));
-    expect(v0 - route.animation!.value, closeTo(0.5, 0.02),
-        reason: 'half the way a second, as up');
+    expect(v0 - route.animation!.value, closeTo(0.71, 0.02),
+        reason: 'as far a second as up');
     await tester.pumpAndSettle();
     expect(route.isActive, isFalse);
   });
@@ -202,12 +210,13 @@ void main() {
     await tester.pump();
     route.release(1080); // 3 travels per second, a quick flick
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 230));
+    await tester.pump(const Duration(milliseconds: 200));
     final v1 = route.animation!.value;
     expect(v1, greaterThan(0.75));
     await tester.pump(const Duration(milliseconds: 16));
-    expect((route.animation!.value - v1) / 0.016, closeTo(3, 0.05),
-        reason: 'still at full speed three quarters of the way');
+    expect((route.animation!.value - v1) / 0.016, closeTo(3.6, 0.1),
+        reason: 'still at full speed, a fifth over the flick\'s, three '
+            'quarters of the way');
     await tester.pumpAndSettle();
     expect(route.animation!.value, 1);
   });

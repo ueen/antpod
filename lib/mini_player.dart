@@ -117,7 +117,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     (r) => r.onTap = () => _push(tracking: false),
                   ),
                   // Every release counts, however slow: the sheet goes on
-                  // at the finger's speed.
+                  // at the finger's speed. It moves from where the finger
+                  // came down, with the phone's own touch slop, as a list
+                  // does: none of the way is lost to the slop.
                   VerticalDragGestureRecognizer:
                       GestureRecognizerFactoryWithHandlers<
                           VerticalDragGestureRecognizer>(
@@ -125,6 +127,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     (r) => r
                       ..minFlingDistance = 0
                       ..minFlingVelocity = 0
+                      ..dragStartBehavior = DragStartBehavior.down
+                      ..gestureSettings = MediaQuery.maybeGestureSettingsOf(context)
                       ..onStart = ((_) {
                         _trail.clear();
                       })
@@ -951,33 +955,54 @@ class _Settle extends Simulation {
   bool isDone(double time) => time >= _time;
 }
 
-/// From [from] to [to] as in a vacuum: on at [velocity] (but never slower
-/// than [minSpeed], the full way in 2 s), then coming to rest on an
-/// ease-out cubic of [_brake] seconds, but over the last sixth of the way
-/// at most. However slowly the finger let go, it goes on as slowly; however
-/// fast, it keeps that speed nearly all the way.
+/// From [from] to [to] as in a vacuum with a little pull: it sets off at
+/// the finger's [velocity] and picks up, within a tenth of a second or so,
+/// to [gain] times that, but never slower than [minSpeed] (the full way in
+/// 1.3 s); then it comes to rest on an ease-out cubic of [_brake] seconds,
+/// but over the last sixth of the way at most. No jump at the let-go;
+/// however fast the finger, it keeps going nearly all the way.
 class _Glide extends Simulation {
   _Glide(this.from, this.to, double velocity)
       : _d = (to - from).abs(),
-        _v = math.max(velocity * (to - from).sign, minSpeed) {
+        _v0 = math.max(0.0, velocity * (to - from).sign) {
+    _v = math.max(_v0 * gain, minSpeed);
     _b = math.min(_d / 6, _v * _brake / 3);
-    _cruise = (_d - _b) / _v;
-    _end = _cruise + 3 * _b / _v;
+    _cruise = _timeTo(_d - _b);
+    final vb = _speed(_cruise);
+    _end = _b <= 0 ? _cruise : _cruise + 3 * _b / vb;
   }
 
-  static const minSpeed = 0.5;
+  static const minSpeed = 0.75;
+  static const gain = 1.2;
+  static const _rise = 0.06;
   static const _brake = 0.3;
 
   final double from, to;
-  final double _d, _v;
-  late final double _b, _cruise, _end;
+  final double _d, _v0;
+  late final double _v, _b, _cruise, _end;
 
   double get _sign => (to - from).sign;
+
+  double _speed(double t) => _v - (_v - _v0) * math.exp(-t / _rise);
+  double _way(double t) =>
+      _v * t - (_v - _v0) * _rise * (1 - math.exp(-t / _rise));
+
+  /// When it's [x] of the way, before the brake.
+  double _timeTo(double x) {
+    if (x <= 0) return 0;
+    var t = x / _v;
+    for (var i = 0; i < 30; i++) {
+      final e = _way(t) - x;
+      if (e.abs() < 1e-12) break;
+      t -= e / _speed(t);
+    }
+    return t;
+  }
 
   @override
   double x(double time) {
     if (time >= _end) return to;
-    if (time <= _cruise) return from + _sign * _v * time;
+    if (time <= _cruise) return from + _sign * _way(time);
     final s = 1 - (time - _cruise) / (_end - _cruise);
     return to - _sign * _b * s * s * s;
   }
@@ -985,9 +1010,10 @@ class _Glide extends Simulation {
   @override
   double dx(double time) {
     if (time >= _end) return 0;
-    if (time <= _cruise) return _sign * _v;
+    final vb = _speed(math.min(time, _cruise));
+    if (time <= _cruise) return _sign * vb;
     final s = 1 - (time - _cruise) / (_end - _cruise);
-    return _sign * _v * s * s;
+    return _sign * vb * s * s;
   }
 
   @override
