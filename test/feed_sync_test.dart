@@ -107,6 +107,17 @@ void main() {
       expect(again.data!.episodes, hasLength(1));
     });
 
+    test('an episode\'s own cover is kept; without one, the podcast\'s shows',
+        () async {
+      feeds['a'] = _Feed(_rss(['1', '2']).replaceFirst('<guid>1</guid>',
+          '<guid>1</guid><itunes:image href=" https://example.com/1.jpg "/>'));
+      final eps = (await PodcastService.fetchFeed(url('a')))!.data!.episodes;
+      expect([for (final e in eps) e.imageUrl.value],
+          ['https://example.com/1.jpg', null]);
+      expect(eps.map((e) => e.podcastImageUrl.value).toSet(),
+          {'https://example.com/cover.jpg'});
+    });
+
     test('an error status is a failed load', () async {
       feeds['a'] = _Feed('', status: 500);
       expect(await PodcastService.fetchFeed(url('a')), isNull);
@@ -174,11 +185,13 @@ void main() {
         'datePublished': 1767225600,
         'feedUrl': 'https://pi.example/feed',
         'chaptersUrl': '',
+        'image': 'https://x/ep1.jpg',
       }, feedUrl: 'https://apple.example/feed', podcast: podcast)!;
       expect(e.id.value, 'abc');
       expect(e.podcastId.value, 'https://pi.example/feed');
       expect(e.podcastTitle.value, 'The Show');
       expect(e.podcastImageUrl.value, 'https://x/art.jpg');
+      expect(e.imageUrl.value, 'https://x/ep1.jpg');
       expect(e.durationSeconds.value, 1800);
       expect(e.publishDate.value, DateTime.utc(2026, 1, 1));
       expect(e.chaptersUrl.value, isNull);

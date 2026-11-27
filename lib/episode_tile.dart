@@ -391,7 +391,7 @@ class EpisodeTile extends StatelessWidget {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
-                            imageUrl: episode.podcastImageUrl,
+                            imageUrl: episode.coverUrl,
                             width: 60, height: 60, fit: BoxFit.cover,
                             placeholder: (_, __) => _CoverPlaceholder(cs: cs),
                             errorWidget: (_, __, ___) => _CoverPlaceholder(cs: cs),

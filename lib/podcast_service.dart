@@ -307,11 +307,13 @@ class PodcastService {
         .firstWhere((s) => s.isNotEmpty, orElse: () => '');
     final published = m['datePublished'];
     final chapters = str(m['chaptersUrl']);
+    final image = str(m['image']);
     return EpisodesCompanion(
       id: Value(guid.isNotEmpty ? guid : '${feed}_$title'),
       podcastId: Value(feed),
       podcastTitle: Value(podcastTitle),
       podcastImageUrl: Value(cover),
+      imageUrl: Value(image.isEmpty ? null : image),
       title: Value(title.trim()),
       description: Value(m['description'] is String ? m['description'] as String : ''),
       audioUrl: Value(audio),
@@ -397,7 +399,7 @@ class PodcastService {
 
   /// Bump when parsing changes (fields read, chapters, ids): stored hashes
   /// stop matching, so every feed is parsed again on its next refresh.
-  static const _parseVersion = 3;
+  static const _parseVersion = 4;
 
   /// The feed at [feedUrl], parsed by podcast_search, which leaves out
   /// Podlove Simple Chapters: so the XML is fetched here and those read from
@@ -477,11 +479,13 @@ class PodcastService {
           final pcUrl = ep.chapters?.url;
           final chapUrl =
               pcUrl != null && pcUrl.isNotEmpty ? pcUrl : podlove?[i];
+          final image = ep.imageUrl?.trim() ?? '';
           return EpisodesCompanion(
             id: Value(ep.guid.isNotEmpty ? ep.guid : '${feedUrl}_${ep.title}'),
             podcastId: Value(feedUrl),
             podcastTitle: Value(podcast.title ?? ''),
             podcastImageUrl: Value(podcast.image ?? ''),
+            imageUrl: Value(image.isEmpty ? null : image),
             title: Value(ep.title),
             description: Value(ep.description),
             audioUrl: Value(ep.contentUrl ?? ''),

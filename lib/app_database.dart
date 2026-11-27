@@ -1,6 +1,6 @@
 // lib/app_database.dart
 //
-// Schema version: 11
+// Schema version: 12
 //   v1 → v2: Episodes.isSubscribed added
 //   v2 → v3: Episodes.isFinished added (true = fully listened)
 //            Episodes.lastPositionMs added (millisecond precision resume point)
@@ -14,6 +14,7 @@
 //            episode indexes on (podcast_id, publish_date) and publish_date
 //   v9 → v10: Episodes.isFavorite added
 //   v10 → v11: feed validators cleared once (republished episodes merge)
+//   v11 → v12: Episodes.imageUrl added (the episode's own cover)
 //
 // Regenerate after schema changes:
 //   dart run build_runner build --delete-conflicting-outputs
@@ -68,6 +69,8 @@ class Episodes extends Table {
   TextColumn get podcastId => text()();
   TextColumn get podcastTitle => text()();
   TextColumn get podcastImageUrl => text()();
+  /// The episode's own cover (its itunes:image), if the feed gives one.
+  TextColumn get imageUrl => text().nullable()();
   TextColumn get title => text()();
   TextColumn get description => text()();
   TextColumn get audioUrl => text()();
@@ -116,6 +119,12 @@ class Episodes extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// The picture to show for an episode: its own cover, else its podcast's.
+extension EpisodeCover on Episode {
+  String get coverUrl =>
+      imageUrl != null && imageUrl!.isNotEmpty ? imageUrl! : podcastImageUrl;
+}
+
 // ─── Stream helpers ───────────────────────────────────────────────────────────
 
 // Structural equality for episode lists: propagates changes to fields that affect
@@ -132,6 +141,7 @@ bool _episodeListEqual(List<Episode> a, List<Episode> b, String? liveId) {
         x.markedForDownload != y.markedForDownload ||
         x.isFavorite != y.isFavorite ||
         x.durationSeconds != y.durationSeconds ||
+        x.imageUrl != y.imageUrl ||
         x.localPath != y.localPath ||
         (x.lastPositionMs != y.lastPositionMs && x.id != liveId)) {
       return false;
@@ -172,7 +182,7 @@ class AppDatabase extends _$AppDatabase {
       _episodeListEqual(a, b, livePositionEpisodeId);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -223,6 +233,10 @@ class AppDatabase extends _$AppDatabase {
         // listed twice merge (saveFeedRefresh).
         await m.database.customStatement('UPDATE podcasts SET feed_etag = NULL, '
             'feed_last_modified = NULL, feed_hash = NULL');
+      }
+      if (from < 12) {
+        // Filled on each feed's next refresh (PodcastService._parseVersion).
+        await m.addColumn(episodes, episodes.imageUrl);
       }
     },
   );
@@ -746,7 +760,8 @@ class AppDatabase extends _$AppDatabase {
               onConflict: DoUpdate<$EpisodesTable, Episode>.withExcluded(
                   (old, excluded) => EpisodesCompanion.custom(
                       chaptersUrl:
-                          coalesce([excluded.chaptersUrl, old.chaptersUrl]))),
+                          coalesce([excluded.chaptersUrl, old.chaptersUrl]),
+                      imageUrl: coalesce([excluded.imageUrl, old.imageUrl]))),
             ));
         return [for (final e in own) e.id.value];
       });

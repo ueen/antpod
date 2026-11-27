@@ -182,7 +182,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   String get currentCoverImageUrl =>
-      currentChapter?.imageUrl ?? _currentEpisode?.podcastImageUrl ?? '';
+      currentChapter?.imageUrl ?? _currentEpisode?.coverUrl ?? '';
 
   /// The current chapter's picture from the audio file's tag, or null.
   Uint8List? get currentChapterImageBytes => currentChapter?.imageBytes;
@@ -193,7 +193,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     final c = currentChapter;
     if (c == null) return false;
     return c.imageBytes != null ||
-        (c.imageUrl != null && c.imageUrl != _currentEpisode?.podcastImageUrl);
+        (c.imageUrl != null && c.imageUrl != _currentEpisode?.coverUrl);
   }
 
   Future<void> seekToChapter(PodcastChapter chapter) =>
@@ -428,7 +428,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         id: episode.id,
         title: episode.title,
         podcast: episode.podcastTitle,
-        artUri: episode.podcastImageUrl,
+        artUri: episode.coverUrl,
         audioUrl: episode.audioUrl,
         localPath: localPath,
         startPosition: Duration(milliseconds: startMs),
@@ -494,7 +494,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         id: episode.id,
         title: episode.title,
         podcast: episode.podcastTitle,
-        artUri: episode.podcastImageUrl,
+        artUri: episode.coverUrl,
         audioUrl: episode.audioUrl,
         localPath: localPath,
         startPosition: Duration(milliseconds: startMs),

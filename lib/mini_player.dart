@@ -140,7 +140,7 @@ class _MiniCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = context.select<PlayerProvider, String>(
-        (p) => p.currentEpisode?.podcastImageUrl ?? '');
+        (p) => p.currentEpisode?.coverUrl ?? '');
     final title = context.select<PlayerProvider, String>(
         (p) => p.currentEpisode?.title ?? '');
     final podcastTitle = context.select<PlayerProvider, String>(
@@ -1189,7 +1189,7 @@ class _PlayerSheet extends StatelessWidget {
               // the podcast.
               child: GestureDetector(
                 onTap: player.hasChapterImage
-                    ? () => _showCoverFullscreen(context, player, ep.podcastImageUrl)
+                    ? () => _showCoverFullscreen(context, player, ep.coverUrl)
                     : (onPodcastTap != null
                         ? () {
                             Navigator.of(context).pop();
@@ -1200,7 +1200,7 @@ class _PlayerSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   child: _ChapterCover(
                     player: player,
-                    fallbackUrl: ep.podcastImageUrl,
+                    fallbackUrl: ep.coverUrl,
                   ),
                 ),
               ),

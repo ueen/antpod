@@ -739,6 +739,12 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
   late final GeneratedColumn<String> podcastImageUrl = GeneratedColumn<String>(
       'podcast_image_url', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _imageUrlMeta =
+      const VerificationMeta('imageUrl');
+  @override
+  late final GeneratedColumn<String> imageUrl = GeneratedColumn<String>(
+      'image_url', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
   late final GeneratedColumn<String> title = GeneratedColumn<String>(
@@ -868,6 +874,7 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
         podcastId,
         podcastTitle,
         podcastImageUrl,
+        imageUrl,
         title,
         description,
         audioUrl,
@@ -921,6 +928,10 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
               data['podcast_image_url']!, _podcastImageUrlMeta));
     } else if (isInserting) {
       context.missing(_podcastImageUrlMeta);
+    }
+    if (data.containsKey('image_url')) {
+      context.handle(_imageUrlMeta,
+          imageUrl.isAcceptableOrUnknown(data['image_url']!, _imageUrlMeta));
     }
     if (data.containsKey('title')) {
       context.handle(
@@ -1036,6 +1047,8 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
           .read(DriftSqlType.string, data['${effectivePrefix}podcast_title'])!,
       podcastImageUrl: attachedDatabase.typeMapping.read(
           DriftSqlType.string, data['${effectivePrefix}podcast_image_url'])!,
+      imageUrl: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}image_url']),
       title: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
       description: attachedDatabase.typeMapping
@@ -1083,6 +1096,9 @@ class Episode extends DataClass implements Insertable<Episode> {
   final String podcastId;
   final String podcastTitle;
   final String podcastImageUrl;
+
+  /// The episode's own cover (its itunes:image), if the feed gives one.
+  final String? imageUrl;
   final String title;
   final String description;
   final String audioUrl;
@@ -1130,6 +1146,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       required this.podcastId,
       required this.podcastTitle,
       required this.podcastImageUrl,
+      this.imageUrl,
       required this.title,
       required this.description,
       required this.audioUrl,
@@ -1153,6 +1170,9 @@ class Episode extends DataClass implements Insertable<Episode> {
     map['podcast_id'] = Variable<String>(podcastId);
     map['podcast_title'] = Variable<String>(podcastTitle);
     map['podcast_image_url'] = Variable<String>(podcastImageUrl);
+    if (!nullToAbsent || imageUrl != null) {
+      map['image_url'] = Variable<String>(imageUrl);
+    }
     map['title'] = Variable<String>(title);
     map['description'] = Variable<String>(description);
     map['audio_url'] = Variable<String>(audioUrl);
@@ -1186,6 +1206,9 @@ class Episode extends DataClass implements Insertable<Episode> {
       podcastId: Value(podcastId),
       podcastTitle: Value(podcastTitle),
       podcastImageUrl: Value(podcastImageUrl),
+      imageUrl: imageUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageUrl),
       title: Value(title),
       description: Value(description),
       audioUrl: Value(audioUrl),
@@ -1221,6 +1244,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       podcastId: serializer.fromJson<String>(json['podcastId']),
       podcastTitle: serializer.fromJson<String>(json['podcastTitle']),
       podcastImageUrl: serializer.fromJson<String>(json['podcastImageUrl']),
+      imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       title: serializer.fromJson<String>(json['title']),
       description: serializer.fromJson<String>(json['description']),
       audioUrl: serializer.fromJson<String>(json['audioUrl']),
@@ -1248,6 +1272,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       'podcastId': serializer.toJson<String>(podcastId),
       'podcastTitle': serializer.toJson<String>(podcastTitle),
       'podcastImageUrl': serializer.toJson<String>(podcastImageUrl),
+      'imageUrl': serializer.toJson<String?>(imageUrl),
       'title': serializer.toJson<String>(title),
       'description': serializer.toJson<String>(description),
       'audioUrl': serializer.toJson<String>(audioUrl),
@@ -1273,6 +1298,7 @@ class Episode extends DataClass implements Insertable<Episode> {
           String? podcastId,
           String? podcastTitle,
           String? podcastImageUrl,
+          Value<String?> imageUrl = const Value.absent(),
           String? title,
           String? description,
           String? audioUrl,
@@ -1294,6 +1320,7 @@ class Episode extends DataClass implements Insertable<Episode> {
         podcastId: podcastId ?? this.podcastId,
         podcastTitle: podcastTitle ?? this.podcastTitle,
         podcastImageUrl: podcastImageUrl ?? this.podcastImageUrl,
+        imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
         title: title ?? this.title,
         description: description ?? this.description,
         audioUrl: audioUrl ?? this.audioUrl,
@@ -1323,6 +1350,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       podcastImageUrl: data.podcastImageUrl.present
           ? data.podcastImageUrl.value
           : this.podcastImageUrl,
+      imageUrl: data.imageUrl.present ? data.imageUrl.value : this.imageUrl,
       title: data.title.present ? data.title.value : this.title,
       description:
           data.description.present ? data.description.value : this.description,
@@ -1369,6 +1397,7 @@ class Episode extends DataClass implements Insertable<Episode> {
           ..write('podcastId: $podcastId, ')
           ..write('podcastTitle: $podcastTitle, ')
           ..write('podcastImageUrl: $podcastImageUrl, ')
+          ..write('imageUrl: $imageUrl, ')
           ..write('title: $title, ')
           ..write('description: $description, ')
           ..write('audioUrl: $audioUrl, ')
@@ -1390,27 +1419,29 @@ class Episode extends DataClass implements Insertable<Episode> {
   }
 
   @override
-  int get hashCode => Object.hash(
-      id,
-      podcastId,
-      podcastTitle,
-      podcastImageUrl,
-      title,
-      description,
-      audioUrl,
-      durationSeconds,
-      publishDate,
-      isDownloaded,
-      localPath,
-      downloadTaskId,
-      lastPositionMs,
-      playbackPositionSeconds,
-      isFinished,
-      isSubscribed,
-      chaptersUrl,
-      lastPlayed,
-      markedForDownload,
-      isFavorite);
+  int get hashCode => Object.hashAll([
+        id,
+        podcastId,
+        podcastTitle,
+        podcastImageUrl,
+        imageUrl,
+        title,
+        description,
+        audioUrl,
+        durationSeconds,
+        publishDate,
+        isDownloaded,
+        localPath,
+        downloadTaskId,
+        lastPositionMs,
+        playbackPositionSeconds,
+        isFinished,
+        isSubscribed,
+        chaptersUrl,
+        lastPlayed,
+        markedForDownload,
+        isFavorite
+      ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1419,6 +1450,7 @@ class Episode extends DataClass implements Insertable<Episode> {
           other.podcastId == this.podcastId &&
           other.podcastTitle == this.podcastTitle &&
           other.podcastImageUrl == this.podcastImageUrl &&
+          other.imageUrl == this.imageUrl &&
           other.title == this.title &&
           other.description == this.description &&
           other.audioUrl == this.audioUrl &&
@@ -1442,6 +1474,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
   final Value<String> podcastId;
   final Value<String> podcastTitle;
   final Value<String> podcastImageUrl;
+  final Value<String?> imageUrl;
   final Value<String> title;
   final Value<String> description;
   final Value<String> audioUrl;
@@ -1464,6 +1497,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.podcastId = const Value.absent(),
     this.podcastTitle = const Value.absent(),
     this.podcastImageUrl = const Value.absent(),
+    this.imageUrl = const Value.absent(),
     this.title = const Value.absent(),
     this.description = const Value.absent(),
     this.audioUrl = const Value.absent(),
@@ -1487,6 +1521,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     required String podcastId,
     required String podcastTitle,
     required String podcastImageUrl,
+    this.imageUrl = const Value.absent(),
     required String title,
     required String description,
     required String audioUrl,
@@ -1516,6 +1551,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     Expression<String>? podcastId,
     Expression<String>? podcastTitle,
     Expression<String>? podcastImageUrl,
+    Expression<String>? imageUrl,
     Expression<String>? title,
     Expression<String>? description,
     Expression<String>? audioUrl,
@@ -1539,6 +1575,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       if (podcastId != null) 'podcast_id': podcastId,
       if (podcastTitle != null) 'podcast_title': podcastTitle,
       if (podcastImageUrl != null) 'podcast_image_url': podcastImageUrl,
+      if (imageUrl != null) 'image_url': imageUrl,
       if (title != null) 'title': title,
       if (description != null) 'description': description,
       if (audioUrl != null) 'audio_url': audioUrl,
@@ -1565,6 +1602,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       Value<String>? podcastId,
       Value<String>? podcastTitle,
       Value<String>? podcastImageUrl,
+      Value<String?>? imageUrl,
       Value<String>? title,
       Value<String>? description,
       Value<String>? audioUrl,
@@ -1587,6 +1625,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       podcastId: podcastId ?? this.podcastId,
       podcastTitle: podcastTitle ?? this.podcastTitle,
       podcastImageUrl: podcastImageUrl ?? this.podcastImageUrl,
+      imageUrl: imageUrl ?? this.imageUrl,
       title: title ?? this.title,
       description: description ?? this.description,
       audioUrl: audioUrl ?? this.audioUrl,
@@ -1622,6 +1661,9 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     }
     if (podcastImageUrl.present) {
       map['podcast_image_url'] = Variable<String>(podcastImageUrl.value);
+    }
+    if (imageUrl.present) {
+      map['image_url'] = Variable<String>(imageUrl.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -1685,6 +1727,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
           ..write('podcastId: $podcastId, ')
           ..write('podcastTitle: $podcastTitle, ')
           ..write('podcastImageUrl: $podcastImageUrl, ')
+          ..write('imageUrl: $imageUrl, ')
           ..write('title: $title, ')
           ..write('description: $description, ')
           ..write('audioUrl: $audioUrl, ')
@@ -2034,6 +2077,7 @@ typedef $$EpisodesTableCreateCompanionBuilder = EpisodesCompanion Function({
   required String podcastId,
   required String podcastTitle,
   required String podcastImageUrl,
+  Value<String?> imageUrl,
   required String title,
   required String description,
   required String audioUrl,
@@ -2057,6 +2101,7 @@ typedef $$EpisodesTableUpdateCompanionBuilder = EpisodesCompanion Function({
   Value<String> podcastId,
   Value<String> podcastTitle,
   Value<String> podcastImageUrl,
+  Value<String?> imageUrl,
   Value<String> title,
   Value<String> description,
   Value<String> audioUrl,
@@ -2097,6 +2142,9 @@ class $$EpisodesTableFilterComposer
   ColumnFilters<String> get podcastImageUrl => $composableBuilder(
       column: $table.podcastImageUrl,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get imageUrl => $composableBuilder(
+      column: $table.imageUrl, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get title => $composableBuilder(
       column: $table.title, builder: (column) => ColumnFilters(column));
@@ -2175,6 +2223,9 @@ class $$EpisodesTableOrderingComposer
       column: $table.podcastImageUrl,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get imageUrl => $composableBuilder(
+      column: $table.imageUrl, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get title => $composableBuilder(
       column: $table.title, builder: (column) => ColumnOrderings(column));
 
@@ -2252,6 +2303,9 @@ class $$EpisodesTableAnnotationComposer
   GeneratedColumn<String> get podcastImageUrl => $composableBuilder(
       column: $table.podcastImageUrl, builder: (column) => column);
 
+  GeneratedColumn<String> get imageUrl =>
+      $composableBuilder(column: $table.imageUrl, builder: (column) => column);
+
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
 
@@ -2328,6 +2382,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             Value<String> podcastId = const Value.absent(),
             Value<String> podcastTitle = const Value.absent(),
             Value<String> podcastImageUrl = const Value.absent(),
+            Value<String?> imageUrl = const Value.absent(),
             Value<String> title = const Value.absent(),
             Value<String> description = const Value.absent(),
             Value<String> audioUrl = const Value.absent(),
@@ -2351,6 +2406,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             podcastId: podcastId,
             podcastTitle: podcastTitle,
             podcastImageUrl: podcastImageUrl,
+            imageUrl: imageUrl,
             title: title,
             description: description,
             audioUrl: audioUrl,
@@ -2374,6 +2430,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             required String podcastId,
             required String podcastTitle,
             required String podcastImageUrl,
+            Value<String?> imageUrl = const Value.absent(),
             required String title,
             required String description,
             required String audioUrl,
@@ -2397,6 +2454,7 @@ class $$EpisodesTableTableManager extends RootTableManager<
             podcastId: podcastId,
             podcastTitle: podcastTitle,
             podcastImageUrl: podcastImageUrl,
+            imageUrl: imageUrl,
             title: title,
             description: description,
             audioUrl: audioUrl,

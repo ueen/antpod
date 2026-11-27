@@ -588,6 +588,7 @@ void main() {
       await old.customStatement('ALTER TABLE podcasts DROP COLUMN $col');
     }
     await old.customStatement('ALTER TABLE episodes DROP COLUMN is_favorite');
+    await old.customStatement('ALTER TABLE episodes DROP COLUMN image_url');
     await old.customStatement(
         "INSERT INTO podcasts (id, title, description, image_url, feed_url, author) "
         "VALUES ('$_feed', 'Podcast', '', '', '$_feed', '')");
@@ -610,11 +611,13 @@ void main() {
         reason: 'v10 added is_favorite');
   });
 
-  test('a v10 database loads every feed in full once', () async {
+  test('a v10 database loads every feed in full once, and gets episode covers',
+      () async {
     final dir = Directory.systemTemp.createTempSync('antpod-migration');
     addTearDown(() => dir.deleteSync(recursive: true));
     final file = File('${dir.path}/v10.db');
     final old = AppDatabase.forTesting(NativeDatabase(file));
+    await old.customStatement('ALTER TABLE episodes DROP COLUMN image_url');
     await old.customStatement(
         "INSERT INTO podcasts (id, title, description, image_url, feed_url, "
         "author, feed_etag, feed_last_modified, feed_hash) VALUES ('$_feed', "
@@ -626,5 +629,8 @@ void main() {
     addTearDown(migrated.close);
     final p = (await migrated.getPodcast(_feed))!;
     expect([p.feedEtag, p.feedLastModified, p.feedHash], [null, null, null]);
+    await migrated.insertEpisodes(
+        [_rss('a').copyWith(imageUrl: const Value('https://x/a.jpg'))]);
+    expect((await migrated.getEpisode('a'))!.coverUrl, 'https://x/a.jpg');
   });
 }
