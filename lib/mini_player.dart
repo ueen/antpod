@@ -266,10 +266,10 @@ class _MiniCard extends StatelessWidget {
               ),
 
               Padding(
-                // The cover centered above the progress bar: as far from
-                // it as from the card's top.
-                padding:
-                    const EdgeInsets.fromLTRB(12, 0, 12, _MiniProgress.height),
+                // The cover lifted by half the progress bar: near the
+                // middle with no progress yet, a gap above the bar with some.
+                padding: const EdgeInsets.fromLTRB(
+                    12, 0, 12, _MiniProgress.height / 2),
                 child: Row(
                   children: [
                     ClipRRect(
