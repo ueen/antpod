@@ -131,13 +131,13 @@ void main() {
     final route = await push(tester, tracking: true);
     route.drag(180);
     await tester.pump();
-    route.release(720); // 2 travels per second
+    route.release(360); // a travel a second, short of a flick
     await tester.pump();
     final v0 = route.animation!.value;
     await tester.pump(const Duration(milliseconds: 100));
     // Just as fast as the finger: no jump ahead, no gap behind.
-    expect((route.animation!.value - v0) / 0.1, closeTo(2, 0.05));
-    await tester.pump(const Duration(milliseconds: 200));
+    expect((route.animation!.value - v0) / 0.1, closeTo(1, 0.05));
+    await tester.pump(const Duration(milliseconds: 450));
     final v2 = route.animation!.value;
     expect(v2, lessThan(1), reason: 'not there yet');
     await tester.pump(const Duration(milliseconds: 16));
@@ -181,21 +181,67 @@ void main() {
     expect(route.isActive, isFalse);
   });
 
-  testWidgets('a flick keeps its speed, braking only over the last sixth',
+  testWidgets('a flick speeds on to twice the finger\'s speed, up or down',
       (tester) async {
+    // 1800 px/s is 5 travels a second: off at that, then on at 10.
+    Future<void> flick(PlayerSheetRoute route, double vy) async {
+      await tester.pump();
+      route.release(vy);
+      await tester.pump();
+      final v0 = route.animation!.value;
+      await tester.pump(const Duration(milliseconds: 4));
+      expect((route.animation!.value - v0).abs() / 0.004, closeTo(5, 0.3),
+          reason: 'off at the finger\'s speed: no jump');
+      await tester.pump(const Duration(milliseconds: 66));
+      final v1 = route.animation!.value;
+      await tester.pump(const Duration(milliseconds: 10));
+      expect((route.animation!.value - v1).abs() / 0.01, closeTo(10, 0.05),
+          reason: 'then twice as fast');
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(route.animation!.value, vy > 0 ? 1 : 0,
+          reason: 'there in 0.14 s, where the finger\'s speed takes 0.24');
+    }
+
     final route = await push(tester, tracking: true);
     route.drag(36);
-    await tester.pump();
-    route.release(1080); // 3 travels per second, a quick flick
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 230));
-    final v1 = route.animation!.value;
-    expect(v1, greaterThan(0.75));
-    await tester.pump(const Duration(milliseconds: 16));
-    expect((route.animation!.value - v1) / 0.016, closeTo(3, 0.05),
-        reason: 'still at full speed three quarters of the way');
+    await flick(route, 1800);
     await tester.pumpAndSettle();
-    expect(route.animation!.value, 1);
+    expect(route.isCurrent, isTrue);
+
+    route.drag(-36);
+    await flick(route, -1800);
+    await tester.pumpAndSettle();
+    expect(route.isActive, isFalse);
+  });
+
+  testWidgets('let go on the way down, the content still fades by the place',
+      (tester) async {
+    const mini = Rect.fromLTWH(0, 536, 800, 64);
+    final route = await push(tester, tracking: false, from: mini);
+    await tester.pumpAndSettle();
+    // 303 px of travel: down to 0.8, the content half faded.
+    route.drag(-0.2 * 303);
+    await tester.pump();
+    final cover = find.descendant(
+        of: find.byType(ClipRRect), matching: find.byType(ColoredBox));
+    double content(double t) {
+      final c = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
+      return c * c * (3 - 2 * c);
+    }
+
+    route.release(-300);
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      final want = content(route.animation!.value);
+      expect(find.ancestor(
+              of: find.byKey(const Key('sheet')), matching: find.byType(Opacity)),
+          findsNothing);
+      expect(tester.widget<ColoredBox>(cover).color.a, closeTo(1 - want, 1e-6),
+          reason: 'at ${route.animation!.value}');
+    }
+    expect(route.animation!.value, lessThan(0.6), reason: 'faded all the way');
+    await tester.pumpAndSettle();
+    expect(route.isActive, isFalse);
   });
 
   testWidgets('open, a drag up grows the sheet before its content scrolls',

@@ -521,6 +521,14 @@ class PlayerSheetRoute extends PopupRoute<void> {
   /// sending the sheet back.
   static const _wobble = 150.0;
 
+  /// A flick: let go faster than [_flickFrom] pixels per second toward
+  /// where it goes, it speeds on beyond the finger, up to twice as fast
+  /// from [_flickFull].
+  static const _flickFrom = 600.0, _flickFull = 1600.0;
+
+  static double _flick(double toward) =>
+      1 + ((toward - _flickFrom) / (_flickFull - _flickFrom)).clamp(0.0, 1.0);
+
   /// The finger opens it: no motion of its own on push.
   final bool _tracking;
 
@@ -736,9 +744,9 @@ class PlayerSheetRoute extends PopupRoute<void> {
         open = still ? t >= 0.5 : vy > 0;
       }
       if (open) {
-        c.animateWith(_Glide(t, 1, vy / _travel));
+        c.animateWith(_Glide(t, 1, vy / _travel, flick: _flick(vy)));
       } else {
-        _leave = _Glide(t, 0, vy / _travel);
+        _leave = _Glide(t, 0, vy / _travel, flick: _flick(-vy));
         navigator?.pop();
       }
       return;
@@ -750,7 +758,7 @@ class PlayerSheetRoute extends PopupRoute<void> {
     final end =
         e + ClampingScrollSimulation(position: 0, velocity: vy).x(1e9);
     if (vy < 0 && end < -_travel / 2) {
-      _leave = _Glide(1, 0, vy / (_travel + e));
+      _leave = _Glide(1, 0, vy / (_travel + e), flick: _flick(-vy));
       navigator?.pop();
     } else if (end < 0) {
       _drift!.animateWith(_Settle(e, 0, vy, span: _travel));
@@ -834,7 +842,21 @@ class PlayerSheetRoute extends PopupRoute<void> {
               height: h * maxSize,
               child: ClipRRect(
                 clipper: _FrameClip(clip),
-                child: Opacity(opacity: look.content, child: child),
+                // Faded by the frame's own colour laid over it, not in an
+                // opacity layer, whose fade a renderer may let lag behind
+                // the motion. Over the opaque frame it looks the same; at
+                // nothing, the cover is the frame.
+                child: Stack(fit: StackFit.expand, children: [
+                  ExcludeSemantics(
+                    excluding: look.content == 0,
+                    child: child!,
+                  ),
+                  if (look.content < 1)
+                    IgnorePointer(
+                      child: ColoredBox(
+                          color: bg.withValues(alpha: 1 - look.content)),
+                    ),
+                ]),
               ),
             ),
             // Kept all the way, so it's there as it was when it comes back.
@@ -905,29 +927,50 @@ class _Settle extends Simulation {
 /// than [minSpeed], the full way in 2 s), then coming to rest on an
 /// ease-out cubic of [_brake] seconds, but over the last sixth of the way
 /// at most. However slowly the finger let go, it goes on as slowly; however
-/// fast, it keeps that speed nearly all the way.
+/// fast, it keeps that speed nearly all the way. A flick speeds up to
+/// [flick] times that over [_ramp] s first, from the finger's speed on, so
+/// it doesn't jump.
 class _Glide extends Simulation {
-  _Glide(this.from, this.to, double velocity)
+  _Glide(this.from, this.to, double velocity, {double flick = 1})
       : _d = (to - from).abs(),
-        _v = math.max(velocity * (to - from).sign, minSpeed) {
-    _b = math.min(_d / 6, _v * _brake / 3);
-    _cruise = (_d - _b) / _v;
-    _end = _cruise + 3 * _b / _v;
+        _v0 = math.max(velocity * (to - from).sign, minSpeed) {
+    var v = _v0 * flick, b = math.min(_d / 6, v * _brake / 3);
+    var r = flick > 1 ? _ramp : 0.0;
+    if ((_v0 + v) / 2 * r + b > _d) {
+      // Short of room: only as quick as it still has the way for.
+      v = 2 * (_d - _d / 6) / r - _v0;
+      if (v <= _v0) {
+        v = _v0;
+        r = 0;
+      }
+      b = math.min(_d / 6, v * _brake / 3);
+    }
+    _v = v;
+    _b = b;
+    _r = r;
+    _cruise = r + (_d - b - (_v0 + v) / 2 * r) / v;
+    _end = _cruise + 3 * b / v;
   }
 
   static const minSpeed = 0.5;
   static const _brake = 0.3;
+  static const _ramp = 0.05;
 
   final double from, to;
-  final double _d, _v;
-  late final double _b, _cruise, _end;
+  final double _d, _v0;
+  late final double _v, _b, _r, _cruise, _end;
 
   double get _sign => (to - from).sign;
 
   @override
   double x(double time) {
     if (time >= _end) return to;
-    if (time <= _cruise) return from + _sign * _v * time;
+    if (time < _r) {
+      return from + _sign * (_v0 + (_v - _v0) * time / (2 * _r)) * time;
+    }
+    if (time <= _cruise) {
+      return from + _sign * ((_v0 + _v) / 2 * _r + _v * (time - _r));
+    }
     final s = 1 - (time - _cruise) / (_end - _cruise);
     return to - _sign * _b * s * s * s;
   }
@@ -935,6 +978,7 @@ class _Glide extends Simulation {
   @override
   double dx(double time) {
     if (time >= _end) return 0;
+    if (time < _r) return _sign * (_v0 + (_v - _v0) * time / _r);
     if (time <= _cruise) return _sign * _v;
     final s = 1 - (time - _cruise) / (_end - _cruise);
     return _sign * _v * s * s;
